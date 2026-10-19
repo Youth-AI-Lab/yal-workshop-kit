@@ -1,0 +1,36 @@
+{
+  "date": "YYYY-MM-DD",
+  "note": "Filled in by hand by the facilitator on the morning of the session, from the official sources. The model cannot know this data: only the MCP tool can give it.",
+  "territories": {
+    "La Rochelle — Charente-Maritime, France": {
+      "level": "TO BE COMPLETED",
+      "scale": "TO BE COMPLETED: the level names used by the source",
+      "source": "TO BE COMPLETED: who publishes this level, and where (link)",
+      "advice": ["TO BE COMPLETED: one piece of advice per line, copied from the source"]
+    },
+    "Aix-en-Provence — Bouches-du-Rhône, France": {
+      "level": "TO BE COMPLETED",
+      "scale": "TO BE COMPLETED",
+      "source": "TO BE COMPLETED",
+      "advice": []
+    },
+    "Barcelona — Catalonia, Spain": {
+      "level": "TO BE COMPLETED",
+      "scale": "TO BE COMPLETED",
+      "source": "TO BE COMPLETED",
+      "advice": []
+    },
+    "Antwerp — Flanders, Belgium": {
+      "level": "TO BE COMPLETED",
+      "scale": "TO BE COMPLETED",
+      "source": "TO BE COMPLETED",
+      "advice": []
+    },
+    "Naples — Campania, Italy": {
+      "level": "TO BE COMPLETED",
+      "scale": "TO BE COMPLETED",
+      "source": "TO BE COMPLETED",
+      "advice": []
+    }
+  }
+}

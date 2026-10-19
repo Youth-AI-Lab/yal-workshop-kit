@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fire-danger": {
+      "command": "__PYTHON__",
+      "args": ["mcp/fire_danger_server.py"]
+    }
+  }
+}
