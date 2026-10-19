@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "fire-danger": {
-      "command": "__PYTHON__",
+      "command": "/opt/workshop/venv/bin/python",
       "args": ["mcp/fire_danger_server.py"]
     }
   }

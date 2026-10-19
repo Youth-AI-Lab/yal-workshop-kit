@@ -1,0 +1,12 @@
+{
+  "name": "Youth AI Lab — customising a chatbot",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "onCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteEnv": {
+    "WORKSHOP_HOME": "${containerWorkspaceFolder}"
+  },
+  "hostRequirements": { "cpus": 2 },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] }
+  }
+}

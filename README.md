@@ -1,13 +1,19 @@
 # Youth AI Lab workshop — customising a chatbot
 
-You are connected to a server prepared for the workshop. Everything is already installed.
-Two commands are enough, typed in the VS Code terminal:
+You work in pairs, in VS Code in your browser (a GitHub Codespace). Everything is already
+installed. In the terminal at the bottom of the screen, first save the API key the facilitator
+gave your pair:
+
+    workshop-login      paste the key, press Enter: it is tested at once
+
+Then two commands are enough:
 
     workshop <mode>     chat with the chatbot in one mode (bare, A, B, C or W)
     replay <mode>       ask your test questions in this mode, answers in answers/
 
 The first time, Claude Code asks you to choose a theme and to trust the folder: accept.
-To leave a conversation: `/exit`.
+To leave a conversation: `/exit`. If the Codespace stops after a long pause, reopen it:
+nothing is lost.
 
 Above the input box, a line shows how full the **context window** is.
 Keep an eye on it all session long: it tells the story of what you are doing.
@@ -153,5 +159,4 @@ Levels 4 (local model) and 5 (fine-tuning) are presented by the facilitator.
 - `/context`: details what fills the context window.
 - `/mcp`: state of the MCP servers (modes C and W only).
 - `/status`: shows the gateway and the key in use.
-- If something breaks: ask the facilitator to reset your kit. Your previous files are kept
-  in `~/workshop.bak-<date>`.
+- If something breaks: ask the facilitator. Your files stay in the Codespace.

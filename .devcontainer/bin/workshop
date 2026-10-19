@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Starts the workshop chatbot in one of the modes of the grid.
+#
+#   workshop bare   the model alone: no system prompt file, no tools, no skills, no MCP
+#   workshop A      + system prompt (AGENTS.md)
+#   workshop B      + the whole corpus/ in the context, from the start
+#   workshop C      system prompt + file search + skills + MCP (corpus not preloaded)
+#   workshop W      like C, but the model answers from wiki/
+#
+# Without a mode: C. Arguments after the mode are passed to claude
+# (this is how `replay` asks its questions: workshop B -p "question").
+set -euo pipefail
+
+KIT="${WORKSHOP_HOME:-$HOME/workshop}"
+BARE_DIR="${WORKSHOP_BARE_DIR:-$HOME/.workshop-bare}"
+RUN_DIR="${WORKSHOP_RUN_DIR:-$HOME/.workshop-run}"
+MOD_DIR="${WORKSHOP_MOD_DIR:-/opt/workshop/claude-code-playground/claude-code/mods/token-weather}"
+
+mode="C"
+if [[ $# -gt 0 && "$1" != -* ]]; then mode="$1"; shift; fi
+
+if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]] \
+   && ! grep -qsE '"apiKeyHelper"|"ANTHROPIC_AUTH_TOKEN"' "$HOME/.claude/settings.json"; then
+  echo "No API key yet. Type: workshop-login" >&2
+  exit 1
+fi
+
+# All modes: only the kit's MCP server can be loaded, and only in C/W.
+args=(--strict-mcp-config)
+[[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
+
+# Read-only commands allowed without confirmation in C/W (file search goes through Bash).
+read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(rg:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
+           "Bash(find:*)" "mcp__fire-danger")
+
+case "$mode" in
+  bare|Bare|BARE)
+    # Empty directory outside the kit: no CLAUDE.md can be found from here.
+    mkdir -p "$BARE_DIR"
+    cd "$BARE_DIR"
+    args+=(--tools "" --disable-slash-commands)
+    ;;
+  A|a)
+    cd "$KIT"
+    args+=(--tools "" --disable-slash-commands)
+    ;;
+  B|b)
+    cd "$KIT"
+    mkdir -p "$RUN_DIR"
+    corpus="$RUN_DIR/corpus-in-context.md"
+    {
+      echo "# Reference knowledge (the corpus/ folder, loaded in full at startup)"
+      for f in corpus/*.md; do
+        case "$(basename "$f")" in README.md|00-*) continue ;; esac
+        printf '\n\n## Document: %s\n\n' "$f"
+        cat "$f"
+      done
+    } > "$corpus"
+    args+=(--tools "" --disable-slash-commands --append-system-prompt-file "$corpus")
+    ;;
+  C|c)
+    # The model knows where the knowledge is; it decides what to read.
+    cd "$KIT"
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
+           --mcp-config "$KIT/.mcp.json"
+           --append-system-prompt "The reference knowledge is in the corpus/ folder, one document per source. For a question about the topic, search it before answering.")
+    ;;
+  W|w)
+    cd "$KIT"
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
+           --mcp-config "$KIT/.mcp.json"
+           --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/. Do not open corpus/. If the wiki does not contain the answer, say so.")
+    ;;
+  -h|--help|help)
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  *)
+    echo "Unknown mode: $mode. Modes: bare, A, B, C, W (workshop help)." >&2
+    exit 1
+    ;;
+esac
+
+# Banner, except when a question is asked directly (-p): the output must stay clean.
+if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then
+  echo "Workshop — mode $mode. To quit: /exit. Other modes: workshop bare | A | B | C | W" >&2
+fi
+exec claude "${args[@]}" "$@"

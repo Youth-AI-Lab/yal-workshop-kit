@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Saves the API key of this pair and configures Claude Code for the workshop.
+#
+#   workshop-login               asks for the key (it is not shown while you paste it)
+#   workshop-login --key KEY     same, without asking (used by the server script)
+#
+# The provider is recognised from the key: sk-ant-... = Anthropic, sk-or-... = OpenRouter.
+# The key is tested with a one-token request, then stored in ~/.workshop-key (only you can read it).
+set -euo pipefail
+
+ANTHROPIC_MODEL_ID="${WORKSHOP_ANTHROPIC_MODEL:-claude-sonnet-5-5}"
+OPENROUTER_MODEL_ID="${WORKSHOP_OPENROUTER_MODEL:-~anthropic/claude-sonnet-latest}"
+OPENROUTER_SMALL_ID="${WORKSHOP_OPENROUTER_SMALL_MODEL:-~anthropic/claude-haiku-latest}"
+
+if [[ "${1:-}" == "--key" ]]; then
+  key="${2:?--key needs a value}"
+else
+  read -rsp "Paste the API key of your pair, then press Enter: " key
+  echo
+fi
+key="$(printf '%s' "$key" | tr -d '[:space:]')"
+
+if [[ ! "$key" =~ ^sk-(ant|or)-[A-Za-z0-9_-]+$ ]]; then
+  echo "This does not look like a key (it should start with sk-ant- or sk-or-). Nothing saved." >&2
+  exit 1
+fi
+
+umask 077
+mkdir -p "$HOME/.claude"
+printf '%s\n' "$key" > "$HOME/.workshop-key"
+
+# Common settings: same version all session long, and a refused key fails in seconds
+# instead of ~2 min 30 of retries.
+common='"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_MAX_RETRIES": "3"'
+
+if [[ "$key" == sk-ant-* ]]; then
+  provider="Anthropic"; model="$ANTHROPIC_MODEL_ID"
+  cat > "$HOME/.claude/settings.json" <<EOF
+{
+  "apiKeyHelper": "cat $HOME/.workshop-key",
+  "env": { "ANTHROPIC_MODEL": "$model", $common }
+}
+EOF
+  code="$(curl -sS -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/messages \
+    -H "x-api-key: $key" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+    -d "{\"model\":\"$model\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}" \
+    || echo 000)"
+else
+  provider="OpenRouter"; model="$OPENROUTER_MODEL_ID"
+  cat > "$HOME/.claude/settings.json" <<EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+    "ANTHROPIC_AUTH_TOKEN": "$key",
+    "ANTHROPIC_API_KEY": "",
+    "ANTHROPIC_MODEL": "$model",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$OPENROUTER_SMALL_ID",
+    $common
+  }
+}
+EOF
+  code="$(curl -sS -o /dev/null -w '%{http_code}' https://openrouter.ai/api/v1/messages \
+    -H "Authorization: Bearer $key" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+    -d "{\"model\":\"$model\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}" \
+    || echo 000)"
+fi
+
+case "$code" in
+  200) echo "Key OK ($provider, model $model). You can start: workshop bare" ;;
+  401|403) echo "Key saved, but $provider refuses it (HTTP $code). Check it with the facilitator." >&2; exit 2 ;;
+  000) echo "Key saved, but $provider could not be reached (network?). Try: workshop bare" >&2; exit 3 ;;
+  *) echo "Key saved, but the test answered HTTP $code (model $model). Tell the facilitator." >&2; exit 4 ;;
+esac
