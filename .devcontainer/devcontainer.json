@@ -1,7 +1,12 @@
 {
   "name": "Youth AI Lab — customising a chatbot",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "onCreateCommand": "bash .devcontainer/setup.sh",
+  // Configuration DISTRIBUÉE : elle ne construit rien, elle télécharge l'image fabriquée à
+  // partir de source/ et publiée par le workflow devcontainer-publish. Créer un Codespace se
+  // réduit à ce téléchargement, identique pour tous les binômes.
+  // Tag épinglé, jamais `latest`. Pour en changer : facilitator/SETUP.md (dépôt animateur),
+  // en publiant l'image AVANT de modifier cette ligne.
+  "image": "ghcr.io/youth-ai-lab/yal-workshop-devcontainer:2026.10.1",
+  "remoteUser": "vscode",
   "remoteEnv": {
     "WORKSHOP_HOME": "${containerWorkspaceFolder}"
   },
