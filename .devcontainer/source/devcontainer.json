@@ -1,0 +1,16 @@
+{
+  // Configuration SOURCE : fabrique l'image publiée sur ghcr.io (voir le workflow
+  // devcontainer-publish), et sert de secours si l'image est indisponible : dans GitHub,
+  // « New with options… » puis cette configuration reconstruit tout sur place.
+  "name": "Youth AI Lab — source (construction sur place, secours)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    // Racine du dépôt, pour que le Dockerfile lise .devcontainer/bin et claude-version.
+    "context": "../.."
+  },
+  "remoteUser": "vscode",
+  "remoteEnv": {
+    "WORKSHOP_HOME": "${containerWorkspaceFolder}"
+  },
+  "hostRequirements": { "cpus": 2 }
+}
