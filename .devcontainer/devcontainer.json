@@ -5,8 +5,5 @@
   "remoteEnv": {
     "WORKSHOP_HOME": "${containerWorkspaceFolder}"
   },
-  "hostRequirements": { "cpus": 2 },
-  "customizations": {
-    "codespaces": { "openFiles": ["README.md"] }
-  }
+  "hostRequirements": { "cpus": 2 }
 }
