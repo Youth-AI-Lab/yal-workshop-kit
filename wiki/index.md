@@ -1,5 +1,5 @@
-# Wiki index
+# Topics
 
-<!-- One line per page: `- [[page-name]] — ten-word summary`. Kept up to date by the ingest skill. -->
+<!-- One line per page: * [Title](file.md) - description. Kept up to date by the ingest skill. -->
 
 (no page yet)

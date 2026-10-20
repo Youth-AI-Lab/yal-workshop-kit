@@ -10,5 +10,9 @@
   "remoteEnv": {
     "WORKSHOP_HOME": "${containerWorkspaceFolder}"
   },
-  "hostRequirements": { "cpus": 2 }
+  "hostRequirements": { "cpus": 2 },
+  // Lecteur PDF : les documents officiels de corpus/ s'ouvrent dans VS Code.
+  "customizations": {
+    "vscode": { "extensions": ["tomoki1207.pdf"] }
+  }
 }

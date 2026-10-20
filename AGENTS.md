@@ -20,7 +20,7 @@ a source or an organisation. When two documents contradict each other, point out
 contradiction instead of choosing.
 
 ## Quality requirements
-When you state a fact, say where it comes from (name of the document in `corpus/`).
+When you state a fact, say where it comes from (name of the document in `summaries/` or `corpus/`).
 <!-- E.g. every figure comes with its reference date; local actors are named. -->
 
 ## Target personas

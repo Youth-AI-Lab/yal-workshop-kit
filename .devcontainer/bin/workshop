@@ -3,9 +3,9 @@
 #
 #   workshop bare   the model alone: no system prompt file, no tools, no skills, no MCP
 #   workshop A      + system prompt (AGENTS.md)
-#   workshop B      + the whole corpus/ in the context, from the start
-#   workshop C      system prompt + file search + skills + MCP (corpus not preloaded)
-#   workshop W      system prompt + reading wiki/ only (corpus/ is blocked)
+#   workshop B      + everything in the context from the start: summaries/ and corpus/
+#   workshop C      system prompt + file search + skills + MCP (nothing preloaded)
+#   workshop W      system prompt + reading wiki/ only (summaries/, corpus/ blocked)
 #
 # Without a mode: C. Arguments after the mode are passed to claude
 # (this is how `replay` asks its questions: workshop B -p "question").
@@ -25,11 +25,11 @@ if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]] \
   exit 1
 fi
 
-# All modes: only the kit's MCP server can be loaded, and only in C/W.
+# All modes: only the kit's MCP server can be loaded, and only in C.
 args=(--strict-mcp-config)
 [[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
 
-# Read-only commands allowed without confirmation in C/W (file search goes through Bash).
+# Read-only commands allowed without confirmation in C (file search goes through Bash).
 read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(rg:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
            "Bash(find:*)" "mcp__fire-danger")
 
@@ -47,30 +47,33 @@ case "$mode" in
   B|b)
     cd "$KIT"
     mkdir -p "$RUN_DIR"
-    corpus="$RUN_DIR/corpus-in-context.md"
+    everything="$RUN_DIR/knowledge-in-context.md"
     {
-      echo "# Reference knowledge (the corpus/ folder, loaded in full at startup)"
-      for f in corpus/*.md; do
-        case "$(basename "$f")" in README.md|00-*) continue ;; esac
+      echo "# Reference knowledge, loaded in full at startup:"
+      echo "# summaries/ (short verified summaries, one per source) and corpus/ (the full official texts)"
+      # The summaries and the readable copy of every official document (corpus/text/);
+      # never the originals (HTML, PDF, Word), which are far too big or not text.
+      for f in summaries/*.md corpus/text/*.md; do
+        case "$(basename "$f")" in index.md|README.md|00-*) continue ;; esac
         printf '\n\n## Document: %s\n\n' "$f"
         cat "$f"
       done
-    } > "$corpus"
-    args+=(--tools "" --disable-slash-commands --append-system-prompt-file "$corpus")
+    } > "$everything"
+    args+=(--tools "" --disable-slash-commands --append-system-prompt-file "$everything")
     ;;
   C|c)
     # The model knows where the knowledge is; it decides what to read.
     cd "$KIT"
     args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
            --mcp-config "$KIT/.mcp.json"
-           --append-system-prompt "The reference knowledge is in the corpus/ folder, one document per source. For a question about the topic, search it before answering.")
+           --append-system-prompt "The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short verified summaries in English, one per source: start there) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used.")
     ;;
   W|w)
-    # Only reading, and reading corpus/ is denied by a permission rule (not just asked):
-    # the answer can only come from wiki/ (and the system prompt).
+    # Only reading, and reading summaries/ and corpus/ is denied by permission rules (not just
+    # asked): the answer can only come from wiki/ (and the system prompt).
     cd "$KIT"
-    args+=(--tools "Read" --disallowedTools "Read(./corpus/**)" --disable-slash-commands
-           --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/. You cannot open corpus/. If the wiki does not contain the answer, say so.")
+    args+=(--tools "Read" --disallowedTools "Read(./summaries/**)" "Read(./corpus/**)" --disable-slash-commands
+           --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/. You cannot open summaries/ or corpus/. If the wiki does not contain the answer, say so.")
     ;;
   -h|--help|help)
     sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'

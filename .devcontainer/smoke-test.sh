@@ -51,16 +51,18 @@ done
 grep -q "^cwd=.*\.workshop-bare$" <<< "$(reglages bare)" || echec "mode bare : pas lancé hors du kit"
 grep -qxF -- --append-system-prompt-file <<< "$(reglages A)" && echec "mode A : corpus préchargé"
 fichier="$(a_la_suite "$(reglages B)" --append-system-prompt-file)"
-attendus="$(find "$KIT/corpus" -name '[1-9]*.md' | wc -l)"
-charges="$(grep -c '^## Document: corpus/' "$fichier")"
+attendus="$(find "$KIT/summaries" "$KIT/corpus/text" -name '[1-9]*.md' | wc -l)"
+charges="$(grep -cE '^## Document: (summaries|corpus/text)/[1-9]' "$fichier")"
 [[ "$charges" == "$attendus" ]] || echec "mode B : $charges documents chargés sur $attendus"
-echo "B : $charges documents du corpus chargés au démarrage"
+echo "B : $charges documents (résumés et copies lisibles du corpus) chargés au démarrage"
 grep -qxF -- --mcp-config <<< "$(reglages C)" || echec "mode C : serveur MCP absent"
 r="$(reglages W)"
 [[ "$(a_la_suite "$r" --tools)" == "Read" ]] || echec "mode W : outils autres que Read"
-[[ "$(a_la_suite "$r" --disallowedTools)" == "Read(./corpus/**)" ]] || echec "mode W : corpus/ non bloqué"
+for d in summaries corpus; do
+  grep -qxF -- "Read(./$d/**)" <<< "$r" || echec "mode W : $d/ non bloqué"
+done
 grep -qxF -- --mcp-config <<< "$r" && echec "mode W : serveur MCP chargé"
-echo "W : lecture seule, corpus/ bloqué par une règle de permission"
+echo "W : lecture seule, summaries/ et corpus/ bloqués par des règles de permission"
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {
