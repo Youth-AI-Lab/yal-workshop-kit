@@ -1,6 +1,6 @@
 # Bouches-du-Rhône (Aix-en-Provence): brush-clearing rules (OLD)
 Source: Préfecture des Bouches-du-Rhône (Service Régional de la Communication Interministérielle), press kit "Les obligations légales de débroussaillement (O.L.D.) dans les Bouches-du-Rhône", https://www.bouches-du-rhone.gouv.fr/contenu/telechargement/62204/437861/file/DP%20-%20OLD%20nouvel%20arr%C3%AAt%C3%A9%2011.2025-def.pdf, November 2025, French
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20 by Sébastien Nedjar
 
 Forest covers about one third of the Bouches-du-Rhône, about 175 000 hectares.
 From 1975 to 2024, more than 228 fires a year on average threatened the forest massifs.
