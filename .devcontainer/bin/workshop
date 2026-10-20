@@ -26,8 +26,9 @@ if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]] \
   exit 1
 fi
 
-# All modes: only the kit's MCP server can be loaded, and only in D and E.
-args=(--strict-mcp-config)
+# All modes: only the kit's MCP server can be loaded, and only in D and E. Permission mode
+# "manual" (not the default "auto"): Claude Code asks you before it writes a file.
+args=(--strict-mcp-config --permission-mode manual)
 [[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
 
 # Read-only commands allowed without confirmation from C on (file search goes through Bash).
@@ -101,7 +102,7 @@ esac
 
 # Banner, except when a question is asked directly (-p): the output must stay clean.
 if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then
-  echo "Workshop — mode $mode. To quit: /exit. Other modes: workshop bare | A | B | C | D | E" >&2
+  echo "Workshop — mode $mode. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E" >&2
 fi
 # WORKSHOP_DRY_RUN=1: print the command instead of running it (used by the smoke test).
 if [[ -n "${WORKSHOP_DRY_RUN:-}" ]]; then

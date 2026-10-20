@@ -11,8 +11,8 @@
     "WORKSHOP_HOME": "${containerWorkspaceFolder}"
   },
   "hostRequirements": { "cpus": 2 },
-  // Lecteur PDF : les documents officiels de corpus/ s'ouvrent dans VS Code.
+  // Lecteur PDF (mathematic.vscode-pdf : tomoki1207.pdf est désactivée dans le navigateur).
   "customizations": {
-    "vscode": { "extensions": ["tomoki1207.pdf", "bierner.markdown-mermaid"] }
+    "vscode": { "extensions": ["mathematic.vscode-pdf", "bierner.markdown-mermaid"] }
   }
 }

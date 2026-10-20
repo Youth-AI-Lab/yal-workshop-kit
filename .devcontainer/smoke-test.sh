@@ -59,10 +59,16 @@ WORKSHOP_HOME="$copie" wiki-start | grep -q "already there" || echec "wiki-start
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
 [[ "$code" == 2 ]] || echec "code attendu 2 (clé refusée), obtenu $code"
+for v in CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_FAST_MODE; do
+  grep -q "\"$v\": \"1\"" "$HOME/.claude/settings.json" || echec "settings.json : $v absent (jauge sur 1M ou mode rapide)"
+done
 
 etape "Réglages de chaque mode (répétition à blanc, sans appel au modèle)"
 reglages() { WORKSHOP_DRY_RUN=1 workshop "$1" -p hi; }
 a_la_suite() { printf '%s\n' "$1" | grep -A1 -xF -- "$2" | tail -1; }
+for m in bare A B C D; do
+  grep -qxF -- manual <<< "$(a_la_suite "$(reglages "$m")" --permission-mode)" || echec "mode $m : --permission-mode manual absent"
+done
 for m in bare A B; do
   r="$(reglages "$m")"
   [[ "$(a_la_suite "$r" --tools)" == "" ]] || echec "mode $m : des outils sont actifs"

@@ -107,7 +107,7 @@ def main():
     (KIT / "answers").mkdir(exist_ok=True)
     out = KIT / "answers" / f"{mode}-{datetime.now():%Hh%M}.md"
     lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
-             f"Score each answer from 0 to 2 in the {mode.capitalize()} column of test-questions.md.", ""]
+             f"Score each answer from 0 to 2 in the {mode.capitalize()} column of scores.md.", ""]
     total, errors, in_a_row = 0.0, 0, 0
     for i, (n, q) in enumerate(questions, 1):
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)

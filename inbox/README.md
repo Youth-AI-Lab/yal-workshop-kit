@@ -1,7 +1,6 @@
 # Inbox - documents not yet in the corpus
 
-> [!NOTE]
-> This folder is used in **block C** of the workshop (see `README.md`, block C, part 3).
+> ℹ️ **Note.** This folder is used in **block C** of the workshop (see `README.md`, block C, part 3).
 
 ## What this folder is for
 
@@ -53,8 +52,7 @@ happened:
 - a **readable copy** (the text of the PDF, with an OKF header) goes to `corpus/text/`;
 - a line is added to `corpus/index.md`, under "Added during the session".
 
-> [!NOTE]
-> The file stays in `inbox/` too. This is normal: `corpus-add` copies it, it does not move it.
+> ℹ️ **Note.** The file stays in `inbox/` too. This is normal: `corpus-add` copies it, it does not move it.
 
 ## Step 2 - Summarise, check and validate
 

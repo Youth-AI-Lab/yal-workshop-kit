@@ -13,7 +13,7 @@
      2. Under each section title, write full, short sentences. Keep the titles as they are.
      3. Save (Ctrl+S), start `workshop A`, and talk to your chatbot. If a rule is not followed,
         change this file, save, and try again.
-     4. Replay your questions (`replay A`) and score column A of test-questions.md.
+     4. Replay your questions (`replay A`) and score column A of scores.md.
 
      Comments like this one are NOT sent to the model: they are hints for you. You can leave
      them in the file. -->

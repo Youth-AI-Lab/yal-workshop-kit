@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Saves the API key of this pair and configures Claude Code for the workshop.
 #
-#   workshop-login               asks for the key (it is not shown while you paste it)
+#   workshop-login               asks for the key (one * per character while you paste it)
 #   workshop-login --key KEY     same, without asking (used by the server script)
 #
 # The provider is recognised from the key: sk-ant-... = Anthropic, sk-or-... = OpenRouter.
@@ -15,23 +15,45 @@ OPENROUTER_SMALL_ID="${WORKSHOP_OPENROUTER_SMALL_MODEL:-~anthropic/claude-haiku-
 if [[ "${1:-}" == "--key" ]]; then
   key="${2:?--key needs a value}"
 else
-  read -rsp "Paste the API key of your pair, then press Enter: " key
+  # One * per character: you can see that the paste worked (the key itself is never shown).
+  # The first paste in a browser may ask for permission: accept it, then paste once.
+  printf 'Paste the API key of your pair, then press Enter: '
+  key=""
+  while IFS= read -rsn1 c; do
+    [[ -z "$c" ]] && break                                    # Enter
+    if [[ "$c" == $'\x7f' || "$c" == $'\b' ]]; then           # Backspace
+      [[ -n "$key" ]] && { key="${key%?}"; printf '\b \b'; }
+      continue
+    fi
+    key+="$c"; printf '*'
+  done
   echo
 fi
 key="$(printf '%s' "$key" | tr -d '[:space:]')"
+
+if [[ -z "$key" ]]; then
+  echo "Nothing was pasted. Copy the key again, then type workshop-login and paste it once." >&2
+  exit 1
+fi
+if [[ "$key" =~ sk-.*sk- ]]; then
+  echo "The key seems to be pasted twice. Type workshop-login again and paste it only once." >&2
+  exit 1
+fi
 
 if [[ ! "$key" =~ ^sk-(ant|or)-[A-Za-z0-9_-]+$ ]]; then
   echo "This does not look like a key (it should start with sk-ant- or sk-or-). Nothing saved." >&2
   exit 1
 fi
+echo "Key received: ${key:0:7}…${key: -4} (${#key} characters). Testing it…"
 
 umask 077
 mkdir -p "$HOME/.claude"
 printf '%s\n' "$key" > "$HOME/.workshop-key"
 
-# Common settings: same version all session long, and a refused key fails in seconds
-# instead of ~2 min 30 of retries.
-common='"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_MAX_RETRIES": "3"'
+# Common settings: same version all session long, a refused key fails in seconds instead of
+# ~2 min 30 of retries, a 200k window (not 1M: the gauge must move in mode B), and no fast mode
+# (it would change the model and the cost during the session).
+common='"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_MAX_RETRIES": "3", "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1", "CLAUDE_CODE_DISABLE_FAST_MODE": "1"'
 
 if [[ "$key" == sk-ant-* ]]; then
   provider="Anthropic"; model="$ANTHROPIC_MODEL_ID"

@@ -145,15 +145,15 @@ The chatbot runs in **Claude Code**, a program that lets a model work in a folde
 Developers use it to write code. We use it because it **shows everything**: what the model
 reads, searches and does.
 
-> [!NOTE]
-> **This is intentional.** Claude Code is not the tool you will use with young people. It is a
+> ℹ️ **Note.** **This is intentional.** Claude Code is not the tool you will use with young people. It is a
 > glass box: the same mechanisms as in a Claude Project or a Gemini Gem, but you can see inside.
 
 ### Reference documents
 
 All of these are in your Codespace, in the file list on the left:
 
-- `test-questions.md`: the 11 test questions, and your score table.
+- `test-questions.md`: the 11 test questions, their expected answers and the scoring rules.
+- `scores.md`: your score sheet, one short line per question.
 - `AGENTS.md`: the system prompt of your chatbot (block A).
 - `examples/AGENTS.feurisson.md`: a filled-in example, inspired by Feurisson.
 - `corpus/index.md` and `summaries/index.md`: the list of the official documents and of their
@@ -175,16 +175,15 @@ Do these steps **once**, at the start of the session. They take about 5 minutes.
 
    👉 **https://codespaces.new/Youth-AI-Lab/yal-workshop-kit**
 
-3. **Click** the green button **"Create codespace"**.
-4. **Wait about 1 minute** while the Codespace is built.
+3. **Click** the button **"Create codespace"**.
+4. **Wait about 2 minutes** while the Codespace is built.
 
 You should see VS Code in your browser: the **list of files** on the left (`AGENTS.md`,
 `README.md`, `corpus`, `summaries`…), and a **terminal** at the bottom of the screen. The
 terminal is where you type commands. If you don't see it, open the menu (☰) at the top left,
 then **"Terminal"**, then **"New Terminal"**.
 
-> [!IMPORTANT]
-> **Your Codespace is personal and it keeps your work.** Use the same one all session long: do
+> ⚠️ **Important.** **Your Codespace is personal and it keeps your work.** Use the same one all session long: do
 > **not** create a new one each time. If it stops after a long pause, reopen it from
 > **https://github.com/codespaces**: nothing is lost.
 
@@ -195,7 +194,7 @@ takes time to restart. To avoid this:
 
 1. **Open** https://github.com/settings/codespaces in a new browser tab.
 2. **Find** the setting **"Default idle timeout"**.
-3. **Set it** to **120** minutes or more, and save.
+3. **Set it** to **120** minutes or more (the maximum is 240), and save.
 
 ### Step 3 - Save the key of your pair
 
@@ -212,13 +211,16 @@ takes time to restart. To avoid this:
    Paste the API key of your pair, then press Enter:
    ```
 
-   > 💡 The key is **not shown** while you paste it. This is normal: it is a password.
+   > 💡 The key itself is **not shown**: you see one `*` per character instead. This is
+   > normal: it is a password. The first time, the browser may ask for permission to paste:
+   > accept, then check that the `*` appeared. **Paste only once.**
 
 4. **Press Enter.** The key is tested at once, with a very small request to the model.
 
-You should see:
+You should see (with the start and the last 4 characters of your key):
 
 ```
+Key received: sk-ant-…a1b2 (… characters). Testing it…
 Key OK (Anthropic, model claude-sonnet-5-5). You can start: workshop bare
 ```
 
@@ -237,23 +239,29 @@ model name: this is fine too. If you see another message, look at
    You should see this line, then the screen of Claude Code:
 
    ```
-   Workshop — mode bare. To quit: /exit. Other modes: workshop bare | A | B | C | D | E
+   Workshop — mode bare. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E
    ```
 
-2. **The first time**, Claude Code asks you to **choose a theme** (colours) and to
-   **trust the folder**. Accept both. It asks once more to trust a folder the first time you
-   start mode A (the kit folder): accept again.
-3. **Look above the input box**: a line shows how full the **context window** is. This is
-   **the gauge**. Keep an eye on it all session long: it tells the story of the day.
+2. **The first time**, a few screens come one after the other. None of them is a problem:
+   - your **browser** may ask whether the page can use the fonts installed on your computer:
+     click **Allow** (or Block: both work);
+   - Claude Code asks you to **choose a text style** (theme): keep the one proposed and press
+     **Enter**;
+   - it asks whether you **trust the folder**: accept;
+   - it reminds you that **Claude can make mistakes**: press **Enter**;
+   - it says **"Welcome to Claude Code for VS Code"**: press **Enter** to continue.
+
+   It asks once more to trust a folder the first time you start mode A (the kit folder):
+   accept again.
+3. **Look above the input box**: a line like `Clear 0% of context 0 / 200k` shows how full the
+   **context window** is (200k = 200,000 tokens). This is **the gauge**. Keep an eye on it all
+   session long: it tells the story of the day.
 4. **Type a first message**, for example `Hello, who are you?`, and press Enter. Read the answer.
-5. **Leave** the conversation:
+5. **Leave** the conversation: press **Ctrl+C twice**. You are back in the terminal.
 
-   ```
-   /exit
-   ```
-
-Commands that start with `/` are typed **inside** a conversation. All other commands are typed
-in the terminal, **outside** a conversation.
+Commands that start with `/` are typed **inside** a conversation; they work from mode C on (in
+modes bare, A and B they are switched off on purpose, and `/exit` says "Unknown command"). All
+other commands are typed in the terminal, **outside** a conversation.
 
 ### Step 5 - Open a second terminal
 
@@ -262,8 +270,7 @@ Some commands take time. A second terminal lets you go on working in the first o
 1. **Click the `+`** at the top right of the terminal panel.
 2. A new terminal opens. You can switch between the two in the list on the right of the panel.
 
-> [!TIP]
-> **One terminal to chat, one terminal to test.** Use the first one for `workshop`, the second
+> 💡 **Tip.** **One terminal to chat, one terminal to test.** Use the first one for `workshop`, the second
 > one for `replay`.
 
 If you got the message `Key OK` and had a first conversation, **everything is ready**.
@@ -284,10 +291,10 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `corpus-add …` | terminal | adds an official document to `corpus/` (block C) |
 | `wiki-start` | terminal | unpacks the wiki (block E) |
 | `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
-| `/exit` | in a conversation | leaves the conversation |
-| `/context` | in a conversation | shows in detail what fills the context window |
+| `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
+| `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
-| `/status` | in a conversation | shows the gateway and the key in use |
+| `/status` | in a conversation | shows the gateway and the key in use (modes C, D, E) |
 
 The **mode** letters are not case-sensitive: `workshop a` works as well as `workshop A`.
 
@@ -332,7 +339,7 @@ step 2.
 2. **Add** one thing to the chatbot (a system prompt, knowledge, a tool...).
 3. **Chat** with it: `workshop <mode>`. Watch the gauge, and read what the model does.
 4. **Replay** the test questions in the second terminal: `replay <mode>`.
-5. **Score** each answer from 0 to 2, in the column of the mode, in `test-questions.md`.
+5. **Score** each answer from 0 to 2, in the column of the mode, in `scores.md`.
 6. **Compare** with the previous column, in your pair: what improved, what did not, at what cost?
 
 ### How to score
@@ -348,13 +355,11 @@ The rules are also at the top of `test-questions.md`.
 So "I don't know" gets **2** when the answer exists nowhere (question 7), and **1** when it
 exists somewhere the chatbot cannot reach yet (in a document or through a tool).
 
-> [!IMPORTANT]
-> **If an answer says "Warning: the model looked at the test material", score it 0.** The model
+> ⚠️ **Important.** **If an answer says "Warning: the model looked at the test material", score it 0.** The model
 > opened `test-questions.md`, `answers/` or `examples/`: it may have copied the expected answer.
 > An answer marked **ERROR** is not scored at all.
 
-> [!TIP]
-> **The reflex of the whole workshop**: after each answer, ask yourselves **"What entered the
+> 💡 **Tip.** **The reflex of the whole workshop**: after each answer, ask yourselves **"What entered the
 > context, when, and who decided?"**. Look at the gauge, then at what the model read. The answer
 > to this question explains almost every score of the day.
 
@@ -409,7 +414,9 @@ how often it invents**.
 **What is provided**:
 
 - `test-questions.md`: **11 questions, ready to use**, each with its category, its expected
-  answer and its source. The six score columns (`Bare`, `A`, `B`, `C`, `D`, `E`) are empty.
+  answer and its source, and the scoring rules.
+- `scores.md`: your **score sheet**, one short line per question and six empty columns (`Bare`,
+  `A`, `B`, `C`, `D`, `E`).
 - `replay`: the command that asks each question in a **new conversation**, so that nothing
   carries over from one question to the next.
 
@@ -436,8 +443,7 @@ territory. For each question you replace:
    first cell. `replay` reads this table.
 4. **Save** the file (`Ctrl+S`, or `Cmd+S` on a Mac).
 
-> [!IMPORTANT]
-> **Change the questions only BEFORE `replay bare`. Never afterwards.** If a question changes in
+> ⚠️ **Important.** **Change the questions only BEFORE `replay bare`. Never afterwards.** If a question changes in
 > the middle of the day, its scores can no longer be compared.
 
 #### Step 3 - Replay the questions with the model alone
@@ -460,7 +466,8 @@ territory. For each question you replace:
    Answers: answers/bare-14h05.md   (cost: $…)
    ```
 
-   The time in the file name and the cost will be different for you.
+   The time in the file name and the cost will be different for you. In mode bare, it takes
+   **about 2 minutes** and costs about $0.10.
 
 3. **While it runs**, open the folder `answers/` in the file list: the file is written as the
    answers arrive. You can start reading at once.
@@ -472,7 +479,7 @@ The file starts like this:
 ```
 # Answers — mode bare — 2026-10-22 14:05
 
-Score each answer from 0 to 2 in the Bare column of test-questions.md.
+Score each answer from 0 to 2 in the Bare column of scores.md.
 
 ## 1. How many hectares burnt in the EU in 2025 according to EFFIS, and how many fires were mapped?
 ```
@@ -487,17 +494,17 @@ called. In mode `bare`, it can do none of this.
 1. **Compare** each answer with the expected answer in `test-questions.md`.
 2. **Decide** 0, 1 or 2 with the [scoring rules](#how-to-score). Discuss it in your pair: you
    must agree.
-3. **Type the score** in the **Bare** column. On each row, the last six cells are the columns
-   Bare, A, B, C, D, E. For example, the end of row 1 becomes:
+3. **Open** `scores.md` and **type the score** in the **Bare** column. Each row is short: the
+   number, a few words on the question, then the columns Bare, A, B, C, D, E. For example, row 1
+   becomes:
 
    ```
-   … 7 783 fires (summaries/10) | 1 | | | | | |
+   | 1 | EU 2025: hectares and fires | 1 |  |  |  |  |  |
    ```
 
-4. **Add up** your scores in the row **Total /22**, and **save** the file.
+4. **Add up** your scores in the row **Total /22**, and **save** the file (`Ctrl+S`).
 
-> [!TIP]
-> **Look for invented details.** The model alone may give a precise figure, a name of an
+> 💡 **Tip.** **Look for invented details.** The model alone may give a precise figure, a name of an
 > organisation or a website, with great confidence. If it is not in the expected answer, check
 > before you give a point. An invented answer gets 0.
 
@@ -577,7 +584,7 @@ you write here is exactly what young people will write in the *Instructions* box
    - `How many hectares burnt in Campania in 2025?` (question 7)
 
    Does it follow your rules? Does it refuse, or reframe? Does it say "I don't know"?
-7. **Leave** with `/exit`. If a rule is not followed, change `AGENTS.md`, save, and try again.
+7. **Leave**: press **Ctrl+C twice**. If a rule is not followed, change `AGENTS.md`, save, and try again.
 8. **Replay** the test questions in your second terminal, then **score column A**:
 
    ```bash
@@ -588,8 +595,7 @@ you write here is exactly what young people will write in the *Instructions* box
 **knowledge** doesn't. The precise questions (1 to 4) do not improve, or the model makes things
 up, sometimes with great confidence.
 
-> [!TIP]
-> **Checkpoint before moving on**: `AGENTS.md` has a text under each title, `workshop A` answers
+> 💡 **Tip.** **Checkpoint before moving on**: `AGENTS.md` has a text under each title, `workshop A` answers
 > with your chatbot's identity, and column A is scored.
 
 ### Think about it
@@ -640,14 +646,8 @@ anything.
    ```
 
    Watch the gauge jump to **about a third of the window, before your first question**.
-3. **Ask for the details** of the context, in the conversation:
-
-   ```
-   /context
-   ```
-
-   > [!NOTE]
-   > If `/context` does not answer in this mode, the gauge is enough: it gives the same story.
+3. **Read the numbers of the gauge**: how many tokens are used **before** your first question,
+   out of 200k? Write it down: you will compare it with mode C.
 
 4. **Try the contradiction experiment.** `summaries/10-…` and `summaries/90-…` summarise two
    official pages of the European Commission, published the same day. **They disagree.** Ask:
@@ -657,7 +657,7 @@ anything.
    ```
 
    Does the model **point out the contradiction**, or **choose silently**? Real sources
-   contradict each other too. Leave with `/exit`.
+   contradict each other too. Leave: press Ctrl+C twice.
 5. **Replay** the questions in your second terminal, then **score column B**:
 
    ```bash
@@ -670,8 +670,7 @@ anything.
 **What to watch**: the precise questions are now answered. But we only have about twenty
 documents. **With ten times more, they would not fit in the window at all.**
 
-> [!TIP]
-> **Checkpoint before moving on**: you saw the gauge at about a third before any question, you
+> 💡 **Tip.** **Checkpoint before moving on**: you saw the gauge at about a third before any question, you
 > tried question 10, and column B is scored.
 
 ### Think about it
@@ -752,8 +751,7 @@ yourselves.
   Question 11 is about it.
 - `corpus-add`: the command that adds a document to `corpus/`.
 
-> [!NOTE]
-> **Claude Code asks for your permission** before it writes or changes a file. In this block,
+> ℹ️ **Note.** **Claude Code asks for your permission** before it writes or changes a file. In this block,
 > the skills write files: read what it wants to do, then accept (**Yes**). Searching and
 > reading do not need your permission.
 
@@ -857,8 +855,7 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
    right version in the "Correction" column.
 5. **Save** the table.
 
-> [!IMPORTANT]
-> **Every row must be checked.** A general "it's fine" is not enough: the skill will list the
+> ⚠️ **Important.** **Every row must be checked.** A general "it's fine" is not enough: the skill will list the
 > rows that are not checked, and ask you to check them. Resist the temptation to trust the draft
 > because it looks right. **You** sign it, not the model.
 
@@ -886,7 +883,7 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
 
 1. **Open** `summaries/index.md`. At the bottom, under "Added during the session", your summary
    went from **"(draft, not verified)"** to **"(human-reviewed)"**.
-2. **Leave** the conversation with `/exit`.
+2. **Leave** the conversation: press **Ctrl+C twice**.
 3. **Replay** the questions in your second terminal, then **score column C**:
 
    ```bash
@@ -896,8 +893,7 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
 **Question 11 can now be answered: by you, not by the model.** Before you added the document,
 "I don't know" was worth 1. Now the right answer is in the corpus, and a person has checked it.
 
-> [!TIP]
-> **Checkpoint before moving on**: `corpus/80-…` exists, `summaries/index.md` says
+> 💡 **Tip.** **Checkpoint before moving on**: `corpus/80-…` exists, `summaries/index.md` says
 > "(human-reviewed)" for it, and column C is scored.
 
 ### Think about it
@@ -969,7 +965,7 @@ source.
    What is the fire danger level today in Antwerp?
    ```
 
-   It cannot know. Leave with `/exit`.
+   It cannot know. Leave: press Ctrl+C twice.
 2. **Start** mode D and ask the same question:
 
    ```bash
@@ -990,15 +986,14 @@ source.
       rood.
    4. **Save** the file (`Ctrl+S`).
 
-   > [!WARNING]
-   > **Keep the quotes and the commas** of the file. If one is missing, the tool answers
+   > 🚫 **Warning.** **Keep the quotes and the commas** of the file. If one is missing, the tool answers
    > `fire-danger.json is malformed (…). Fix it and try again.` Compare your line with the
    > lines around it.
 
 5. **Back in the conversation, ask**: `check again`. The answer follows, **without restarting**:
    the tool reads the file at each call. The tool is deterministic: it gives what the source
    says, nothing else.
-6. **Leave** with `/exit`, then **replay** and **score column D**:
+6. **Leave**: press **Ctrl+C twice**, then **replay** and **score column D**:
 
    ```bash
    replay D
@@ -1006,8 +1001,7 @@ source.
 
 **Question 8 is the one that changes.**
 
-> [!TIP]
-> **Checkpoint before moving on**: `date` and the Antwerp `level` are filled, `workshop D`
+> 💡 **Tip.** **Checkpoint before moving on**: `date` and the Antwerp `level` are filled, `workshop D`
 > answers question 8 with a call to `fire_danger`, and column D is scored.
 
 ### Think about it
@@ -1133,20 +1127,18 @@ check its consistency.
    ```
 
    The model checks footnotes, links and contradictions. **It fixes nothing without your
-   agreement**: the lint reports, the human decides. Leave with `/exit`.
+   agreement**: the lint reports, the human decides. Leave: press Ctrl+C twice.
 7. **Replay** and **score column E**:
 
    ```bash
    replay E
    ```
 
-> [!NOTE]
-> **When two sources disagree, the wiki keeps both.** The rule of `ingest` is to write
+> ℹ️ **Note.** **When two sources disagree, the wiki keeps both.** The rule of `ingest` is to write
 > "According to one source, X; according to another, Y", with a footnote on each, and never to
 > drop or reword a figure. This is why the log lists contradictions instead of hiding them.
 
-> [!TIP]
-> **Checkpoint before the Closing**: `wiki-graph --highlight 80` shows orange pages, the lint
+> 💡 **Tip.** **Checkpoint before the Closing**: `wiki-graph --highlight 80` shows orange pages, the lint
 > gave its report, and column E is scored.
 
 ### Think about it
@@ -1164,7 +1156,7 @@ talk, and a listener who read the other source.)
 
 ### Compare the columns
 
-1. **Open** `test-questions.md` and look at your six columns, from Bare to E.
+1. **Open** `scores.md` and look at your six columns, from Bare to E.
 2. **Discuss in your pair**: what improved, what got worse, and **at what context cost**? Each
    answer in `answers/` shows the size of the context used.
 3. **Remember**: the same score with a smaller context **is a result**.
@@ -1239,6 +1231,11 @@ After the session, if you want to go deeper:
 
 ## Troubleshooting
 
+**`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
+for permission). Type `workshop-login` again and paste the key once: you should see the `*`.
+
+**`The key seems to be pasted twice.`** - Type `workshop-login` again and paste the key only once.
+
 **`This does not look like a key (it should start with sk-ant- or sk-or-). Nothing saved.`** -
 The text you pasted is not a whole key. Copy it again from your card, with nothing before or
 after it, and type `workshop-login` again.
@@ -1262,8 +1259,8 @@ the message to the facilitator.
 **`No wiki yet. First type: wiki-start`** - Mode E needs the wiki. Type `wiki-start` first
 (block E, step 1).
 
-**"I cannot leave the conversation!"** - Don't panic. Type `/exit` and press Enter. If nothing
-happens, press `Ctrl+C` twice.
+**"I cannot leave the conversation!"** - Don't panic. Press `Ctrl+C` twice. (`/exit` works only
+from mode C on; in modes bare, A and B it says "Unknown command".)
 
 **The key does not appear when I paste it.** - This is normal: it is hidden, like a password.
 Paste it once, then press Enter.
