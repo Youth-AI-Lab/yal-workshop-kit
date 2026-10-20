@@ -12,6 +12,6 @@ The order was partly revised on 9 July 2026.
 During this period, access to each massif is decided every day, based on weather and drought.
 The decision is published on a map at about 6 pm for the next day.
 Works that can start a fire are also regulated during this period.
-Examples are brush clearing, farm work and engines.
+Examples are brush clearing, farm work and fuel-powered machinery (engins thermiques).
 Works can be allowed under conditions, restricted, or forbidden when the risk is very severe or extreme.
 Public events and professional film shoots in massifs from June to September must be declared at least two months in advance.

@@ -14,4 +14,4 @@ These fires burnt 460 585 hectares, 43% of the EU total.
 About 39% of the EU burnt area was inside Natura 2000 protected sites (424 023 hectares).
 Across all territories monitored by EFFIS (Europe, Middle East, North Africa, EU included), 2 242 195 hectares burnt.
 Of these, 1 092 095 hectares were in non-EU European countries and 70 562 in the Middle East and North Africa.
-Ukraine was the most affected country: almost 30% of the mapped burnt area and 39% of mapped fires.
+Outside the EU, Ukraine was the most affected country in the area monitored by EFFIS: almost 30% of the total mapped burnt area and 39% of all mapped fires.

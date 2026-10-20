@@ -14,3 +14,4 @@ The precise rules are set by a prefectoral order in each département.
 Since 1 January 2025, sellers and landlords must tell buyers or tenants if the property is subject to the OLD.
 The mayor checks the obligation and can order the work, with a penalty of up to 100 € per day of delay.
 There can be an administrative fine of up to 50 € per square metre not cleared.
+The insurance excess can also be increased, up to 5 000 €.

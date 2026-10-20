@@ -12,7 +12,7 @@ Activities with a fire risk must be notified from 16 October to 14 March.
 They need an authorisation from 15 March to 15 October.
 These rules come from Decree 64/95 on forest-fire prevention.
 At level 3, all fire-risk activities already authorised or notified are suspended.
-At level 3, lighting a fire in any open space is forbidden, including in recreation and camping areas.
+At level 3, lighting a fire in any open space is forbidden, including road rest areas, recreation and camping areas, even the places equipped for fires.
 At level 3, bringing in and using pyrotechnic material is forbidden.
 At level 4, access to protected natural areas and busy forest areas can be restricted, except for residents and essential services.
 The emergency number is 112.

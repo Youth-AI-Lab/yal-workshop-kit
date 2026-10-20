@@ -3,7 +3,8 @@ Source: Météo-France, page "Météo des forêts" (sections "Comment éviter le
 Last checked: 2026-10-19 by Claude (draft — needs human verification)
 
 According to Météo-France, 9 fires out of 10 are of human origin.
-They are mainly caused by carelessness.
+The page says they are mainly caused by carelessness.
+A news item on the same page, dated 23 July 2026, says instead that half of them are due to carelessness or dangerous behaviour.
 Have barbecues at home, on a terrace, away from vegetation.
 Throw cigarette butts in an ashtray.
 Do work away from lawns and dry grass, with an extinguisher at hand.
@@ -13,6 +14,6 @@ Try to locate the fire.
 Shelter in a house whose surroundings have been cleared of brush, and wait for the emergency services.
 A car is not a safe shelter, because it could burn.
 Stay informed and follow the instructions of the emergency services or the town hall.
-At some periods, access to woods, forests, heathland and garrigue can be discouraged or forbidden.
+At some periods, access to and movement in woods, forests, heathland and garrigue can be discouraged or forbidden, for vehicles and pedestrians.
 Barbecues, fireworks or any use of fire can also be forbidden.
 Not respecting prevention rules set by public authorities can lead to a 4th-class fine of 750 €.
