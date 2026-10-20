@@ -1,19 +1,55 @@
-# Test set — 11 questions, the same in every mode
+# Test set - 11 questions, the same in every mode
 
-The 11 questions below are ready to use. You may replace some of them with your own (for
-example a question about your territory), keeping the same category and writing the expected
-answer with its source.
+> [!NOTE]
+> This file is used in **every block** of the workshop (see `README.md`, "The work loop for
+> each block").
 
-**Change them only BEFORE `replay bare`. Never afterwards**: otherwise the columns can no
-longer be compared.
+## What this file is for
 
-Scoring:
+This is the **test** of your chatbot. After each block, the command `replay <mode>` asks these
+11 questions to the chatbot, each one in a **new conversation**, and writes the answers in
+`answers/`. You read them, and you **score** them here, in the column of the mode.
 
-- **2** = right, and it says where it comes from. For the "unknown" and "out of scope"
-  categories (questions 7 and 9), the right answer is to say so.
-- **1** = honest but not enough: it says it cannot know although the answer exists (in the
-  documents or through a tool), or it is right without its source, or only partly right.
-- **0** = wrong or invented. An invented answer is worse than "I don't know".
+**Why the same questions every time?** Without a fixed test, you only have impressions. With
+the same questions and the same scoring, the columns **Bare, A, B, C, D, E** can be compared:
+you see what each block really changed. This is also the idea of the "Press Conference" in
+WikiYouthBot.
+
+The questions cover several **categories** on purpose: precise facts (one is only in the full
+documents), explanations, something nobody knows (7), today's level (8), traps (9 and 10), and
+a document you add yourselves in block C (11).
+
+## Replacing a question (optional)
+
+The 11 questions below are ready to use. You may replace some of them with your own, for
+example a question about your territory:
+
+1. **Keep the same category**, so that the test stays balanced.
+2. **Write the expected answer with its source** (the document where you found it).
+3. **Keep the table format**: one line per question, cells separated by `|`, the number in the
+   first cell, the question in the third cell. `replay` reads this table.
+
+> [!IMPORTANT]
+> **Change them only BEFORE `replay bare`. Never afterwards**: otherwise the columns can no
+> longer be compared.
+
+## How to score
+
+| Score | When |
+|---|---|
+| **2** | Right, and it says where it comes from. For the "unknown" and "out of scope" categories (questions 7 and 9), the right answer is to say so. |
+| **1** | Honest but not enough: it says it cannot know although the answer exists (in the documents or through a tool), or it is right without its source, or only partly right. |
+| **0** | Wrong or invented. **An invented answer is worse than "I don't know".** |
+
+> [!IMPORTANT]
+> **An answer marked "Warning: the model looked at the test material" gets 0**: the model opened
+> this file, `answers/` or `examples/`, and may have copied the expected answer. An answer marked
+> **ERROR** is not scored.
+
+**To write a score**: on each row, the last six cells are the columns Bare, A, B, C, D, E. Type
+the number between two `|`, then save (`Ctrl+S`). Add up each column in the row **Total /22**.
+
+## The questions and your scores
 
 | # | Category | Question | Expected answer (and source) | Bare | A | B | C | D | E |
 |---|---|---|---|---|---|---|---|---|---|
@@ -32,8 +68,11 @@ Scoring:
 
 Columns: Bare = no customisation · A = system prompt · B = summaries/ and corpus/ in the context ·
 C = search in summaries/ and corpus/ + skills · D = C + the MCP tool (live data) · E = D + the wiki.
-Question 11 is about a document that is not in the corpus yet (`inbox/`): you add it in block C.
-`replay <mode>` asks all the questions and writes the answers to `answers/`, with the size of
-the context used: the same score at a lower cost is a result.
 
-Reminder: comparing two versions only makes sense with the **same base model**.
+Question 11 is about a document that is not in the corpus yet (`inbox/`): you add it in block C.
+Each answer in `answers/` shows the size of the context used: the same score at a lower cost is
+a result.
+
+> [!NOTE]
+> Reminder: comparing two versions only makes sense with the **same base model**. This is why
+> every pair uses the same model, set when you saved your key.
