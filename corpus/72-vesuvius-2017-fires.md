@@ -9,7 +9,7 @@ By severity, 374 hectares were burnt at high severity.
 2 147 hectares were burnt at medium-high severity.
 466 hectares were burnt at medium-low severity.
 207 hectares were burnt at low severity.
-Many planted conifers died.
+There was widespread mortality of planted conifer stands.
 The document (uploaded in January 2019) expects fuel to build up over the following 10 years.
 Without proper management, this could help new fires start and spread over large areas.
 Conifer stands burnt at high and medium-high severity are the most exposed to erosion.

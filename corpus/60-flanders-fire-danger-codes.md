@@ -13,6 +13,6 @@ Green means little danger; the fire brigade responds at normal strength.
 Yellow means danger; do not smoke in nature and forest areas and do not make fire.
 Orange means high danger; do not leave children unsupervised in the area.
 Red means acute high danger; going into nature and forest areas is discouraged.
-At red, fire towers are staffed all day, unless agreed otherwise locally.
+At red, fire towers are staffed permanently during the day, unless the ANB and the fire services agree otherwise because of local conditions.
 Heathland and coniferous forests are the most fire-sensitive areas in Flanders.
 In nature and forest areas, making fire or throwing cigarette butts on the ground is always forbidden.

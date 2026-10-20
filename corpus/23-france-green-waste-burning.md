@@ -7,11 +7,11 @@ This applies in the open air and in a garden incinerator.
 It applies to dry and wet green waste.
 Green waste includes grass cuttings, dead leaves, and trimmings of hedges, shrubs and trees.
 It also includes fruit and vegetable peelings.
-Burning green waste releases substances that are toxic for people and the environment, including fine particles.
+Burning green waste, especially when it is wet, releases substances that are toxic for people and the environment, including fine particles.
 Green waste can be used as compost or mulch.
 It can also be taken to the municipal waste centre (déchetterie) or to separate collection.
 Exemptions may exist in a commune with no waste centre or no separate collection of green waste.
 The town hall can say if an exemption applies.
-The prefect can exceptionally allow an individual to burn, to fight a plant disease or invasive plant species.
+The prefect can exceptionally allow an individual to burn, to eradicate a plant epidemic (épiphytie) or to eliminate invasive plant species.
 A person who burns green waste can be fined 750 €.
 The same fine applies to anyone who provides or sells an incinerator to get rid of green waste.

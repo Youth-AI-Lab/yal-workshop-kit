@@ -25,7 +25,7 @@ The order therefore treats gas barbecues and planchas in two different ways (art
 From level SÉVÈRE (orange), fireworks and pyrotechnic shows are forbidden, except at sea or from the foreshore of the beaches of the coast and of the Gironde estuary, under conditions (safety perimeter, 200-metre buffer zone).
 From level TRÈS SÉVÈRE (red), all fireworks are forbidden.
 In these forest areas, using equipment that can start a fire by heat or sparks (for example hot work, thermal weeding, farm work, earthworks, forestry work, cutting, welding, grinding) is forbidden from 1 pm to midnight from level SÉVÈRE (orange).
-It is forbidden all day from level TRÈS SÉVÈRE (red).
+From level TRÈS SÉVÈRE (red), it is forbidden, with no time window.
 An amending order of 24 June 2026 changed the rules for farm work: see 32-charente-maritime-farm-work-amendment.md.
 Breaking the order is punished by a 1st-class fine.
 The forestry code also provides a 4th-class fine for some offences.
