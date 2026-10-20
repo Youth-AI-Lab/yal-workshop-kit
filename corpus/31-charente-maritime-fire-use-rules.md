@@ -1,6 +1,6 @@
 # Charente-Maritime (La Rochelle): what fire use is forbidden
 Source: Préfecture de la Charente-Maritime, Arrêté préfectoral n° 26EB142 "réglementant l'usage du feu à l'air libre en vue de prévenir les incendies de forêt et d'espaces naturels dans le département de la Charente-Maritime", https://www.charente-maritime.gouv.fr/contenu/telechargement/85472/601661/file/AP26EB142-Usages_du_feu_2026_04_30.pdf, signed 30 April 2026, in force 1 May 2026, French (scanned PDF, text read by OCR)
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20 by Sébastien Nedjar
 
 Burning waste outdoors or in individual incinerators is forbidden all year in all of Charente-Maritime.
 This includes green waste from private people, professionals and local authorities.
