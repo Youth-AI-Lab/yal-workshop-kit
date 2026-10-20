@@ -26,6 +26,14 @@ if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]] \
   exit 1
 fi
 
+# No link with VS Code: otherwise Claude Code connects to the editor, gives the model its own
+# tools (even in modes bare, A and B) and sends it the open files and the selected lines (for
+# instance an expected answer of test-questions.md). It also skips installing that extension.
+export CLAUDE_CODE_AUTO_CONNECT_IDE=false CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL=1
+# No automatic memory (it would carry facts from one conversation to the next, and break the
+# fresh session of each replay question), and no git status of the kit in the context.
+export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1
+
 # All modes: only the kit's MCP server can be loaded, and only in D and E. Permission mode
 # "manual" (not the default "auto"): Claude Code asks you before it writes a file.
 args=(--strict-mcp-config --permission-mode manual)

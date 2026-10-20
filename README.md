@@ -499,8 +499,11 @@ called. In mode `bare`, it can do none of this.
    becomes:
 
    ```
-   | 1 | EU 2025: hectares and fires | 1 |  |  |  |  |  |
+   |  1 | EU 2025: hectares and fires       |  1   |      |      |      |      |      |
    ```
+
+   Click in the empty space under **Bare** and type the number: the columns stay readable even
+   if the line moves by one character.
 
 4. **Add up** your scores in the row **Total /22**, and **save** the file (`Ctrl+S`).
 
@@ -594,6 +597,10 @@ you write here is exactly what young people will write in the *Instructions* box
 **What to watch**: the **behaviour** changes (tone, refusals, "I don't know"). The
 **knowledge** doesn't. The precise questions (1 to 4) do not improve, or the model makes things
 up, sometimes with great confidence.
+
+> ℹ️ **Note.** If you ask it which tools it has, it may describe a shell or file tools. In modes
+> bare, A and B it has **none**: the general instructions of Claude Code mention them, and the
+> model repeats them. Another reason to check what a model says about itself.
 
 > 💡 **Tip.** **Checkpoint before moving on**: `AGENTS.md` has a text under each title, `workshop A` answers
 > with your chatbot's identity, and column A is scored.
