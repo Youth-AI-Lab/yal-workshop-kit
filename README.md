@@ -38,8 +38,9 @@ prevent wildfires. Today you build your own wildfire-prevention expert, step by 
 | 4 | Local model | Like 1 to 3, other infrastructure | — | slide |
 | 5 | Fine-tuning | Nothing enters: it is in the weights | — | slide |
 
-Each mode adds something to the previous one. `bare` has no system prompt file and no access
-to files: it is the starting point. To see what a mode sets up: `workshop help`.
+Each mode changes what enters the context. `bare` has no system prompt file and no access
+to files: it is the starting point. A adds the system prompt, B adds the whole corpus; C takes
+the preloaded corpus away but lets the model search it; W lets it read only the wiki. To see what a mode sets up: `workshop help`.
 
 ## First of all: the test set
 
@@ -166,6 +167,6 @@ Levels 4 (local model) and 5 (fine-tuning) are presented by the facilitator.
 
 - `workshop help`: what each mode does.
 - `/context`: details what fills the context window.
-- `/mcp`: state of the MCP servers (modes C and W only).
+- `/mcp`: state of the MCP servers (mode C only).
 - `/status`: shows the gateway and the key in use.
 - If something breaks: ask the facilitator. Your files stay in the Codespace.

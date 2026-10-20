@@ -25,7 +25,7 @@ For the "unknown" and "out of scope" categories, the right answer is to say so.
 | | **Total /20** | | | | | | | |
 
 Columns: Bare = no customisation · A = system prompt · B = corpus in the context ·
-C = file search + skill + MCP · W = from the wiki only (corpus/ blocked).
+C = file search + skill + MCP · W = system prompt + the wiki (corpus/ blocked).
 `replay <mode>` asks all the questions and writes the answers to `answers/`, with the size of
 the context used: the same score at a lower cost is a result.
 
