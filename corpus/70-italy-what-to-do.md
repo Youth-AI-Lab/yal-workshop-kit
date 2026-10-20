@@ -1,6 +1,6 @@
 # Italy (Naples): what to do in case of a forest fire
 Source: Dipartimento della Protezione Civile (Presidenza del Consiglio dei Ministri), page "In caso di incendio boschivo", https://www.protezionecivile.gov.it/it/approfondimento/in-caso-di-incendio-boschivo/, no publication date shown, Italian
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20, cross-reviewed by three AI models against the original Italian page; not yet verified by a human reader of Italian
 
 If you see flames, or even only smoke, call 115, the number of the national fire brigade.
 Where it is active, you can call the single emergency number 112.

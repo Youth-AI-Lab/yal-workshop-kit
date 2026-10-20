@@ -1,6 +1,6 @@
 # Campania (Naples): the 2017 fires in the Vesuvius National Park
 Source: Ente Parco Nazionale del Vesuvio, document "PNV-29-gen-slides" (Word file on the park's website), https://www.parconazionaledelvesuvio.it/wp-content/uploads/2019/01/PNV-29-gen-slides.docx, uploaded January 2019 according to the URL (no date inside the document), Italian
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20, cross-reviewed by three AI models against the original Italian document; not yet verified by a human reader of Italian
 
 In July and August 2017, a series of fires burnt inside the Vesuvius National Park.
 The fires affected 3 194 hectares.

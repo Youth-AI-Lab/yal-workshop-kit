@@ -1,6 +1,6 @@
 # Flanders (Antwerp): the four fire danger colour codes
 Source: Agentschap voor Natuur en Bos (ANB, Flemish Agency for Nature and Forests), page "Brandpreventie in natuur- en bosgebieden op basis van kleurcodes", https://natuurenbos.be/brandpreventie-natuur-en-bosgebieden-op-basis-van-kleurcodes, no publication date shown, Dutch
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20, cross-reviewed by three AI models against the original Dutch page; not yet verified by a human reader of Dutch
 
 In Flanders, the Agency for Nature and Forests (ANB) publishes a fire danger code for its nature and forest areas.
 The fire-danger season starts on 1 March and ends on 30 September.

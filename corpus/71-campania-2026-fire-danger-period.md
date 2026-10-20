@@ -1,6 +1,6 @@
 # Campania: the 2026 period of serious fire danger
 Source: Città di Montoro (Province of Avellino, Campania), Ordinanza n. 78 del 12/06/2026 "Applicazione delle misure di prevenzione del rischio incendi boschivi in vista del periodo di grave pericolosità dichiarato per l'anno 2026", https://montoro-api.municipiumapp.it/s3/20111/allegati/uffici-e-servizi/settore-vigilianza-comando-polizia-locale-e-protezione-civile/ordinanza-n-78-del-12-06-2026.pdf, 12 June 2026, Italian. Municipal ordinance quoting regional rules; the regional decree itself was not read.
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20, cross-reviewed by three AI models against the original Italian page; not yet verified by a human reader of Italian
 
 A Campania Region executive decree (decreto dirigenziale) n. 212 of 9 June 2026 made public the state of serious forest-fire danger for 2026.
 According to this ordinance, it applied to the whole region from 15 June 2026 to 30 September 2026.

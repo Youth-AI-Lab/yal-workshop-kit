@@ -1,6 +1,6 @@
 # Catalonia (Barcelona): the Pla Alfa fire danger levels
 Source: Generalitat de Catalunya, Departament d'Interior i Seguretat Pública, page "Pla Alfa" (Agents Rurals), https://interior.gencat.cat/ca/arees_dactuacio/agents-rurals/pla-alfa/index.html, no publication date shown, Catalan
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20, cross-reviewed by three AI models against the original Catalan page; not yet verified by a human reader of Catalan
 
 The Pla Alfa is the operational procedure of the Agents Rurals, Catalonia's rural agents corps, for forest-fire danger.
 It applies all year.
