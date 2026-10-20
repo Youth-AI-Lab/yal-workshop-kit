@@ -2,7 +2,7 @@
 """Replays the questions of test-questions.md in one workshop mode.
 
     replay B          all questions, in mode B
-    replay C 1 7      only questions 1 and 7, in mode C
+    replay D 8 11     only questions 8 and 11, in mode D
 
 Each question is asked in a fresh session (nothing carries over from one question to the next).
 Answers are written to answers/<mode>-<time>.md, each with the size of the context (the gauge)
@@ -11,6 +11,7 @@ and what the model read or searched. All that is left is to score them from 0 to
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -18,7 +19,9 @@ from pathlib import Path
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
-MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "w": "W"}
+MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E"}
+# The test material: if the model saw it, the answer may be copied from the expected answers.
+TEST_MATERIAL = re.compile(r"test-questions\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
 
 
 def read_questions():
@@ -32,7 +35,7 @@ def read_questions():
 
 
 def ask(mode, question):
-    """Asks one question, returns (answer, context tokens, actions, cost, error)."""
+    """Asks one question, returns (answer, context tokens, actions, cost, error, peeked)."""
     cmd = [WORKSHOP, mode, "-p", question, "--output-format", "stream-json", "--verbose",
            "--max-turns", "15"]
     if os.environ.get("WORKSHOP_MODEL"):
@@ -41,8 +44,8 @@ def ask(mode, question):
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
                              stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return "", 0, [], 0.0, "no answer after 5 minutes"
-    answer, context, actions, cost, error = None, 0, [], 0.0, None
+        return "", 0, [], 0.0, "no answer after 5 minutes", False
+    answer, context, actions, cost, error, peeked = None, 0, [], 0.0, None, False
     for line in run.stdout.splitlines():
         try:
             d = json.loads(line)
@@ -56,6 +59,14 @@ def ask(mode, question):
             for c in d["message"]["content"]:
                 if c.get("type") == "tool_use":
                     actions.append(describe(c["name"], c.get("input") or {}))
+                    peeked = peeked or bool(TEST_MATERIAL.search(json.dumps(c.get("input") or {})))
+        elif d.get("type") == "user":
+            # What the tools sent back (a grep on the whole kit names the files it matched).
+            content = (d.get("message") or {}).get("content")
+            if isinstance(content, list):
+                for c in content:
+                    if c.get("type") == "tool_result":
+                        peeked = peeked or bool(TEST_MATERIAL.search(json.dumps(c.get("content"))))
         elif d.get("type") == "result":
             answer = (d.get("result") or "").strip()
             cost = d.get("total_cost_usd") or 0.0
@@ -64,7 +75,7 @@ def ask(mode, question):
     if error is None and (run.returncode != 0 or answer is None):
         last = (run.stderr.strip().splitlines() or [""])[-1]
         error = last or f"workshop exited with code {run.returncode}"
-    return answer or "", context, actions, cost, error
+    return answer or "", context, actions, cost, error, peeked
 
 
 def describe(tool, args):
@@ -84,6 +95,9 @@ def main():
         print(__doc__.strip())
         sys.exit(1)
     mode = MODES[sys.argv[1].lower()]
+    if mode == "E" and not (KIT / "wiki" / "index.md").is_file():
+        print("No wiki yet. First type: wiki-start")
+        sys.exit(1)
     numbers = {int(n) for n in sys.argv[2:] if n.isdigit()}
     questions = [(n, q) for n, q in read_questions() if not numbers or n in numbers]
     if not questions:
@@ -97,7 +111,7 @@ def main():
     total, errors, in_a_row = 0.0, 0, 0
     for i, (n, q) in enumerate(questions, 1):
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)
-        answer, context, actions, cost, error = ask(mode, q)
+        answer, context, actions, cost, error, peeked = ask(mode, q)
         total += cost
         lines += [f"## {n}. {q}", ""]
         if error:
@@ -107,6 +121,10 @@ def main():
             lines += [f"**ERROR, do not score this one: {error}**", ""]
         else:
             in_a_row = 0
+            if peeked:
+                print("  Warning: the model looked at the test material.", flush=True)
+                lines += ["**Warning: the model looked at the test material (test-questions.md, answers/ "
+                          "or examples/). It may have copied the expected answer: score 0.**", ""]
             lines += [answer, "", f"*Context: {context:,} tokens*"]
             if actions:
                 lines += ["*What the model did:* " + " · ".join(actions)]

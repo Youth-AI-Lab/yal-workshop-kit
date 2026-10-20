@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login; do command -v "$c" || echec "$c absent"; done
+for c in workshop replay workshop-login corpus-add wiki-start wiki-graph; do command -v "$c" || echec "$c absent"; done
 
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
@@ -38,16 +38,23 @@ if workshop-login --key "not-a-key" 2>/dev/null; then echec "clé mal formée ac
 
 etape "corpus-add : une page web et un PDF s'importent, un PDF scanné est refusé (sur une copie du kit)"
 copie="$(mktemp -d)"; cp -r "$KIT/." "$copie"; rm -rf "$copie/.git"
+[[ ! -e "$copie/wiki" ]] || echec "wiki/ présent avant wiki-start"
 WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/50-catalunya-pla-alfa.html" --name test-page --language ca > /dev/null \
   || echec "corpus-add : la page web n'a pas été importée"
-WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/74-benevento-campagna-aib-2026.pdf" --name test-pdf > /dev/null \
+WORKSHOP_HOME="$copie" corpus-add "$copie/inbox/benevento-campagna-aib-2026.pdf" --name test-pdf > /dev/null \
   || echec "corpus-add : le PDF n'a pas été importé"
 [[ -f "$copie/corpus/80-test-page.html" && -s "$copie/corpus/text/80-test-page.md" && -s "$copie/corpus/text/81-test-pdf.md" ]] \
   || echec "corpus-add : original ou copie lisible manquant"
 grep -q "80-test-page" "$copie/corpus/index.md" || echec "corpus-add : corpus/index.md non mis à jour"
 code=0; WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/30-charente-maritime-arrete-26EB142.pdf" --name scanne > /dev/null 2>&1 || code=$?
 [[ "$code" == 3 ]] || echec "corpus-add : un PDF scanné aurait dû être refusé (code 3), obtenu $code"
-rm -rf "$copie"; echo "corpus-add : OK"
+echo "corpus-add : OK"
+
+etape "wiki-start : le wiki et ses skills arrivent dans la copie, une seule fois"
+WORKSHOP_HOME="$copie" wiki-start || echec "wiki-start a échoué"
+[[ -f "$copie/wiki/index.md" && -f "$copie/.claude/skills/ingest/SKILL.md" && -f "$copie/.claude/skills/lint/SKILL.md" ]] \
+  || echec "wiki-start : wiki/ ou skills manquants"
+WORKSHOP_HOME="$copie" wiki-start | grep -q "already there" || echec "wiki-start rejoué : message attendu"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
@@ -68,14 +75,22 @@ attendus="$(( $(find "$KIT/summaries" -maxdepth 1 -name '[1-9]*.md' | wc -l) + $
 charges="$(grep -cE '^## Document: (summaries|corpus/text)/[1-9]' "$fichier")"
 [[ "$charges" == "$attendus" ]] || echec "mode B : $charges documents chargés sur $attendus"
 echo "B : $charges documents (résumés et copies lisibles du corpus) chargés au démarrage"
-grep -qxF -- --mcp-config <<< "$(reglages C)" || echec "mode C : serveur MCP absent"
-r="$(reglages W)"
-[[ "$(a_la_suite "$r" --tools)" == "Read" ]] || echec "mode W : outils autres que Read"
-for d in summaries corpus; do
-  grep -qxF -- "Read(./$d/**)" <<< "$r" || echec "mode W : $d/ non bloqué"
+r="$(reglages C)"
+[[ "$(a_la_suite "$r" --tools)" == "Read,Bash,Edit,Write,Skill" ]] || echec "mode C : outils inattendus"
+grep -qxF -- --mcp-config <<< "$r" && echec "mode C : serveur MCP chargé"
+grep -qxF -- --mcp-config <<< "$(reglages D)" || echec "mode D : serveur MCP absent"
+if reglages E 2>/tmp/err; then echec "mode E lancé sans wiki"; fi
+grep -q wiki-start /tmp/err || echec "mode E sans wiki : message attendu wiki-start"
+r="$(WORKSHOP_HOME="$copie" reglages E)"
+grep -qxF -- --mcp-config <<< "$r" || echec "mode E : serveur MCP absent"
+grep -q "wiki/index.md" <<< "$r" || echec "mode E : le wiki n'est pas indiqué au modèle"
+for m in C D E; do
+  r="$(WORKSHOP_HOME="$copie" reglages "$m")"
+  for regle in "Read(./test-questions.md)" "Read(./answers/**)" "Read(./examples/**)"; do
+    grep -qxF -- "$regle" <<< "$r" || echec "mode $m : $regle absent (réponses attendues lisibles)"
+  done
 done
-grep -qxF -- --mcp-config <<< "$r" && echec "mode W : serveur MCP chargé"
-echo "W : lecture seule, summaries/ et corpus/ bloqués par des règles de permission"
+echo "C : recherche et skills ; D : + MCP ; E : + wiki (après wiki-start) ; matériel de test bloqué"
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {
@@ -90,18 +105,22 @@ for ligne in sys.stdin:
     except ValueError: continue
     if d.get("subtype") != "init": continue
     mcp = [s["name"] for s in d["mcp_servers"] if s["status"] == "connected"]
-    skills = sorted(s for s in d["skills"] if s in ("ingest", "lint", "source-note"))
+    skills = sorted(s for s in d["skills"] if s in ("ingest", "lint", "source-note", "summarize", "validate-summary"))
     print(mode, len(d["tools"]), "outils", mcp, skills)
     ok = len(d["tools"]) == outils_attendus
-    if mode == "C": ok = ok and mcp == ["fire-danger"] and skills == ["ingest", "lint", "source-note"]
-    if mode == "W": ok = ok and d["tools"] == ["Read"] and mcp == []
+    curation = ["source-note", "summarize", "validate-summary"]
+    if mode == "C": ok = ok and mcp == [] and skills == curation
+    if mode == "D": ok = ok and mcp == ["fire-danger"] and skills == curation
+    if mode == "E": ok = ok and mcp == ["fire-danger"] and skills == sorted(curation + ["ingest", "lint"])
     sys.exit(0 if ok else 1)
 sys.exit("pas d événement init")' "$1" "$2"
 }
 verifie bare 0 || echec "mode bare"
 verifie A 0 || echec "mode A"
-verifie C 7 || echec "mode C"
-verifie W 1 || echec "mode W"
+verifie C 5 || echec "mode C"
+verifie D 7 || echec "mode D"
+WORKSHOP_HOME="$copie" verifie E 7 || echec "mode E"
+rm -rf "$copie"
 
 rm -f "$HOME/.workshop-key" "$HOME/.claude/settings.json"
 printf '\n✓ Smoke-test réussi\n'

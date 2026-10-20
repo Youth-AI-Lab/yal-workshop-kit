@@ -37,8 +37,9 @@ def territories() -> str:
 
 @mcp.tool()
 def fire_danger(territory: str) -> str:
-    """Today's wildfire danger level for a territory, with its official source and advice.
-    Call it for any question about the current situation, today's level or the rules in force."""
+    """Today's wildfire danger level for a territory, with its scale, official source and advice.
+    Call it for any question about today's level or today's situation. The rules themselves
+    (what is forbidden, fines, obligations) are in the documents, not here."""
     try:
         data = load()
     except FileNotFoundError:

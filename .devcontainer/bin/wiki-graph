@@ -1,0 +1,379 @@
+#!/opt/workshop/venv/bin/python3
+"""Draws the wiki as a graph, to see how its pages and sources are connected.
+
+    wiki-graph                  writes wiki/graph.md
+    wiki-graph --highlight 85   same, and colours the pages that cite document 85
+    wiki-graph --highlight 85-our-summary.md
+
+What it shows:
+  - each wiki page is a box with its title;
+  - an arrow from a page to another page is a link written in the page;
+  - each source document (corpus/ or summaries/) is a rounded shape,
+    with a dotted arrow to every page that cites it.
+
+The result is wiki/graph.md: a Mermaid diagram. To view it in VS Code, open wiki/graph.md
+and press Ctrl+Shift+V (Cmd+Shift+V on a Mac). This needs the VS Code extension
+bierner.markdown-mermaid ("Markdown Preview Mermaid Support").
+
+Run it again after each ingest: the file is rewritten from scratch.
+"""
+
+import os
+import re
+import sys
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
+
+KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
+OUTPUT = "graph.md"
+# Files of wiki/ that are not topic pages.
+RESERVED = {"index.md", "log.md", "claude.md", OUTPUT}
+SOURCE_FOLDERS = ("corpus", "summaries")
+EXTENSION = "bierner.markdown-mermaid"
+VIEW_HINT = (f"To view it in VS Code: open wiki/{OUTPUT} and press Ctrl+Shift+V "
+             f"(Cmd+Shift+V on a Mac). This needs the extension {EXTENSION}.")
+
+
+# ---------------------------------------------------------------------------------------
+# Reading the pages
+
+
+def unquote_yaml(value):
+    """Removes the quotes around a simple YAML value: "a \\"b\\"" -> a "b"."""
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return re.sub(r'\\(.)', r'\1', value[1:-1])
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1].replace("''", "'")
+    return value
+
+
+def split_outside_quotes(text, separator=","):
+    """Splits on a separator that is not inside quotes."""
+    parts, current, quote, escaped = [], "", None, False
+    for char in text:
+        if escaped:
+            current += char
+            escaped = False
+        elif char == "\\" and quote == '"':
+            current += char
+            escaped = True
+        elif quote:
+            current += char
+            if char == quote:
+                quote = None
+        elif char in "\"'":
+            current += char
+            quote = char
+        elif char == separator:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    parts.append(current)
+    return parts
+
+
+def key_value(text):
+    """'key: value' -> (key, value without quotes), or None."""
+    key, sep, value = text.partition(":")
+    if not sep or not re.fullmatch(r"\s*[A-Za-z_][\w-]*\s*", key):
+        return None
+    return key.strip(), unquote_yaml(value)
+
+
+def inline_mapping(text):
+    """'{ id: x, resource: ../a.pdf, title: "T, t" }' -> {'id': 'x', ...}"""
+    result = {}
+    for part in split_outside_quotes(text.strip()[1:-1]):
+        pair = key_value(part)
+        if pair:
+            result[pair[0]] = pair[1]
+    return result
+
+
+def read_header(text):
+    """Reads the simple YAML header of an OKF page. Returns (header, body).
+
+    Only what this command needs: top-level 'key: value' lines, and the 'sources' list,
+    written as inline mappings ('- { id: x, ... }') or as indented 'key: value' lines.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None, text
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration:
+        return None, text
+    header, sources, in_sources = {}, [], False
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indented = line[0] in " \t"
+        stripped = line.strip()
+        if not indented:
+            pair = key_value(stripped)
+            if pair:
+                in_sources = pair[0] == "sources"
+                if not in_sources:
+                    header[pair[0]] = pair[1]
+            continue
+        if not in_sources:
+            continue
+        if stripped.startswith("-"):
+            item = stripped[1:].strip()
+            if item.startswith("{") and item.endswith("}"):
+                sources.append(inline_mapping(item))
+            else:
+                sources.append({})
+                pair = key_value(item)
+                if pair:
+                    sources[-1][pair[0]] = pair[1]
+        elif sources:
+            pair = key_value(stripped)
+            if pair:
+                sources[-1][pair[0]] = pair[1]
+    header["sources"] = sources
+    return header, "\n".join(lines[end + 1:])
+
+
+LINK = re.compile(r'(?<!!)\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)')
+
+
+def links_in(body):
+    """Targets of the markdown links of a page, outside code and HTML comments."""
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    body = re.sub(r"^(```|~~~).*?^\1[^\n]*$", "", body, flags=re.S | re.M)
+    body = re.sub(r"`[^`\n]*`", "", body)
+    return [m.group(1) for m in LINK.finditer(body)]
+
+
+def resolve(target):
+    """A link or resource, relative to wiki/ -> path relative to the kit ('wiki/a.md',
+    'corpus/10-x.html'), or None for a web address or a path outside the kit."""
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target) or target.startswith("#"):
+        return None
+    target = unquote(target.split("#")[0].split("?")[0])
+    if not target or target.startswith("/"):
+        return None
+    parts = []
+    for part in PurePosixPath("wiki", target).parts:
+        if part == "..":
+            if not parts:
+                return None
+            parts.pop()
+        elif part != ".":
+            parts.append(part)
+    return "/".join(parts) if parts else None
+
+
+def read_wiki(wiki):
+    """Returns pages {file: {title, sources: set, links: set, header: bool}}."""
+    pages = {}
+    for path in sorted(wiki.glob("*.md")):
+        if path.name.lower() in RESERVED:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        header, body = read_header(text)
+        page = {"title": path.stem, "sources": set(), "links": set(), "header": bool(header)}
+        if header:
+            page["title"] = header.get("title") or path.stem
+            for source in header["sources"]:
+                where = resolve(source.get("resource", ""))
+                if where and where.split("/")[0] in SOURCE_FOLDERS:
+                    page["sources"].add(where)
+        for target in links_in(body):
+            where = resolve(target)
+            if not where:
+                continue
+            folder = where.split("/")[0]
+            if folder in SOURCE_FOLDERS:
+                page["sources"].add(where)
+            elif folder == "wiki" and where.count("/") == 1 and where.endswith(".md"):
+                name = where.split("/")[1]
+                if name.lower() not in RESERVED and name != path.name:
+                    page["links"].add(name)
+        pages[path.name] = page
+    return pages
+
+
+# ---------------------------------------------------------------------------------------
+# Writing the Mermaid diagram
+
+
+def label(text):
+    """Text -> a safe, quoted Mermaid label (Mermaid wraps long labels by itself)."""
+    text = " ".join(str(text).split())
+    entities = {"#": "#35;", '"': "#quot;", "<": "#lt;", ">": "#gt;", "&": "#amp;",
+                "`": "#96;", "|": "#124;", "[": "#91;", "]": "#93;", "{": "#123;",
+                "}": "#125;", "(": "#40;", ")": "#41;"}
+    return '"' + "".join(entities.get(c, c) for c in text) + '"'
+
+
+def node_id(prefix, name):
+    return prefix + re.sub(r"[^A-Za-z0-9]", "_", name)
+
+
+def matches(source, wanted):
+    """Does a source path ('summaries/85-x.md') match --highlight ('85', '85-x.md', ...)?"""
+    name = PurePosixPath(source).name
+    wanted = PurePosixPath(wanted.strip()).name
+    if wanted.isdigit():
+        return re.match(rf"0*{int(wanted)}\D", name) is not None
+    return name == wanted or PurePosixPath(name).stem == PurePosixPath(wanted).stem
+
+
+def build(pages, kit, highlight):
+    sources = sorted({s for page in pages.values() for s in page["sources"]})
+    broken = sorted({l for page in pages.values() for l in page["links"] if l not in pages})
+    chosen = {s for s in sources if highlight and matches(s, highlight)}
+    marked_pages = {name for name, page in pages.items() if page["sources"] & chosen}
+
+    out = ["flowchart LR"]
+    for name, page in pages.items():
+        out.append(f"    {node_id('p_', name)}[{label(page['title'])}]")
+    for name in broken:
+        out.append(f"    {node_id('p_', name)}[{label(name + ' (missing page)')}]")
+    for source in sources:
+        name = PurePosixPath(source).name
+        if source.startswith("summaries/"):
+            out.append(f"    {node_id('s_', source)}([{label(name)}])")
+        else:
+            out.append(f"    {node_id('s_', source)}[({label(name)})]")
+
+    edges, marked_edges = [], []
+    for name, page in pages.items():
+        for target in sorted(page["links"]):
+            edges.append(f"    {node_id('p_', name)} --> {node_id('p_', target)}")
+    for source in sources:
+        for name, page in pages.items():
+            if source in page["sources"]:
+                if source in chosen:
+                    marked_edges.append(len(edges))
+                edges.append(f"    {node_id('s_', source)} -.-> {node_id('p_', name)}")
+    out += edges
+
+    out += [
+        "    classDef page fill:#e8f1fb,stroke:#2f6db5,color:#102a43",
+        "    classDef corpus fill:#f3f3f3,stroke:#777777,color:#222222",
+        "    classDef summary fill:#eaf6ea,stroke:#3c8a3c,color:#173d17",
+        "    classDef missing fill:#ffffff,stroke:#c0392b,color:#c0392b,stroke-dasharray:4 3",
+        "    classDef mine fill:#ffd166,stroke:#b35c00,stroke-width:3px,color:#3d2400",
+    ]
+
+    def assign(ids, cls):
+        for start in range(0, len(ids), 20):
+            out.append(f"    class {','.join(ids[start:start + 20])} {cls}")
+
+    assign([node_id("p_", n) for n in pages if n not in marked_pages], "page")
+    assign([node_id("p_", n) for n in broken], "missing")
+    absent = [s for s in sources if not (kit / s).exists()]
+    assign([node_id("s_", s) for s in sources
+            if s.startswith("corpus/") and s not in chosen and s not in absent], "corpus")
+    assign([node_id("s_", s) for s in sources
+            if s.startswith("summaries/") and s not in chosen and s not in absent], "summary")
+    assign([node_id("s_", s) for s in absent if s not in chosen], "missing")
+    assign([node_id("p_", n) for n in pages if n in marked_pages]
+           + [node_id("s_", s) for s in sorted(chosen)], "mine")
+    if marked_edges:
+        out.append(f"    linkStyle {','.join(map(str, marked_edges))} "
+                   "stroke:#b35c00,stroke-width:3px")
+    return out, sources, broken, absent, chosen, marked_pages
+
+
+def write_markdown(lines, pages, sources, broken, absent, chosen, marked_pages, highlight):
+    links = sum(len(p["links"]) for p in pages.values())
+    text = [
+        "---",
+        "type: Graph View",
+        'title: "Map of the wiki"',
+        'description: "Drawing of the wiki pages, their links and their sources. '
+        'Written by the wiki-graph command: do not edit by hand."',
+        "---",
+        "# Map of the wiki",
+        "",
+        "<!-- Written by the wiki-graph command. Do not edit: run wiki-graph again instead. -->",
+        "",
+        f"{len(pages)} pages, {links} links between pages, {len(sources)} source documents.",
+        "",
+        "```mermaid",
+        *lines,
+        "```",
+        "",
+        "## How to read it",
+        "",
+        "- **Rectangle**: a page of the wiki, with its title.",
+        "- **Solid arrow**: one page links to another (its *See also* section, for example).",
+        "- **Cylinder**: a full document of `corpus/`.",
+        "- **Rounded shape** (green): a summary of `summaries/`.",
+        "- **Dotted arrow**: from a document to each page that cites it as a source.",
+        "- **Red dashed outline**: a page or a document that is cited but does not exist.",
+    ]
+    if highlight and chosen:
+        text.append(f"- **Orange**: document `{highlight}` and the pages that cite it.")
+    linked = {l for p in pages.values() for l in p["links"]}
+    orphans = [n for n in pages if n not in linked]
+    if orphans:
+        text += ["", "Orphan pages (no other page links to them):", ""]
+        text += [f"- {md_link(pages[n]['title'], n)}" for n in orphans]
+    if highlight:
+        if not chosen:
+            text += ["", f"No page cites a document matching `{highlight}` yet."]
+        else:
+            text += ["", f"Pages that cite `{highlight}`:", ""]
+            text += [f"- {md_link(pages[n]['title'], n)}" for n in sorted(marked_pages)]
+    if broken or absent:
+        text += ["", "Missing files:", ""]
+        text += [f"- `wiki/{n}`" for n in broken] + [f"- `{s}`" for s in absent]
+    no_header = [n for n, p in pages.items() if not p["header"]]
+    if no_header:
+        text += ["", "Pages without a YAML header (only the links in their text are shown):", ""]
+        text += [f"- `wiki/{n}`" for n in no_header]
+    return "\n".join(text) + "\n"
+
+
+def md_link(title, name):
+    """A markdown link whose text cannot break: [Title](file.md)."""
+    return "[" + re.sub(r"([\\\[\]])", r"\\\1", title) + f"]({name})"
+
+
+def main(argv):
+    if any(a in ("-h", "--help") for a in argv):
+        print(__doc__.strip())
+        return 0
+    highlight = None
+    rest = list(argv)
+    if "--highlight" in rest:
+        i = rest.index("--highlight")
+        if i + 1 >= len(rest) or not rest[i + 1].strip():
+            print("Usage: wiki-graph [--highlight <number or file name>]", file=sys.stderr)
+            return 2
+        highlight = rest[i + 1].strip()
+        del rest[i:i + 2]
+    if rest:
+        print(f"Unknown argument: {' '.join(rest)}. See: wiki-graph --help", file=sys.stderr)
+        return 2
+
+    wiki = KIT / "wiki"
+    if not wiki.is_dir():
+        print(f"No wiki folder here: {wiki}", file=sys.stderr)
+        return 1
+    pages = read_wiki(wiki)
+    lines, sources, broken, absent, chosen, marked = build(pages, KIT, highlight)
+    (wiki / OUTPUT).write_text(
+        write_markdown(lines, pages, sources, broken, absent, chosen, marked, highlight),
+        encoding="utf-8")
+
+    print(f"Wrote wiki/{OUTPUT}: {len(pages)} pages, {len(sources)} source documents.")
+    if highlight and chosen:
+        print(f"In orange: {', '.join(sorted(chosen))} and the {len(marked)} page(s) "
+              "that cite it.")
+    elif highlight:
+        print(f"No page cites a document matching '{highlight}' yet. "
+              "Has it been ingested? (ask the chatbot: \"ingest summaries/<file>\")")
+    print(VIEW_HINT)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

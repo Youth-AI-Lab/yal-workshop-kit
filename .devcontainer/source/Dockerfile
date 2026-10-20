@@ -27,7 +27,8 @@ RUN python3 -m venv /opt/workshop/venv \
 
 # Commandes de l'atelier.
 COPY .devcontainer/bin/ /usr/local/bin/
-RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/replay /usr/local/bin/workshop-login /usr/local/bin/corpus-add
+RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/replay /usr/local/bin/workshop-login /usr/local/bin/corpus-add \
+    /usr/local/bin/wiki-start /usr/local/bin/wiki-graph
 
 # Rappel dans chaque nouveau terminal tant que le binôme n'a pas enregistré sa clé.
 RUN echo '[[ -f "$HOME/.workshop-key" ]] || echo "Welcome! First, save the API key of your pair: workshop-login"' \

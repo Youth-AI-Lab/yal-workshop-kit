@@ -7,7 +7,8 @@ Examples (put the address between quotes):
     corpus-add "my-document.pdf" --name town-fire-order        (a file you dropped in the Codespace)
 
 Options: --name short-name (letters, digits, dashes), --title "…", --publisher "…",
---language xx (en, fr, it, ca, nl…), --description "…", --tags a,b
+--language xx (en, fr, it, ca, nl…), --description "…", --tags a,b,
+--url "…" (address of the original, when you give a file)
 
 It keeps the original as it is (web page, PDF, Word or text file) in corpus/, writes a readable
 copy with an OKF header in corpus/text/, and adds a line to corpus/index.md. Documents added during
@@ -206,11 +207,13 @@ def main():
     parser.add_argument("--name", help="short name for the file, e.g. town-fire-order")
     parser.add_argument("--title"); parser.add_argument("--publisher"); parser.add_argument("--language")
     parser.add_argument("--description"); parser.add_argument("--tags", default="added")
+    parser.add_argument("--url", help="address of the original, when you give a file")
     args = parser.parse_args()
     if not (KIT / "corpus").is_dir():
         raise Refused(f"No corpus/ folder in {KIT}: run this command in the workshop.")
 
     data, url, charset = fetch(args.source)
+    url = clean(args.url) or url
     kind = kind_of(data, args.source)
     text, info = {"html": html_text, "pdf": pdf_text, "docx": docx_text, "txt": txt_text}[kind](data, charset)
     text = re.sub(r"[ \t]+", " ", text)

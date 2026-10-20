@@ -15,6 +15,6 @@
   "hostRequirements": { "cpus": 2 },
   // Lecteur PDF : les documents officiels de corpus/ s'ouvrent dans VS Code.
   "customizations": {
-    "vscode": { "extensions": ["tomoki1207.pdf"] }
+    "vscode": { "extensions": ["tomoki1207.pdf", "bierner.markdown-mermaid"] }
   }
 }
