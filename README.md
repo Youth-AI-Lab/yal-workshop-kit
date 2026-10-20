@@ -123,12 +123,18 @@ Instead of rediscovering the corpus at every question, the model maintains a wik
 pages, linked together, quoting their sources. The schema of the wiki is in `wiki/CLAUDE.md`;
 the model never changes `corpus/`.
 
-1. In `workshop C`, ask: "ingest corpus/10-xxx.md into the wiki". The `ingest` skill creates or
-   updates the pages concerned and `wiki/index.md`. Open them.
-2. Ingest a second document on the same topic: the existing page is updated, not duplicated.
-3. Ask: "lint the wiki". The `lint` skill looks for contradictions, broken links and
+1. In `workshop C`, ask: "ingest corpus/10-eu-2025-wildfire-season.md into the wiki". The
+   `ingest` skill creates or updates the pages concerned and `wiki/index.md`. Open them.
+2. Ingest `corpus/90-contradiction.md`: it is on the same topic, so the existing page is updated,
+   not duplicated. Does the page keep both figures, with their sources?
+3. Ingest the other documents used by the test questions, in one request: "ingest
+   corpus/20-…, corpus/30-…, corpus/40-… and corpus/50-… into the wiki". It takes a few
+   minutes: let it run while the facilitator shows the RAG demo.
+4. Ask: "lint the wiki". The `lint` skill looks for contradictions, broken links and
    statements without a source.
-4. `replay W`: the model answers from the wiki alone. Score column W and compare with C.
+5. `replay W`: in this mode the model can read `wiki/` only (reading `corpus/` is blocked).
+   Score column W and compare with C. A document you did not ingest does not exist for it:
+   that is the price of the wiki.
 
 To see the wiki as a graph, the facilitator projects their graphify view. `INFERRED` edges
 are the ones the model guessed: nobody wrote them.

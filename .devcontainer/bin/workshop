@@ -5,7 +5,7 @@
 #   workshop A      + system prompt (AGENTS.md)
 #   workshop B      + the whole corpus/ in the context, from the start
 #   workshop C      system prompt + file search + skills + MCP (corpus not preloaded)
-#   workshop W      like C, but the model answers from wiki/
+#   workshop W      system prompt + reading wiki/ only (corpus/ is blocked)
 #
 # Without a mode: C. Arguments after the mode are passed to claude
 # (this is how `replay` asks its questions: workshop B -p "question").
@@ -66,10 +66,11 @@ case "$mode" in
            --append-system-prompt "The reference knowledge is in the corpus/ folder, one document per source. For a question about the topic, search it before answering.")
     ;;
   W|w)
+    # Only reading, and reading corpus/ is denied by a permission rule (not just asked):
+    # the answer can only come from wiki/ (and the system prompt).
     cd "$KIT"
-    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
-           --mcp-config "$KIT/.mcp.json"
-           --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/. Do not open corpus/. If the wiki does not contain the answer, say so.")
+    args+=(--tools "Read" --disallowedTools "Read(./corpus/**)" --disable-slash-commands
+           --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/. You cannot open corpus/. If the wiki does not contain the answer, say so.")
     ;;
   -h|--help|help)
     sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
@@ -84,5 +85,10 @@ esac
 # Banner, except when a question is asked directly (-p): the output must stay clean.
 if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then
   echo "Workshop — mode $mode. To quit: /exit. Other modes: workshop bare | A | B | C | W" >&2
+fi
+# WORKSHOP_DRY_RUN=1: print the command instead of running it (used by the smoke test).
+if [[ -n "${WORKSHOP_DRY_RUN:-}" ]]; then
+  printf '%s\n' "cwd=$PWD" "${args[@]}" "$@"
+  exit 0
 fi
 exec claude "${args[@]}" "$@"

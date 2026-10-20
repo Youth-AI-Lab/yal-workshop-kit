@@ -32,18 +32,18 @@ def read_questions():
 
 
 def ask(mode, question):
-    """Asks one question, returns (answer, context tokens, actions, cost)."""
+    """Asks one question, returns (answer, context tokens, actions, cost, error)."""
     cmd = [WORKSHOP, mode, "-p", question, "--output-format", "stream-json", "--verbose",
            "--max-turns", "15"]
     if os.environ.get("WORKSHOP_MODEL"):
         cmd += ["--model", os.environ["WORKSHOP_MODEL"]]
     try:
-        output = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
-                                stdin=subprocess.DEVNULL).stdout
+        run = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
+                             stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return "(no answer after 5 minutes)", 0, [], 0.0
-    answer, context, actions, cost = "(no answer)", 0, [], 0.0
-    for line in output.splitlines():
+        return "", 0, [], 0.0, "no answer after 5 minutes"
+    answer, context, actions, cost, error = None, 0, [], 0.0, None
+    for line in run.stdout.splitlines():
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
@@ -57,9 +57,14 @@ def ask(mode, question):
                 if c.get("type") == "tool_use":
                     actions.append(describe(c["name"], c.get("input") or {}))
         elif d.get("type") == "result":
-            answer = (d.get("result") or answer).strip()
+            answer = (d.get("result") or "").strip()
             cost = d.get("total_cost_usd") or 0.0
-    return answer, context, actions, cost
+            if d.get("is_error"):
+                error = answer or d.get("subtype") or "error"
+    if error is None and (run.returncode != 0 or answer is None):
+        last = (run.stderr.strip().splitlines() or [""])[-1]
+        error = last or f"workshop exited with code {run.returncode}"
+    return answer or "", context, actions, cost, error
 
 
 def describe(tool, args):
@@ -89,17 +94,31 @@ def main():
     out = KIT / "answers" / f"{mode}-{datetime.now():%Hh%M}.md"
     lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
              f"Score each answer from 0 to 2 in the {mode.capitalize()} column of test-questions.md.", ""]
-    total = 0.0
+    total, errors, in_a_row = 0.0, 0, 0
     for i, (n, q) in enumerate(questions, 1):
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)
-        answer, context, actions, cost = ask(mode, q)
+        answer, context, actions, cost, error = ask(mode, q)
         total += cost
-        lines += [f"## {n}. {q}", "", answer, "", f"*Context: {context:,} tokens*"]
-        if actions:
-            lines += ["*What the model did:* " + " · ".join(actions)]
-        lines += [""]
+        lines += [f"## {n}. {q}", ""]
+        if error:
+            errors += 1
+            in_a_row += 1
+            print(f"  ERROR: {error}", flush=True)
+            lines += [f"**ERROR, do not score this one: {error}**", ""]
+        else:
+            in_a_row = 0
+            lines += [answer, "", f"*Context: {context:,} tokens*"]
+            if actions:
+                lines += ["*What the model did:* " + " · ".join(actions)]
+            lines += [""]
         out.write_text("\n".join(lines), encoding="utf-8")  # written as we go
+        if in_a_row == 3:
+            print("Three errors in a row: stopping. Check the key (workshop-login) and the network.")
+            break
     print(f"Answers: {out.relative_to(KIT)}   (cost: ${total:.2f})")
+    if errors:
+        print(f"{errors} question(s) failed: they are marked ERROR in the file. Ask the facilitator.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -40,7 +40,29 @@ etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
 [[ "$code" == 2 ]] || echec "code attendu 2 (clé refusée), obtenu $code"
 
-etape "Modes bare et C : outils, skills et serveur MCP"
+etape "Réglages de chaque mode (répétition à blanc, sans appel au modèle)"
+reglages() { WORKSHOP_DRY_RUN=1 workshop "$1" -p hi; }
+a_la_suite() { printf '%s\n' "$1" | grep -A1 -xF -- "$2" | tail -1; }
+for m in bare A B; do
+  r="$(reglages "$m")"
+  [[ "$(a_la_suite "$r" --tools)" == "" ]] || echec "mode $m : des outils sont actifs"
+  grep -qxF -- --mcp-config <<< "$r" && echec "mode $m : serveur MCP chargé"
+done
+grep -q "^cwd=.*\.workshop-bare$" <<< "$(reglages bare)" || echec "mode bare : pas lancé hors du kit"
+grep -qxF -- --append-system-prompt-file <<< "$(reglages A)" && echec "mode A : corpus préchargé"
+fichier="$(a_la_suite "$(reglages B)" --append-system-prompt-file)"
+attendus="$(find "$KIT/corpus" -name '[1-9]*.md' | wc -l)"
+charges="$(grep -c '^## Document: corpus/' "$fichier")"
+[[ "$charges" == "$attendus" ]] || echec "mode B : $charges documents chargés sur $attendus"
+echo "B : $charges documents du corpus chargés au démarrage"
+grep -qxF -- --mcp-config <<< "$(reglages C)" || echec "mode C : serveur MCP absent"
+r="$(reglages W)"
+[[ "$(a_la_suite "$r" --tools)" == "Read" ]] || echec "mode W : outils autres que Read"
+[[ "$(a_la_suite "$r" --disallowedTools)" == "Read(./corpus/**)" ]] || echec "mode W : corpus/ non bloqué"
+grep -qxF -- --mcp-config <<< "$r" && echec "mode W : serveur MCP chargé"
+echo "W : lecture seule, corpus/ bloqué par une règle de permission"
+
+etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {
   # Avec la fausse clé, claude finit en erreur : seule compte la description du démarrage.
   local sortie
@@ -57,11 +79,14 @@ for ligne in sys.stdin:
     print(mode, len(d["tools"]), "outils", mcp, skills)
     ok = len(d["tools"]) == outils_attendus
     if mode == "C": ok = ok and mcp == ["fire-danger"] and skills == ["ingest", "lint", "source-note"]
+    if mode == "W": ok = ok and d["tools"] == ["Read"] and mcp == []
     sys.exit(0 if ok else 1)
 sys.exit("pas d événement init")' "$1" "$2"
 }
 verifie bare 0 || echec "mode bare"
+verifie A 0 || echec "mode A"
 verifie C 7 || echec "mode C"
+verifie W 1 || echec "mode W"
 
 rm -f "$HOME/.workshop-key" "$HOME/.claude/settings.json"
 printf '\n✓ Smoke-test réussi\n'
