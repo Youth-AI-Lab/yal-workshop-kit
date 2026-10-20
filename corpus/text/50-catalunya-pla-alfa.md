@@ -10,11 +10,11 @@ publisher: "Generalitat de Catalunya, Agents Rurals"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://interior.gencat.cat/ca/arees_dactuacio/agents-rurals/pla-alfa/index.html, title: "Pla Alfa" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 Visualitza'l a pantalla completa
 
-Vols inserir el visor al teu web?
+Vols inserir el visor al teu web? Copia el codi
 
 Mapa elaborat per la Direcció General dels Agents Rurals a partir del mapa de perill d'incendi diari del Servei d'Anàlisi de Perill d'Incendis Forestals del Departament d'Agricultura, Ramaderia, Pesca i Alimentació, així com altres eines d'anàlisi. S’actualitza a les 00:00 i a les 9:30 hores o puntualment si cal. En cas d’una incidència, truqueu al 935 617 000.
 

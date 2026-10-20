@@ -11,7 +11,7 @@ retrieved_at: 2026-10-19T00:00:00Z
 note: "Repealed from 1 May 2026, replaced by order n° 26EB142. Kept as an example of an outdated source."
 sources:
   - { id: original, resource: https://www.risque-prevention-incendie.fr/static/17/communication_nouvel_arrete.pdf, title: "Arrêté préfectoral n° 24EB441 du 27 juin 2024 réglementant l'usage du feu" }
-generated: { by: process:pdf-text-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:pdf-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 Arrêté en application au 1 er juillet 2024 
 ARRÊTÉ PRÉFECTORAL N° 24EB441 du 27 juin 2024 réglementant l’usage du feu en vue

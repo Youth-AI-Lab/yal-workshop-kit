@@ -10,7 +10,7 @@ publisher: "European Commission, Joint Research Centre (JRC)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://joint-research-centre.ec.europa.eu/jrc-news-and-updates/2025-was-eus-most-destructive-wildfire-season-record-2026-03-31_en, title: "2025 was EU's most destructive wildfire season on record" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 © Paulo M.F. Pires - stock.adobe.com 2026
 

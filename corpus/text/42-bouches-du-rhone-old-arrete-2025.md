@@ -10,7 +10,7 @@ publisher: "Préfecture des Bouches-du-Rhône"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://www.bouches-du-rhone.gouv.fr/Actualites/Les-OLD-Nouvel-arrete-prefectoral-du-15-octobre-2025, title: "Les OLD : nouvel arrêté préfectoral du 15 octobre 2025" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 # Les Obligations légales de débroussaillement (OLD) - Nouvel arrêté préfectoral du 15 octobre 2025
 
@@ -52,5 +52,5 @@ Partager la page
 * Partager sur X (anciennement Twitter)
 * Partager sur LinkedIn
 *
-*
+* Copier dans le presse-papier
 *

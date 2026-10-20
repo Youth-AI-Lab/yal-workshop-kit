@@ -10,7 +10,7 @@ publisher: "Dipartimento della Protezione Civile"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://www.protezionecivile.gov.it/it/approfondimento/in-caso-di-incendio-boschivo/, title: "In caso di incendio boschivo" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 Social sharing is not available
 for non agreement to use of

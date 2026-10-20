@@ -10,26 +10,27 @@ publisher: "Service-Public (DILA, Premier ministre)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://www.service-public.gouv.fr/particuliers/vosdroits/F33298, title: "Dans quel cas le débroussaillement est-il obligatoire ?" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
+* Ajouter à mes favoris
 *
 *
 *
-*
-*
+* Focus
 Partager la page
 
 * Facebook
 * X
 * Linkedin
 * Courriel
-* Lien copié
-**Ce sujet vous intéresse ?**
+* Copier le lien
+ Lien copié
+Fermer**Ce sujet vous intéresse ?**
 
 Ajoutez cette page à vos favoris et **recevez un courriel**
  dès que l’information « **Dans quel cas le débroussaillement est-il obligatoire ?** » est mise à jour.
 
-Ajouter à mes favorisCe sujet a été ajouté à vos favoris
+Ajouter à mes favorisFermerCe sujet a été ajouté à vos favoris
 
 Vous recevrez **un courriel** dès que la page «
  **Dans quel cas le débroussaillement est-il obligatoire ?**
@@ -55,13 +56,14 @@ Vérifié le 07 janvier 2025 - Service Public / Direction de l'information léga
 
 L'obligation légale de débroussaillement dépend de la situation géographique de votre terrain. Débroussailler les abords de votre habitation permet de créer une ceinture de sécurité en cas de feu de forêt. Si votre terrain n'est pas soumis à cette obligation, le débroussaillement reste recommandé pour diminuer les risques d'incendies à proximité d’une zone boisée. Nous faisons le point sur la réglementation.
 
-##
+ Tout déplier
+ ## En quoi consiste le débroussaillement ?
 
 Le débroussaillement consiste à réduire les matières végétales de toute nature (herbe, branchage, feuilles...) pour diminuer l'intensité des incendies et freiner leur propagation. Il peut s'agir, par exemple, d'élaguer les arbres ou arbustes ou d'éliminer des résidus de coupe (branchage, herbe...).
 
 Les conditions précises de mise en œuvre du débroussaillement sont adaptées aux conditions locales de votre département. Ces conditions sont fixées par arrêté préfectoral.
 
-##
+## Qui est concerné par l'obligation de débroussaillement ?
 
 En tant que **propriétaire,** vous êtes responsable du débroussaillement autour de votre construction.
 
@@ -79,7 +81,7 @@ Modèle de lettre à l'usage des propriétaires devant débroussailler chez leur
 
 Vos voisins peuvent toutefois choisir d’effectuer eux-mêmes le débroussaillement qui est à votre charge. Cependant, s’ils ne souhaitent pas le réaliser eux-mêmes et qu'ils vous refusent l’accès à leur terrain, ou qu’ils ne répondent pas à votre demande d’accès au bout d’un mois à partir de la notification du courrier, la responsabilité du débroussaillement est alors à leur charge. Vous devrez en informer le maire.
 
-##
+## Quels sont les territoires concernés par l'obligation de débroussaillement ?
 
 Plusieurs zones sont soumises à l'obligation légale de débroussaillement.
 
@@ -91,7 +93,7 @@ Rappel
 
 Si votre terrain **n'est pas soumis** à l'obligation légale de débroussaillement, le débroussaillement n'est pas obligatoire mais tout de même **recommandé** si votre habitation est proche d'une zone boisée.
 
-##
+## Comment débroussailler ?
 
 Le débroussaillement comprend les mesures suivantes :
 
@@ -104,7 +106,7 @@ Attention
 
 Si le débroussaillement est pratiqué pendant la **sécheresse**, il y a un **risque d'incendie.** Par ailleurs, vous devez veiller à ne pas détruire des espèces lors du débroussaillement pendant la période de nidification.
 
-##
+## Sur quel périmètre débroussailler ?
 
 Vous avez l'obligation de débroussailler votre terrain et de le maintenir en état débroussaillé s'il est situé **à moins de 200 mètres des massifs forestiers, landes, maquis ou garrigues classés à risque d’incendie**.
 
@@ -116,13 +118,13 @@ Dans les zones urbaines délimitées par un plan local d’urbanisme (PLU), le d
 
 Des **règles particulières** peuvent s’appliquer aux terrains situés à proximité d’infrastructures linéaires (réseaux électriques) et aux terrains servant d'assiette à une zone d'aménagement concertée (Zac), une association foncière urbaine, un lotissement, un camping, ...
 
-##
+## Peut-on déléguer le débroussaillement de son terrain ?
 
 **Oui**, vous pouvez faire intervenir un professionnel et passer avec lui un contrat pour débroussailler votre terrain et le maintenir en état débroussaillé.
 
 Vous pouvez bénéficier sous certaines conditions d'un crédit d'impôt si vous employez une personne pour débroussailler votre terrain.
 
-##
+## Quelles sont les obligations en matière de débroussaillement en cas de location ou vente du terrain ?
 
 **Depuis le 1er janvier 2025**, les vendeurs et bailleurs d'un bien immobilier situé **dans une zone soumise à une obligation** légale de débroussaillement doivent en informer obligatoirement l'acheteur ou le locataire. Cette information doit avoir lieu dès l'annonce immobilière et être intégrée à l'état des risques.
 
@@ -136,7 +138,7 @@ Attestation sur l'honneur
 
 Cette attestation sur l'honneur doit être annexée à la promesse de vente et à l'acte de vente.
 
-##
+## Quelles sanctions en cas de non-respect de l'obligation légale de débroussaillement ?
 
 Si vous ne respectez pas vos obligations légales de débroussaillement, vous vous exposez à des sanctions :
 
@@ -152,9 +154,13 @@ Le maire est responsable du contrôle de la mise en œuvre des obligations léga
 
 Vous avez une question ? Vous souhaitez être accompagné(e) dans vos démarches ?
 
-* Mairie
+ Trouver un interlocuteur
+ Quelle est votre ville ou code postal ?
+
+ Exemple : Sainte-Cécile-les-Vignes ou 95200
+ * Mairie
 * Préfecture
-##
+## Textes de loi et références
 
 * Code forestier : articles L131-10 à L131-16
 
@@ -185,7 +191,7 @@ Dommage à autrui : article 322-5
 * Code des assurances : articles L122-1 à L122-9
 
 Franchise applicable par l'assureur en cas de dommage (article L122-8)
-##
+## Services en ligne et formulaires
 
 * Rechercher les zones concernées par l'obligation légale de débroussaillement
 
@@ -196,7 +202,7 @@ Modèle de document
 ## Questions ? Réponses !
 
 * Que faire si le terrain d’un voisin n’est pas entretenu (en friche ou avec gravats) ?
-##
+## Voir aussi
 
 * Diagnostic immobilier : état des risques
 
@@ -218,6 +224,11 @@ Voir toutes les situations
 
 ## Cette page vous a-t-elle été utile ?
 
+* 1Pas du toutCette page ne pas m'a pas du tout été utile
+* 2Un peuCette page m'a été un peu utile
+* 3MoyenCette page m'a été moyennement utile
+* 4BeaucoupCette page m'a été très utile
+* 5Parfait !Cette page m'a été parfaitement utile
 ## Cette page vous a-t-elle été utile ?
 
 * 1
@@ -241,7 +252,8 @@ L’équipe Service Public vous
 
  Je vais sur la page d’accueil
 
-Vous avez noté 1 sur 5 :
+ Masquer le message
+ Vous avez noté 1 sur 5 :
  Pas du tout
 
 Vous avez noté 2 sur 5 :
@@ -257,6 +269,8 @@ Vous avez noté 4 sur 5 :
 Vous avez noté 5 sur 5 :
  Parfait !
 
+ Je fais une**remarque**sur cette page
+
 L’équipe Service Public vous
  remercie pour vos remarques utiles à l'amélioration du site.
 
@@ -268,7 +282,11 @@ Une erreur technique s'est produite. Merci de réessayer ultérieurement.
 ## Vos remarques pour améliorer
  la page
 
-### Avez-vous rencontré une difficulté ?
+### La page est-elle facile à comprendre ?
+
+Pas du toutMoyenParfait !### L’information a-t-elle été utile ?
+
+Pas du toutMoyenParfait !### Avez-vous rencontré une difficulté ?
 
 NonJe ne suis **pas satisfait(e)** de
  cette
@@ -280,4 +298,24 @@ NonJe ne suis **pas satisfait(e)** de
  laquelle)*### Avez-vous des suggestions pour améliorer la page ?
 
  Je suggère une modification à une rédactrice ou un rédacteur
- Service PublicSaisie complémentaire requise – affichage automatiqueCondamnation d'une personne à payer une somme d'argent par jour, semaine ou mois de retard si une obligation imposée par une décision de justice n'est pas exécutée.
+ Service PublicSaisie complémentaire requise – affichage automatiqueLes **informations** demandées sont **obligatoires**.
+
+Les réponses apportées par Service Public sont **rédigées en français**. Nous vous invitons également à **nous écrire en français**.
+
+Des exemples nous permettent d’améliorer les pages plus facilement : ***« Je n’ai pas compris la partie
+ sur... »***, ***« Je cherchais des informations plus précises/plus claires sur... »***.
+
+ Votre suggestion
+ Ne mentionnez pas de données personnelles (nom, adresse, numéros de téléphone, numéro de sécurité sociale, numéro fiscal, lieu et date de naissance...) à l'exception, bien sûr, de votre adresse de messagerie.1000 caractères restants
+
+#### Comment pouvons-nous vous répondre ?
+
+ Votre adresse électronique
+
+ Exemple : nom@exemple.com
+ ##### Protection des données personnelles
+
+Les informations recueillies à partir de ce formulaire sont traitées par la DILA pour répondre à
+ votre demande. Pour connaitre et exercer vos droits, veuillez consulter la rubrique données personnelles et sécurité.
+
+Condamnation d'une personne à payer une somme d'argent par jour, semaine ou mois de retard si une obligation imposée par une décision de justice n'est pas exécutée.

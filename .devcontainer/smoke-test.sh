@@ -36,6 +36,19 @@ etape "Une clé mal formée est refusée sans rien écrire"
 if workshop-login --key "not-a-key" 2>/dev/null; then echec "clé mal formée acceptée"; fi
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé mal formée enregistrée"
 
+etape "corpus-add : une page web et un PDF s'importent, un PDF scanné est refusé (sur une copie du kit)"
+copie="$(mktemp -d)"; cp -r "$KIT/." "$copie"; rm -rf "$copie/.git"
+WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/50-catalunya-pla-alfa.html" --name test-page --language ca > /dev/null \
+  || echec "corpus-add : la page web n'a pas été importée"
+WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/74-benevento-campagna-aib-2026.pdf" --name test-pdf > /dev/null \
+  || echec "corpus-add : le PDF n'a pas été importé"
+[[ -f "$copie/corpus/80-test-page.html" && -s "$copie/corpus/text/80-test-page.md" && -s "$copie/corpus/text/81-test-pdf.md" ]] \
+  || echec "corpus-add : original ou copie lisible manquant"
+grep -q "80-test-page" "$copie/corpus/index.md" || echec "corpus-add : corpus/index.md non mis à jour"
+code=0; WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/30-charente-maritime-arrete-26EB142.pdf" --name scanne > /dev/null 2>&1 || code=$?
+[[ "$code" == 3 ]] || echec "corpus-add : un PDF scanné aurait dû être refusé (code 3), obtenu $code"
+rm -rf "$copie"; echo "corpus-add : OK"
+
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
 [[ "$code" == 2 ]] || echec "code attendu 2 (clé refusée), obtenu $code"
@@ -51,7 +64,7 @@ done
 grep -q "^cwd=.*\.workshop-bare$" <<< "$(reglages bare)" || echec "mode bare : pas lancé hors du kit"
 grep -qxF -- --append-system-prompt-file <<< "$(reglages A)" && echec "mode A : corpus préchargé"
 fichier="$(a_la_suite "$(reglages B)" --append-system-prompt-file)"
-attendus="$(find "$KIT/summaries" "$KIT/corpus/text" -name '[1-9]*.md' | wc -l)"
+attendus="$(( $(find "$KIT/summaries" -maxdepth 1 -name '[1-9]*.md' | wc -l) + $(find "$KIT/corpus/text" -maxdepth 1 -name '[1-9]*.md' | wc -l) ))"
 charges="$(grep -cE '^## Document: (summaries|corpus/text)/[1-9]' "$fichier")"
 [[ "$charges" == "$attendus" ]] || echec "mode B : $charges documents chargés sur $attendus"
 echo "B : $charges documents (résumés et copies lisibles du corpus) chargés au démarrage"

@@ -11,7 +11,7 @@ retrieved_at: 2026-10-19T00:00:00Z
 note: "Scanned PDF: this text comes from OCR and may contain wrong characters."
 sources:
   - { id: original, resource: https://www.charente-maritime.gouv.fr/contenu/telechargement/85472/601661/file/AP26EB142-Usages_du_feu_2026_04_30.pdf, title: "Arrêté préfectoral n° 26EB142 réglementant l'usage du feu à l'air libre" }
-generated: { by: process:ocr, at: 2026-10-20T09:40:48Z }
+generated: { by: process:ocr, at: 2026-10-20T10:26:36Z }
 ---
 En Direction départementale
 PRET des territoires

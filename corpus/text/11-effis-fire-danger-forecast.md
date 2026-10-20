@@ -10,7 +10,7 @@ publisher: "EFFIS, Copernicus Emergency Management Service"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://forest-fire.emergency.copernicus.eu/about-effis/technical-background/fire-danger-forecast, title: "Fire Danger Forecast (technical background)" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 * jrc-effis@ec.europa.eu
 

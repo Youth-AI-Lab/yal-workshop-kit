@@ -10,7 +10,7 @@ publisher: "Agentschap voor Natuur en Bos (ANB)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://natuurenbos.be/brandpreventie-natuur-en-bosgebieden-op-basis-van-kleurcodes, title: "Brandpreventie in natuur- en bosgebieden op basis van kleurcodes" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 # Brandpreventie in natuur- en bosgebieden op basis van kleurcodes
 
@@ -58,7 +58,5 @@ T. 02 553 81 32
 pers.natuurenbos@vlaanderen.be
 
 Natuur en Bos is een van de kernpartners van het Belgian Wildfire Network. Het netwerk brengt wetenschap, operationele expertise en beleid samen om België beter voor te bereiden op natuurbranden, over alle regio’s heen. Lees meer >
-
-Op deze pagina
 
 ## Agentschap voor Natuur en Bos werkt ook mee aan:

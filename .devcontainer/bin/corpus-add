@@ -1,0 +1,271 @@
+#!/opt/workshop/venv/bin/python3
+"""Adds an official document to corpus/, without changing it.
+
+Examples (put the address between quotes):
+
+    corpus-add "https://www.example.gov/fire-rules.pdf" --name fire-rules
+    corpus-add "my-document.pdf" --name town-fire-order        (a file you dropped in the Codespace)
+
+Options: --name short-name (letters, digits, dashes), --title "…", --publisher "…",
+--language xx (en, fr, it, ca, nl…), --description "…", --tags a,b
+
+It keeps the original as it is (web page, PDF, Word or text file) in corpus/, writes a readable
+copy with an OKF header in corpus/text/, and adds a line to corpus/index.md. Documents added during
+the session get a number from 80 to 89; their summary will use the same number.
+A scanned PDF (only images) has no text to read: it is not added.
+"""
+
+import argparse
+import datetime
+import io
+import json
+import os
+import pathlib
+import re
+import sys
+import tempfile
+import unicodedata
+import urllib.parse
+import urllib.request
+import zipfile
+from xml.etree import ElementTree
+
+KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
+MAX_BYTES = 30 * 1024 * 1024
+TBC = "TO BE COMPLETED"
+
+
+class Refused(Exception):
+    """A plain-language reason to stop, with an exit code."""
+    def __init__(self, message, code=1):
+        super().__init__(message)
+        self.code = code
+
+
+def clean(value):
+    """Metadata as one line of plain text (PDF metadata can be bytes or None)."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("latin-1", errors="replace")
+    return " ".join(str(value).split())
+
+
+def decode(data, declared=None):
+    """Text of a text file: the declared charset, else strict UTF-8, else Windows-1252."""
+    for encoding in [e for e in (declared, "utf-8") if e]:
+        try:
+            return data.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+    return data.decode("cp1252", errors="replace")
+
+
+def fetch(source):
+    """Returns (bytes, URL or None, charset declared by the server or None)."""
+    if re.match(r"https?://", source):
+        request = urllib.request.Request(source, headers={"User-Agent": "Mozilla/5.0 (Youth AI Lab workshop)"})
+        try:
+            with urllib.request.urlopen(request, timeout=40) as response:
+                data = response.read(MAX_BYTES + 1)
+                charset = response.headers.get_content_charset()
+                final_url = response.geturl()
+        except Exception as e:  # network, HTTP error, bad URL
+            raise Refused(f"Could not download {source} ({e}). If the site refuses, save the "
+                          "document on your computer, drop it in the Codespace, and give its file name.", 2)
+        if len(data) > MAX_BYTES:
+            raise Refused("This document is larger than 30 MB: ask the facilitator.", 2)
+        return data, final_url, charset
+    path = pathlib.Path(source).expanduser()
+    if not path.is_file():
+        raise Refused(f"File not found: {source}. Drop the file in the Codespace (left panel), "
+                      "then give its name, e.g. corpus-add \"my-document.pdf\".")
+    return path.read_bytes(), None, None
+
+
+def kind_of(data, source):
+    if data[:5] == b"%PDF-":
+        return "pdf"
+    if data[:2] == b"PK":
+        try:
+            if "word/document.xml" in zipfile.ZipFile(io.BytesIO(data)).namelist():
+                return "docx"
+        except zipfile.BadZipFile:
+            pass
+    head = data[:4096].decode("latin-1").lower()
+    if "<html" in head or "<!doctype html" in head or source.lower().split("?")[0].endswith((".html", ".htm")):
+        return "html"
+    if source.lower().endswith((".md", ".txt")):
+        return "txt"
+    raise Refused("Unknown format: only web pages, PDF, Word (.docx) and text files are accepted.")
+
+
+def html_text(data, charset):
+    from bs4 import BeautifulSoup
+    from markdownify import markdownify
+    # Bytes in: BeautifulSoup reads the charset of the server, else <meta charset>.
+    soup = BeautifulSoup(data, "html.parser", from_encoding=charset)
+    meta = lambda **kw: (soup.find("meta", attrs=kw) or {}).get("content")
+    info = {"title": meta(property="og:title") or (soup.title.string if soup.title else None),
+            "publisher": meta(property="og:site_name"),
+            "language": soup.html.get("lang") if soup.html else None,
+            "description": meta(name="description")}
+    body = soup.body or soup
+    for tag in body(["script", "style", "noscript", "template", "svg", "nav"]):
+        tag.decompose()
+    for tag in body(["form", "button"]):          # wrappers (whole pages, accordion titles): keep their text
+        tag.unwrap()
+    for tag in body(["input", "select", "textarea"]):
+        tag.decompose()
+    # The main zone, if it really holds the content; else the whole body.
+    main = body.find("main") or body.find(attrs={"role": "main"}) or body.find("article")
+    root = main if main and len(main.get_text(" ", strip=True)) >= 0.5 * len(body.get_text(" ", strip=True)) else body
+    text = markdownify(str(root), heading_style="ATX", strip=["a", "img"],
+                       escape_misc=False, escape_asterisks=False, escape_underscores=False)
+    return text, info
+
+
+def pdf_text(data, _charset):
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    title = clean((reader.metadata or {}).get("/Title"))
+    if re.match(r"(microsoft word|untitled|document\d*)\b", title, re.I):
+        title = ""                                 # file names, not titles
+    text = "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    return text, {"title": title, "publisher": None, "language": None, "description": None}
+
+
+def docx_text(data, _charset):
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    mc = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+    root = ElementTree.fromstring(zipfile.ZipFile(io.BytesIO(data)).read("word/document.xml"))
+    for parent in root.iter():                     # keep one version of alternate content
+        for child in list(parent):
+            if child.tag == mc + "Fallback":
+                parent.remove(child)
+    def runs(node, inside_box, out=None):
+        out = [] if out is None else out
+        for child in node:
+            if child.tag == w + "txbxContent" and not inside_box:
+                continue                           # text boxes are read once, separately
+            if child.tag == w + "t":
+                out.append(child.text or "")
+            elif child.tag == w + "tab":
+                out.append("\t")
+            elif child.tag in (w + "br", w + "cr"):
+                out.append("\n")
+            else:
+                runs(child, inside_box, out)
+        return "".join(out)
+    boxes = {id(p) for box in root.iter(w + "txbxContent") for p in box.iter(w + "p")}
+    paragraphs = [runs(p, False) for p in root.iter(w + "p") if id(p) not in boxes]
+    paragraphs += [runs(p, True) for box in root.iter(w + "txbxContent") for p in box.findall(w + "p")]
+    return "\n\n".join(p for p in paragraphs if p.strip()), {"title": None, "publisher": None, "language": None, "description": None}
+
+
+def txt_text(data, charset):
+    return decode(data, charset), {"title": None, "publisher": None, "language": None, "description": None}
+
+
+def slugify(text):
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50].strip("-")
+
+
+def free_number():
+    used = {p.name[:2] for folder in ("corpus", "corpus/text", "summaries", "summaries/checks")
+            for p in (KIT / folder).glob("8[0-9]-*")}
+    for n in range(80, 90):
+        if str(n) not in used:
+            return str(n)
+    raise Refused("Numbers 80 to 89 are all used: ask the facilitator.")
+
+
+def write_all(files):
+    """Writes every file through a temporary name; if one fails, removes those already written."""
+    done = []
+    try:
+        for path, content in files:
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".corpus-add-")
+            with os.fdopen(fd, "wb") as f:
+                f.write(content)
+            existed = path.exists()
+            os.replace(tmp, path)
+            done.append((path, existed))
+    except OSError as e:
+        for path, existed in done:
+            if not existed:
+                path.unlink(missing_ok=True)
+        raise Refused(f"Could not write the files ({e}). Nothing was added.")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="corpus-add", description=__doc__.split("\n\n")[0],
+                                     epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("source", help="address of the document (between quotes), or name of a file")
+    parser.add_argument("--name", help="short name for the file, e.g. town-fire-order")
+    parser.add_argument("--title"); parser.add_argument("--publisher"); parser.add_argument("--language")
+    parser.add_argument("--description"); parser.add_argument("--tags", default="added")
+    args = parser.parse_args()
+    if not (KIT / "corpus").is_dir():
+        raise Refused(f"No corpus/ folder in {KIT}: run this command in the workshop.")
+
+    data, url, charset = fetch(args.source)
+    kind = kind_of(data, args.source)
+    text, info = {"html": html_text, "pdf": pdf_text, "docx": docx_text, "txt": txt_text}[kind](data, charset)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = "\n".join(line.rstrip() for line in text.splitlines())
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) < 200:
+        why = ("A scanned PDF (only images)?" if kind == "pdf" else "The page layout was not recognised.")
+        raise Refused(f"Not added: almost no text could be read ({len(text)} characters). {why} "
+                      "Ask the facilitator.", 3)
+
+    # Everything is computed before anything is written.
+    title = clean(args.title) or clean(info.get("title")) or TBC
+    publisher = clean(args.publisher) or clean(info.get("publisher")) or TBC
+    language = clean(args.language) or clean(info.get("language"))[:2].lower() or TBC
+    description = clean(args.description) or clean(info.get("description")) or TBC
+    tags = [slugify(t) for t in args.tags.split(",") if slugify(t)] or ["added"]
+    stem = pathlib.PurePosixPath(urllib.parse.urlparse(url).path).stem if url else pathlib.Path(args.source).stem
+    number = free_number()
+    name = f"{number}-{slugify(args.name or (title if title != TBC else stem)) or 'document'}"
+    original = f"{name}.{kind}"
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    q = lambda s: json.dumps(s, ensure_ascii=False)        # a JSON string is a valid YAML scalar
+    header = ["---", "type: Document Text", f"title: {q(title)}", f"description: {q(description)}",
+              f"resource: {q('../' + original)}", f"tags: [{', '.join(q(t) for t in tags)}]", "status: stable",
+              f"language: {q(language)}", f"publisher: {q(publisher)}", f"retrieved_at: {now}",
+              f"note: {q('Added during the session with corpus-add.')}", "sources:",
+              f"  - {{ id: original, resource: {q(url or TBC + ' (address of the original)')} }}",
+              f"generated: {{ by: process:corpus-add, at: {now} }}", "---", ""]
+    index = KIT / "corpus" / "index.md"
+    lines = index.read_text(encoding="utf-8").rstrip("\n").splitlines() if index.exists() else ["# Official documents", ""]
+    if "# Added during the session" not in lines:
+        lines += ["", "# Added during the session", ""]
+    link_text = title.replace("[", "(").replace("]", ")")
+    lines.append(f"* [{link_text}](text/{name}.md) - {description.rstrip('.')}. Original: [{original}]({original})")
+
+    (KIT / "corpus" / "text").mkdir(exist_ok=True)
+    write_all([(KIT / "corpus" / "text" / f"{name}.md", ("\n".join(header) + text + "\n").encode("utf-8")),
+               (KIT / "corpus" / original, data),
+               (index, ("\n".join(lines) + "\n").encode("utf-8"))])
+
+    print(f"Added: corpus/{original} (original, unchanged)")
+    print(f"       corpus/text/{name}.md (readable copy, about {len(text) // 4:,} tokens)")
+    missing = [k for k, v in (("title", title), ("publisher", publisher), ("language", language), ("description", description)) if v == TBC]
+    if missing:
+        print(f"To complete in the header of corpus/text/{name}.md: {', '.join(missing)}.")
+    print(f'Next, in "workshop C": summarize corpus/{original}')
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Refused as e:
+        print(e, file=sys.stderr)
+        sys.exit(e.code)
+    except Exception as e:                         # never a Python traceback for participants
+        print(f"corpus-add stopped on an unexpected error ({type(e).__name__}: {e}). Nothing was added. "
+              "Ask the facilitator.", file=sys.stderr)
+        sys.exit(4)

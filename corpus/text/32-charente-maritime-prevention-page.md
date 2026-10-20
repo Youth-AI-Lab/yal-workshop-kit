@@ -10,7 +10,7 @@ publisher: "Préfecture de la Charente-Maritime"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://www.charente-maritime.gouv.fr/Actions-de-l-Etat/Securite/Securite-civile/Prevention-des-incendies-de-foret-d-espaces-naturels-et-agricoles, title: "Prévention des incendies de forêt, d'espaces naturels et agricoles" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
 # Prévention des incendies de forêt, d'espaces naturels et agricoles
 
@@ -141,5 +141,5 @@ Partager la page
 * Partager sur X (anciennement Twitter)
 * Partager sur LinkedIn
 *
-*
+* Copier dans le presse-papier
 *

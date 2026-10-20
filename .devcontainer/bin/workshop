@@ -50,7 +50,8 @@ case "$mode" in
     everything="$RUN_DIR/knowledge-in-context.md"
     {
       echo "# Reference knowledge, loaded in full at startup:"
-      echo "# summaries/ (short verified summaries, one per source) and corpus/ (the full official texts)"
+      echo "# summaries/ (short summaries, one per source; their header says who verified them) and"
+      echo "# corpus/text/ (readable copies of the full official documents)"
       # The summaries and the readable copy of every official document (corpus/text/);
       # never the originals (HTML, PDF, Word), which are far too big or not text.
       for f in summaries/*.md corpus/text/*.md; do
@@ -66,7 +67,7 @@ case "$mode" in
     cd "$KIT"
     args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
            --mcp-config "$KIT/.mcp.json"
-           --append-system-prompt "The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short verified summaries in English, one per source: start there) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used.")
+           --append-system-prompt "The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English, one per source: start there; their OKF header says who verified them: "status: draft" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used.")
     ;;
   W|w)
     # Only reading, and reading summaries/ and corpus/ is denied by permission rules (not just

@@ -53,7 +53,8 @@ source, who wrote it, and who verified it. In a summary, a `verified` line start
 Each mode changes what enters the context. `bare` has no system prompt file and no access
 to files: it is the starting point. A adds the system prompt. B adds everything we know.
 C loads nothing in advance but lets the model fetch what it needs. W lets it read only the
-wiki. To see what a mode sets up: `workshop help`.
+wiki. Block D is not a mode: it uses mode C to add knowledge. To see what a mode sets up:
+`workshop help`.
 
 ## First of all: the test set
 
@@ -135,6 +136,27 @@ By the facilitator: the same documents, cut into chunks and indexed by similarit
 the model saw (excerpts) with what it claims. RAG keeps its place when the documents are too
 many to search file by file or when the questions are vague.
 
+## Block D — Curating knowledge: the human in the loop
+
+Who lets a document in, and who vouches for what the chatbot says about it? Here the model
+writes and a person validates; the OKF header of the summary keeps track of both. Do this block
+**after** `replay C`: it adds knowledge, so B and C would no longer answer the same questions.
+
+1. Choose an official document of your territory: a web page, or a PDF that contains text.
+   In the terminal: `corpus-add <address of the document> --name <short-name>`.
+   The original is kept unchanged in `corpus/`, a readable copy goes to `corpus/text/`, and a
+   line is added to `corpus/index.md`. A scanned PDF (only images) is refused.
+2. In `workshop C`, ask: "summarize corpus/8N-…" (the number `corpus-add` gave you). The
+   `summarize` skill writes a draft in `summaries/` and a verification table in
+   `summaries/checks/`.
+3. Open the table next to the original document. For each sentence, find the original passage
+   (Ctrl+F) and check it, in the language of the document. Fill the "OK?" column.
+4. Tell the chatbot: "I checked summary 8N, I am <first name last name>", or "sentence 3 is
+   wrong, it should be …". The `validate-summary` skill applies your corrections and adds
+   your name to `verified` in the header.
+5. Open `summaries/index.md`: your summary went from "draft, not verified" to "human-reviewed".
+6. To go further: "ingest summaries/8N-… into the wiki", then look at `wiki/log.md`.
+
 ## Block W — Organised knowledge (level 3e)
 
 Instead of rediscovering the documents at every question, the model can maintain a wiki:
@@ -177,6 +199,7 @@ Levels 4 (local model) and 5 (fine-tuning) are presented by the facilitator.
 ## Landmarks
 
 - `workshop help`: what each mode does.
+- `corpus-add --help`: how to add a document to `corpus/`.
 - `/context`: details what fills the context window.
 - `/mcp`: state of the MCP servers (mode C only).
 - `/status`: shows the gateway and the key in use.

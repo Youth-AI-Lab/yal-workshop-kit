@@ -10,7 +10,7 @@ publisher: "Provincia di Benevento (Campania)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://www.provincia.benevento.it/system/files/field/allegati/2026/06/campagna_aib_2026_-_provincia_di_benevento_signed.pdf, title: "Campagna AIB 2026 — Provincia di Benevento" }
-generated: { by: process:pdf-text-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:pdf-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 1 
  

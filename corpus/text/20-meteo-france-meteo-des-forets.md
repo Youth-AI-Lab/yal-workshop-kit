@@ -10,13 +10,17 @@ publisher: "Météo-France"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
   - { id: original, resource: https://meteofrance.com/meteo-des-forets, title: "Météo des forêts" }
-generated: { by: process:html-main-content-extraction, at: 2026-10-20T09:40:48Z }
+generated: { by: process:html-main-content-extraction, at: 2026-10-20T10:26:36Z }
 ---
-Prévisions
+Rechercher une ville, un pays...
+
+ Prévisions
 
 Tous les résultats
 
  Articles
+
+${getNbUnviewedNotifications()}
 
 * ${formatDate(notification.start_date)}${formatDate(notification.date_created)}
  ${notification.message}
