@@ -1,6 +1,6 @@
 # Charente-Maritime (La Rochelle): the six fire vigilance levels
 Source: Préfecture de la Charente-Maritime, Arrêté préfectoral n° 26EB142 "réglementant l'usage du feu à l'air libre en vue de prévenir les incendies de forêt et d'espaces naturels dans le département de la Charente-Maritime", https://www.charente-maritime.gouv.fr/contenu/telechargement/85472/601661/file/AP26EB142-Usages_du_feu_2026_04_30.pdf, signed in La Rochelle on 30 April 2026, French (scanned PDF, text read by OCR)
-Last checked: 2026-10-19 by Claude (draft — needs human verification)
+Last checked: 2026-10-20 by Sébastien Nedjar
 
 In Charente-Maritime, the use of fire outdoors is regulated by prefectoral order n° 26EB142.
 The order came into force on 1 May 2026.
