@@ -43,9 +43,12 @@ to files: it is the starting point. To see what a mode sets up: `workshop help`.
 
 ## First of all: the test set
 
-1. Open `test-questions.md`. Write your questions in the Question column **before** customising
-   anything, with the expected answer and its source.
+1. Open `test-questions.md`. Ten questions are ready, each with its expected answer and source.
+   If you like, replace some with your own (a question about your territory, for example),
+   keeping the category. Do it **now**: never change them after the next step.
 2. Type `replay bare`. Each question is asked to the bare chatbot, in a fresh conversation.
+   Tip: run `replay` in a second terminal (the `+` of the terminal panel) and keep chatting
+   in the first one.
 3. Open the file created in `answers/` and score each answer from 0 to 2, column Bare.
 
 You will do the same after each block. The questions don't change: otherwise nothing is comparable.
