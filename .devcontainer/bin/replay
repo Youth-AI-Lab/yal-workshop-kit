@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -109,6 +110,7 @@ def main():
     lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
              f"Score each answer from 0 to 2 in the {mode.capitalize()} column of scores.md.", ""]
     total, errors, in_a_row = 0.0, 0, 0
+    start = time.monotonic()
     for i, (n, q) in enumerate(questions, 1):
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)
         answer, context, actions, cost, error, peeked = ask(mode, q)
@@ -133,7 +135,8 @@ def main():
         if in_a_row == 3:
             print("Three errors in a row: stopping. Check the key (workshop-login) and the network.")
             break
-    print(f"Answers: {out.relative_to(KIT)}   (cost: ${total:.2f})")
+    minutes, seconds = divmod(round(time.monotonic() - start), 60)
+    print(f"Answers: {out.relative_to(KIT)}   (cost: ${total:.2f}, time: {minutes} min {seconds:02d} s)")
     if errors:
         print(f"{errors} question(s) failed: they are marked ERROR in the file. Ask the facilitator.")
         sys.exit(1)
