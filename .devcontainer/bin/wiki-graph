@@ -229,17 +229,22 @@ def build(pages, kit, highlight):
     chosen = {s for s in sources if highlight and matches(s, highlight)}
     marked_pages = {name for name, page in pages.items() if page["sources"] & chosen}
 
-    out = ["flowchart LR"]
+    # Readable in a dark or a light VS Code theme: mid-grey links, bigger text, top to bottom.
+    out = ['%%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 25, "rankSpacing": 70}, '
+           '"themeVariables": {"fontSize": "18px", "lineColor": "#8aa1b8"}}}%%',
+           "flowchart TB"]
     for name, page in pages.items():
         out.append(f"    {node_id('p_', name)}[{label(page['title'])}]")
     for name in broken:
         out.append(f"    {node_id('p_', name)}[{label(name + ' (missing page)')}]")
     for source in sources:
+        # Short label: the number (the one --highlight takes) and the folder.
         name = PurePosixPath(source).name
+        number = name.split("-", 1)[0] if name[:2].isdigit() else name
         if source.startswith("summaries/"):
-            out.append(f"    {node_id('s_', source)}([{label(name)}])")
+            out.append(f"    {node_id('s_', source)}([{label(number + ' · summary')}])")
         else:
-            out.append(f"    {node_id('s_', source)}[({label(name)})]")
+            out.append(f"    {node_id('s_', source)}[({label(number + ' · corpus')})]")
 
     edges, marked_edges = [], []
     for name, page in pages.items():
@@ -252,6 +257,7 @@ def build(pages, kit, highlight):
                     marked_edges.append(len(edges))
                 edges.append(f"    {node_id('s_', source)} -.-> {node_id('p_', name)}")
     out += edges
+    out.append("    linkStyle default stroke:#8aa1b8,stroke-width:2px")
 
     out += [
         "    classDef page fill:#e8f1fb,stroke:#2f6db5,color:#102a43",
