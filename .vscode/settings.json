@@ -1,0 +1,6 @@
+{
+  // Atelier : pas de panneau de chat à droite ni de fonctions Copilot. Le chatbot de l'atelier
+  // est Claude Code, dans le terminal ; le chat de VS Code prêterait à confusion.
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "chat.disableAIFeatures": true
+}
