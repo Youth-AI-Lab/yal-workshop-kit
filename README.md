@@ -1142,8 +1142,10 @@ check its consistency.
    lint the wiki
    ```
 
-   The model checks footnotes, links and contradictions. **It fixes nothing without your
-   agreement**: the lint reports, the human decides. Leave: press Ctrl+C twice.
+   The model checks footnotes, links and contradictions. It reads the whole wiki and its
+   sources: it takes **about 2 minutes** and fills about half of the gauge. **It fixes nothing
+   without your agreement**: the lint reports, the human decides. Read its proposals, choose one
+   or two to apply (or none), then leave: press Ctrl+C twice.
 7. **Replay** and **score column E**:
 
    ```bash
