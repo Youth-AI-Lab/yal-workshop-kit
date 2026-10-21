@@ -32,7 +32,8 @@ ENV GRAPHIFY_NO_AUTO_REFRESH=1
 # Commandes de l'atelier.
 COPY .devcontainer/bin/ /usr/local/bin/
 RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/replay /usr/local/bin/workshop-login /usr/local/bin/corpus-add \
-    /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore
+    /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore \
+    /usr/local/bin/chatbot-export
 
 # Rappel dans chaque nouveau terminal tant que le binôme n'a pas enregistré sa clé.
 RUN echo '[[ -f "$HOME/.workshop-key" ]] || echo "Welcome! First, save the API key of your pair: workshop-login"' \

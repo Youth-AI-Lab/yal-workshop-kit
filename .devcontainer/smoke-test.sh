@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore; do command -v "$c" || echec "$c absent"; done
+for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export; do command -v "$c" || echec "$c absent"; done
 
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
@@ -69,6 +69,19 @@ curl -sf -o /dev/null http://127.0.0.1:8799/graph.html || echec "wiki-explore : 
 WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore stop | grep -q closed || echec "wiki-explore stop"
 [[ ! -e "$HOME/.claude/skills/graphify" ]] || echec "graphify a installé sa skill dans ~/.claude (fausse les modes)"
 echo "wiki-explore : OK"
+
+etape "chatbot-export : le paquet du chatbot (instructions + connaissances)"
+cp "$copie/examples/AGENTS.feurisson.md" "$copie/AGENTS.md"
+WORKSHOP_HOME="$copie" chatbot-export --name "Smoke test" > /dev/null || echec "chatbot-export"
+/opt/workshop/venv/bin/python -c "
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1]); n = z.namelist()
+assert 'instructions.md' in n and 'README.md' in n, n[:5]
+assert '<!--' not in z.read('instructions.md').decode(), 'commentaires dans les instructions'
+for p in ('summaries__', 'wiki__', 'corpus-text__'):
+    assert any(x.startswith('knowledge/' + p) for x in n), p
+print(len(n), 'fichiers dans le paquet')
+" "$copie/smoke-test.zip" || echec "chatbot-export : paquet incomplet"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?

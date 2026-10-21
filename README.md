@@ -293,6 +293,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `wiki-start` | terminal | unpacks the wiki (block E) |
 | `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
 | `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
+| `chatbot-export` | terminal | packs your chatbot (instructions + knowledge) into one `.zip` file (Closing) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
 | `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
@@ -1363,6 +1364,38 @@ Tools to build your own chatbot:
 - **Visual building blocks**: tools like Flowise or Langflow, where you connect boxes.
 - **Code**: libraries like LangChain or LlamaIndex, or the same mechanisms as today (system
   prompt, skills, MCP) with the Claude Agent SDK.
+
+### Your chatbot, packed and shown in another tool
+
+Everything you built today fits in one file: your instructions and all your knowledge.
+
+1. **Pack it** (in the terminal, with the name of your chatbot):
+
+   ```bash
+   chatbot-export --name "Feurisson"
+   ```
+
+   You should see a line like:
+
+   ```
+   Wrote feurisson.zip: instructions + 61 knowledge files (19 summaries, 21 wiki pages, 21 documents).
+   ```
+
+   The file holds `instructions.md` (your `AGENTS.md`, without the comments), the folder
+   `knowledge/` (your summaries, your wiki pages and the official documents) and a short
+   `README.md` that tells how to rebuild the chatbot in a Claude Project, a Gemini Gem or Open
+   WebUI.
+2. **Download it**: in the file list, right-click on the `.zip` file, then **"Download"**. Keep
+   it: it is your chatbot, ready to rebuild after the workshop.
+3. **Give it to the facilitator** if they ask for it. They load one or two chatbots of the room
+   into **Open WebUI**, the tool of the RAG demo, and ask them the test questions on the big
+   screen: your instructions and your knowledge, in a real chat tool.
+
+> ℹ️ **Note.** In Open WebUI, your chatbot **searches its own knowledge base** before it answers,
+> as in mode E. The RAG demo of block B only gave the model 5 excerpts picked by a search
+> engine. Watch the difference on question 10.
+
+The live tool of block D (MCP) is not in the file: in another tool, it has to be connected again.
 
 ---
 

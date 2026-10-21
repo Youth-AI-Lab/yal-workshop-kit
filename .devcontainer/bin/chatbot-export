@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Packs the chatbot you built today into one file, to rebuild it in another tool.
+
+    chatbot-export                       writes my-chatbot.zip
+    chatbot-export --name "Feurisson"    writes feurisson.zip, with this name inside
+
+The file holds the two boxes of every chatbot tool:
+  - Instructions: your AGENTS.md (block A), without the comments;
+  - Knowledge: your summaries (blocks B and C), your wiki pages (block E) and the readable
+    copies of the official documents (corpus/text/).
+To download it: right-click on the file in the file list, then "Download".
+"""
+
+import argparse
+import datetime
+import os
+import pathlib
+import re
+import sys
+import unicodedata
+import zipfile
+
+KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
+
+HOW_TO = """# {name} - your chatbot, ready to rebuild
+
+Exported from the Youth AI Lab workshop on {date}.
+
+## What is inside
+
+- `instructions.md`: the system prompt you wrote in AGENTS.md (block A). This is the
+  **Instructions** box.
+- `knowledge/`: {count} files. This is the **Knowledge** box.
+  - `summaries__…`: the short summaries, checked or not (their header says who verified them);
+  - `wiki__…`: the pages of your wiki, each fact with its footnote (block E);
+  - `corpus-text__…`: the readable copies of the official documents.
+
+## Rebuild it
+
+- **Claude Project** (claude.ai): create a project, paste `instructions.md` into the project
+  instructions, and add the files of `knowledge/` to the project knowledge.
+- **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
+  instructions, and upload the files of `knowledge/` as its knowledge.
+- **Open WebUI** (your own server): create a knowledge base with the files of `knowledge/`,
+  then a model with `instructions.md` as its system prompt and this knowledge attached.
+
+## Before you trust it
+
+Ask it your test questions again (`test-questions.md`), and compare with the scores of the
+workshop. The tool changes; the test does not.
+"""
+
+
+def slug(text):
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "my-chatbot"
+
+
+def instructions(kit):
+    text = (kit / "AGENTS.md").read_text(encoding="utf-8")
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)          # hints for you, not for the model
+    text = re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
+    filled = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
+    return text, bool(filled)
+
+
+def knowledge(kit):
+    files = []
+    for folder, prefix in (("summaries", "summaries"), ("wiki", "wiki"), ("corpus/text", "corpus-text")):
+        for path in sorted((kit / folder).glob("*.md")):
+            if path.name in ("00-template.md", "CLAUDE.md", "graph.md"):
+                continue
+            files.append((f"knowledge/{prefix}__{path.name}", path))
+    return files
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="chatbot-export", description=__doc__.split("\n\n")[0],
+                                     epilog=__doc__.split("\n\n", 1)[1],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--name", default="my-chatbot", help="the name of your chatbot")
+    args = parser.parse_args()
+    if not (KIT / "AGENTS.md").is_file():
+        sys.exit(f"No AGENTS.md in {KIT}: run this command in the workshop.")
+
+    text, filled = instructions(KIT)
+    files = knowledge(KIT)
+    name = args.name.strip() or "my-chatbot"
+    out = KIT / f"{slug(name)}.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("README.md", HOW_TO.format(name=name, date=datetime.date.today().isoformat(),
+                                                    count=len(files)))
+        archive.writestr("instructions.md", text)
+        archive.writestr("chatbot-name.txt", name + "\n")
+        for arcname, path in files:
+            archive.write(path, arcname)
+
+    counts = {p: sum(1 for a, _ in files if a.startswith(f"knowledge/{p}__")) for p in ("summaries", "wiki", "corpus-text")}
+    print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
+          f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents).")
+    if not filled:
+        print("Warning: AGENTS.md has no text under its titles yet (block A): the instructions are empty.")
+    if not counts["wiki"]:
+        print("Note: no wiki pages (block E not done yet, or no wiki-start).")
+    print(f'To download it: right-click on {out.name} in the file list, then "Download".')
+
+
+if __name__ == "__main__":
+    main()

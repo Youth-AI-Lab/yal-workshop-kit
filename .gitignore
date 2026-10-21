@@ -2,3 +2,5 @@
 answers/
 graphify-out/
 __pycache__/
+# Paquets écrits par chatbot-export
+/*.zip
