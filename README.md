@@ -780,9 +780,11 @@ yourselves.
    ```
 
    Its answer is **not in the summaries**: it is only in the full text of an order.
-3. **Read the steps** in the conversation. You should see the model read an index, search with
-   `grep`, then open a document in `corpus/text/`. It reads only what seems useful. **The gauge
-   stays low.** The exact steps may vary from one try to the next.
+3. **Read the steps** in the conversation. Above the answer, a grey line sums them up, for
+   example `Read 4 files, ran 1 shell command`: **click on it** to see the details. You should
+   see the model search with `grep`, read an index and a summary, then open the full order in
+   `corpus/text/` (`43-…`). It reads only what seems useful. **The gauge stays low**: about 30k,
+   against 100k in mode B. The exact steps may vary from one try to the next.
 4. **Ask a question whose answer is nowhere**, for example question 7:
 
    ```
