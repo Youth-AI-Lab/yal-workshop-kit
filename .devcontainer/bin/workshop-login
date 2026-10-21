@@ -36,7 +36,7 @@ if [[ -z "$key" ]]; then
   exit 1
 fi
 if [[ "$key" =~ sk-.*sk- ]]; then
-  echo "The key seems to be pasted twice. Type workshop-login again and paste it only once." >&2
+  echo "The key seems to have been pasted twice. Type workshop-login again and paste it only once." >&2
   exit 1
 fi
 

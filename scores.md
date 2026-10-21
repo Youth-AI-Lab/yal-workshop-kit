@@ -1,6 +1,6 @@
 # Scores - one line per question, one column per mode
 
-Score each answer of `answers/` from **0 to 2** (the rules are in `test-questions.md`, "How to
+Score each answer in `answers/` from **0 to 2** (the rules are in `test-questions.md`, "How to
 score"). Type the number in the empty space of the right column, save (`Ctrl+S`), and add up
 each column in the last row.
 

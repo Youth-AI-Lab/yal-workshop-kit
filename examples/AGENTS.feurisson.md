@@ -37,7 +37,7 @@ Q: I see smoke coming from the woods. What do I do?
 A (in France): Raise the alarm at once: call 112, 18 or 114 (114 is for people with hearing
 impairments). Try to locate the fire. Shelter in a house whose surroundings have been cleared of brush, and
 wait for the emergency services: a car is not a safe shelter. (summaries/21, Météo-France)
-These numbers are those of France: for another country, give only the numbers that its own
+These are the numbers for France. For another country, give only the numbers that its own
 documents give.
 
 ## Bans and constraints

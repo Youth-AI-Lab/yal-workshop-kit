@@ -4,7 +4,7 @@
     chatbot-export                       writes my-chatbot.zip
     chatbot-export --name "Feurisson"    writes feurisson.zip, with this name inside
 
-The file holds the two boxes of every chatbot tool:
+The file holds what goes into the two boxes of every chatbot tool:
   - Instructions: your AGENTS.md (block A), without the comments;
   - Knowledge: your summaries (blocks B and C), your wiki pages (block E) and the readable
     copies of the official documents (corpus/text/).
@@ -38,16 +38,16 @@ Exported from the Youth AI Lab workshop on {date}.
 ## Rebuild it
 
 - **Claude Project** (claude.ai): create a project, paste `instructions.md` into the project
-  instructions, and add the files of `knowledge/` to the project knowledge.
+  instructions, and add the files in `knowledge/` to the project knowledge.
 - **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
-  instructions, and upload the files of `knowledge/` as its knowledge.
-- **Open WebUI** (your own server): create a knowledge base with the files of `knowledge/`,
+  instructions, and upload the files in `knowledge/` as its knowledge.
+- **Open WebUI** (your own server): create a knowledge base with the files in `knowledge/`,
   then a model with `instructions.md` as its system prompt and this knowledge attached.
 
 ## Before you trust it
 
-Ask it your test questions again (`test-questions.md`), and compare with the scores of the
-workshop. The tool changes; the test does not.
+Ask it your test questions again (`test-questions.md`), and compare with your scores from the
+workshop (`scores.md`). The tool changes; the test does not.
 """
 
 
@@ -99,9 +99,9 @@ def main():
     print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
           f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents).")
     if not filled:
-        print("Warning: AGENTS.md has no text under its titles yet (block A): the instructions are empty.")
+        print("Warning: AGENTS.md has no text under its headings yet (block A): the instructions are empty.")
     if not counts["wiki"]:
-        print("Note: no wiki pages (block E not done yet, or no wiki-start).")
+        print("Note: no wiki pages (block E is not done yet, or wiki-start was not run).")
     print(f'To download it: right-click on {out.name} in the file list, then "Download".')
 
 

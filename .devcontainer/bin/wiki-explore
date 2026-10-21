@@ -6,7 +6,7 @@
 #   wiki-explore stop                closes the map
 #   wiki-explore explain "<name>"    one node of the graph and all its neighbours
 #   wiki-explore path "<A>" "<B>"    the shortest path between two nodes
-#   wiki-explore query "<words>"     the nodes around some words
+#   wiki-explore query "<words>"     the nodes that match these words, and their neighbours
 #
 # Names: copy them from the map or from wiki/graphify-out/GRAPH_REPORT.md. If a name matches
 # several nodes, the command lists them: copy the "id" it gives and try again.
@@ -54,7 +54,7 @@ PY
     echo $! > "$PID_FILE"
     sleep 1
     if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-      echo "The map could not start (is port $PORT already used?). Ask the facilitator." >&2
+      echo "The map could not start (is port $PORT already in use?). Ask the facilitator." >&2
       exit 1
     fi
     echo "The map of the wiki is open at: http://localhost:$PORT"
@@ -77,7 +77,7 @@ PY
     exec "$GRAPHIFY" query "$2" --budget 1000 --graph "$GRAPH"
     ;;
   *)
-    echo "Unknown: $1. See: wiki-explore help" >&2
+    echo "Unknown command: $1. See: wiki-explore help" >&2
     exit 1
     ;;
 esac
