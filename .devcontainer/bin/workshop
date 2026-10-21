@@ -7,6 +7,7 @@
 #   workshop C      system prompt + file search + skills (nothing preloaded)
 #   workshop D      C + a live tool through MCP (today's fire danger level)
 #   workshop E      D + the wiki (wiki/), read first: the complete chatbot (after wiki-start)
+#   workshop F      E + the wiki as a knowledge graph (graphify), queried through MCP tools
 #
 # Without a mode: D. Arguments after the mode are passed to claude
 # (this is how `replay` asks its questions: workshop B -p "question").
@@ -16,6 +17,7 @@ KIT="${WORKSHOP_HOME:-$HOME/workshop}"
 BARE_DIR="${WORKSHOP_BARE_DIR:-$HOME/.workshop-bare}"
 RUN_DIR="${WORKSHOP_RUN_DIR:-$HOME/.workshop-run}"
 MOD_DIR="${WORKSHOP_MOD_DIR:-/opt/workshop/claude-code-playground/claude-code/mods/token-weather}"
+GRAPHIFY_MCP="${WORKSHOP_GRAPHIFY_MCP:-/opt/workshop/venv/bin/graphify-mcp}"
 
 mode="D"
 if [[ $# -gt 0 && "$1" != -* ]]; then mode="$1"; shift; fi
@@ -101,19 +103,39 @@ case "$mode" in
            --mcp-config "$KIT/.mcp.json"
            --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its source. If the wiki is not enough, search the sources. $knowledge")
     ;;
+  F|f)
+    # E + the graph of the wiki built by graphify (wiki/graphify-out/graph.json), served by
+    # graphify's MCP server: the model can query the graph before it opens a page.
+    cd "$KIT"
+    if [[ ! -f "$KIT/wiki/graphify-out/graph.json" ]]; then
+      echo "No graph of the wiki yet. First type: wiki-start" >&2
+      exit 1
+    fi
+    mkdir -p "$RUN_DIR"
+    python3 - "$KIT/.mcp.json" "$GRAPHIFY_MCP" "$KIT/wiki/graphify-out/graph.json" > "$RUN_DIR/mcp-f.json" <<'PY'
+import json, sys
+config = json.load(open(sys.argv[1], encoding="utf-8"))
+config["mcpServers"]["graphify"] = {"command": sys.argv[2], "args": [sys.argv[3]]}
+print(json.dumps(config, indent=2))
+PY
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger" "mcp__graphify"
+           --disallowedTools "mcp__graphify__list_prs" "mcp__graphify__get_pr_impact" "mcp__graphify__triage_prs"
+           --mcp-config "$RUN_DIR/mcp-f.json"
+           --append-system-prompt "The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, get_neighbors, shortest_path): each node is a concept, an organisation, a rule or a page of the wiki, with the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the sources. $knowledge")
+    ;;
   -h|--help|help)
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
   *)
-    echo "Unknown mode: $mode. Modes: bare, A, B, C, D, E (workshop help)." >&2
+    echo "Unknown mode: $mode. Modes: bare, A, B, C, D, E, F (workshop help)." >&2
     exit 1
     ;;
 esac
 
 # Banner, except when a question is asked directly (-p): the output must stay clean.
 if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then
-  echo "Workshop — mode $mode. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E" >&2
+  echo "Workshop — mode $mode. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F" >&2
 fi
 # WORKSHOP_DRY_RUN=1: print the command instead of running it (used by the smoke test).
 if [[ -n "${WORKSHOP_DRY_RUN:-}" ]]; then

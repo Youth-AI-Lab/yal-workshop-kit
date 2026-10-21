@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Block F: explore the knowledge graph of the wiki, built by graphify before the session.
+# No model is called: these commands only read wiki/graphify-out/graph.json.
+#
+#   wiki-explore                     opens the interactive map in your browser (Ctrl+C to stop)
+#   wiki-explore explain "<name>"    one node of the graph and all its neighbours
+#   wiki-explore path "<A>" "<B>"    the shortest path between two nodes
+#   wiki-explore query "<words>"     the nodes around some words
+#
+# Names: copy them from the map or from wiki/graphify-out/GRAPH_REPORT.md. If a name matches
+# several nodes, the command lists them: copy the "id" it gives and try again.
+set -euo pipefail
+
+KIT="${WORKSHOP_HOME:-$HOME/workshop}"
+OUT="$KIT/wiki/graphify-out"
+GRAPH="$OUT/graph.json"
+GRAPHIFY="${WORKSHOP_GRAPHIFY:-/opt/workshop/venv/bin/graphify}"
+PORT="${WORKSHOP_GRAPH_PORT:-8765}"
+# graphify must never install or refresh its own skill in ~/.claude: it would change every mode.
+export GRAPHIFY_NO_AUTO_REFRESH=1
+
+case "${1:-}" in -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+if [[ ! -f "$GRAPH" ]]; then
+  echo "No graph of the wiki yet. First type: wiki-start" >&2
+  exit 1
+fi
+
+case "${1:-}" in
+  "")
+    echo "The map of the wiki is at: http://localhost:$PORT/graph.html"
+    echo "Your browser should open it in a new tab. If not: Ports tab (bottom panel) -> $PORT -> Open in Browser."
+    echo "Drag to move, scroll to zoom, click a node to see its links. To stop: Ctrl+C."
+    cd "$OUT"
+    exec python3 -m http.server "$PORT" --bind 127.0.0.1
+    ;;
+  explain)
+    [[ $# -eq 2 ]] || { echo 'Usage: wiki-explore explain "<name>"' >&2; exit 1; }
+    exec "$GRAPHIFY" explain "$2" --graph "$GRAPH"
+    ;;
+  path)
+    [[ $# -eq 3 ]] || { echo 'Usage: wiki-explore path "<A>" "<B>"' >&2; exit 1; }
+    exec "$GRAPHIFY" path "$2" "$3" --undirected --graph "$GRAPH"
+    ;;
+  query)
+    [[ $# -eq 2 ]] || { echo 'Usage: wiki-explore query "<words>"' >&2; exit 1; }
+    exec "$GRAPHIFY" query "$2" --budget 1000 --graph "$GRAPH"
+    ;;
+  *)
+    echo "Unknown: $1. See: wiki-explore help" >&2
+    exit 1
+    ;;
+esac

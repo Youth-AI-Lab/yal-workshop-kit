@@ -19,16 +19,20 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/claude-version
 # Environnement Python du serveur MCP, et mod token-weather (jauge de contexte).
 RUN python3 -m venv /opt/workshop/venv \
     && /opt/workshop/venv/bin/pip install --no-cache-dir -q "mcp[cli]>=2,<3" \
-         "beautifulsoup4==4.12.3" "markdownify==0.13.1" "pypdf==5.4.0" \
+         "beautifulsoup4==4.12.3" "markdownify==0.13.1" "pypdf==5.4.0" "graphifyy==0.9.92" \
     && git clone -q --depth 1 https://github.com/anthropics/claude-code-playground.git \
          /opt/workshop/claude-code-playground \
     && rm -rf /opt/workshop/claude-code-playground/.git \
     && chmod -R a+rX /opt/workshop
 
+# graphify (bloc F) ne doit jamais installer ni rafraîchir sa skill dans ~/.claude : elle
+# s'ajouterait à tous les modes.
+ENV GRAPHIFY_NO_AUTO_REFRESH=1
+
 # Commandes de l'atelier.
 COPY .devcontainer/bin/ /usr/local/bin/
 RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/replay /usr/local/bin/workshop-login /usr/local/bin/corpus-add \
-    /usr/local/bin/wiki-start /usr/local/bin/wiki-graph
+    /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore
 
 # Rappel dans chaque nouveau terminal tant que le binôme n'a pas enregistré sa clé.
 RUN echo '[[ -f "$HOME/.workshop-key" ]] || echo "Welcome! First, save the API key of your pair: workshop-login"' \

@@ -20,7 +20,7 @@ from pathlib import Path
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
-MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E"}
+MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
 TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
 
@@ -96,7 +96,7 @@ def main():
         print(__doc__.strip())
         sys.exit(1)
     mode = MODES[sys.argv[1].lower()]
-    if mode == "E" and not (KIT / "wiki" / "index.md").is_file():
+    if mode in ("E", "F") and not (KIT / "wiki" / "index.md").is_file():
         print("No wiki yet. First type: wiki-start")
         sys.exit(1)
     numbers = {int(n) for n in sys.argv[2:] if n.isdigit()}

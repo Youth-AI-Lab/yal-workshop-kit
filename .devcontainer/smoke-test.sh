@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login corpus-add wiki-start wiki-graph; do command -v "$c" || echec "$c absent"; done
+for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore; do command -v "$c" || echec "$c absent"; done
 
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
@@ -55,6 +55,18 @@ WORKSHOP_HOME="$copie" wiki-start || echec "wiki-start a échoué"
 [[ -f "$copie/wiki/index.md" && -f "$copie/.claude/skills/ingest/SKILL.md" && -f "$copie/.claude/skills/lint/SKILL.md" ]] \
   || echec "wiki-start : wiki/ ou skills manquants"
 WORKSHOP_HOME="$copie" wiki-start | grep -q "already there" || echec "wiki-start rejoué : message attendu"
+
+etape "wiki-explore : le graphe de graphify se lit sans modèle, sans installer de skill"
+[[ -f "$copie/wiki/graphify-out/graph.html" && -f "$copie/wiki/graphify-out/GRAPH_REPORT.md" ]] \
+  || echec "wiki-start : graphe de graphify absent"
+WORKSHOP_HOME="$copie" wiki-explore path "Montoro protection strips" "Obligations légales de débroussaillement" \
+  | grep -q "Shortest path" || echec "wiki-explore path"
+WORKSHOP_HOME="$copie" wiki-explore explain pla_alfa_catalonia | grep -q "Connections" || echec "wiki-explore explain"
+( WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 timeout 5 wiki-explore > /dev/null 2>&1 & )
+sleep 2
+curl -sf -o /dev/null http://127.0.0.1:8799/graph.html || echec "wiki-explore : carte non servie"
+[[ ! -e "$HOME/.claude/skills/graphify" ]] || echec "graphify a installé sa skill dans ~/.claude (fausse les modes)"
+echo "wiki-explore : OK"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
@@ -120,6 +132,8 @@ for ligne in sys.stdin:
     if mode == "C": ok = ok and mcp == [] and skills == curation
     if mode == "D": ok = ok and mcp == ["fire-danger"] and skills == curation
     if mode == "E": ok = ok and mcp == ["fire-danger"] and skills == sorted(curation + ["ingest", "lint"])
+    if mode == "F": ok = ok and sorted(mcp) == ["fire-danger", "graphify"] and skills == sorted(curation + ["ingest", "lint"]) \
+        and not any("_prs" in t or "pr_impact" in t for t in d["tools"])
     sys.exit(0 if ok else 1)
 sys.exit("pas d événement init")' "$1" "$2"
 }
@@ -128,6 +142,7 @@ verifie A 0 || echec "mode A"
 verifie C 5 || echec "mode C"
 verifie D 7 || echec "mode D"
 WORKSHOP_HOME="$copie" verifie E 7 || echec "mode E"
+WORKSHOP_HOME="$copie" verifie F 14 || echec "mode F"
 rm -rf "$copie"
 
 rm -f "$HOME/.workshop-key" "$HOME/.claude/settings.json"

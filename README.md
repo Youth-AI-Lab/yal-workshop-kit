@@ -37,9 +37,10 @@
 - [Block A - Give it a personality (★, 15 min)](#block-a---give-it-a-personality--15-min)
 - [Block B - Give it everything you know (★, 12 min)](#block-b---give-it-everything-you-know--12-min)
 - [Demo - Vector RAG (5 min, by the facilitator)](#demo---vector-rag-5-min-by-the-facilitator)
-- [Block C - Let it search, and curate what it knows (★★★, 30 min)](#block-c---let-it-search-and-curate-what-it-knows--30-min)
+- [Block C - Let it search, and curate what it knows (★★★, 25 min)](#block-c---let-it-search-and-curate-what-it-knows--25-min)
 - [Block D - Connect it to live data (★★, 13 min)](#block-d---connect-it-to-live-data--13-min)
-- [Block E - Organise what it knows: the wiki (★★★, 18 min) - Capstone](#block-e---organise-what-it-knows-the-wiki--18-min---capstone)
+- [Block E - Organise what it knows: the wiki (★★★, 13 min) - Capstone](#block-e---organise-what-it-knows-the-wiki--13-min---capstone)
+- [Block F - Explore the knowledge graph (★★, 10 min)](#block-f---explore-the-knowledge-graph--10-min)
 - [Closing - Compare, and take it home (12 min)](#closing---compare-and-take-it-home-12-min)
 - [Going further](#going-further)
 - [Troubleshooting](#troubleshooting)
@@ -66,7 +67,7 @@ new).
 | **Understand** | Opening, A | **explain** what a **context window** is, and why a **system prompt** changes how a chatbot behaves, but not what it knows | `bare`, `A` |
 | **Apply** | B, C (search) | give the chatbot **all its knowledge at once**, then let it **search** the files itself, and **compare** the two with the gauge and the cost | `B`, `C` |
 | **Analyse** | RAG demo, C (curation), D | **check a summary** written by the model against the original document, sentence by sentence; **tell apart** what a document can say and what only a **live tool** can say | `C`, `D` |
-| **Create** | E, Closing | **grow a wiki** with a new source and find its contradictions; **plan your own chatbot** (Instructions and Knowledge) for your territory | `E` |
+| **Create** | E, F, Closing | **grow a wiki** with a new source and find its contradictions; **explore** it as a graph and **check** a connection the model guessed; **plan your own chatbot** (Instructions and Knowledge) for your territory | `E`, `wiki-explore` |
 
 **All session long**, you also practise **testing a chatbot**: the same 11 questions, asked again
 after each block, and scored in the same way. This is the most useful habit you can take home.
@@ -291,6 +292,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `corpus-add …` | terminal | adds an official document to `corpus/` (block C) |
 | `wiki-start` | terminal | unpacks the wiki (block E) |
 | `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
+| `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser; `wiki-explore help` for more (block F) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
 | `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
@@ -378,6 +380,7 @@ Each block answers the question of the day in a different way:
 | C | Search in the files, and skills to curate the knowledge | Per question, what it finds | The model, step by step | `C` |
 | D | A tool that reads live data (MCP) | Per question, if needed | The model, through a tool | `D` |
 | E | A wiki, organised by topic, with a map | Per question, pages already written | The model, beforehand | `E` |
+| F | A knowledge graph of the wiki, to explore | Not in the context: you read the map | You, then you check | `wiki-explore` |
 | (slide) | A local model; fine-tuning | - | - | - |
 
 ```mermaid
@@ -388,14 +391,15 @@ flowchart LR
   B --> C["C: system prompt + search + skills, nothing loaded in advance"]
   C --> D["D: C + a live tool (MCP)"]
   D --> E["E: D + the wiki"]
+  E -.-> F["F: explore the wiki as a graph"]
 ```
 
 Each mode keeps what the previous one had, **except B**: from C on, nothing is loaded in
 advance. The model knows **where** the knowledge is, and goes to fetch what it needs. To see
 what a mode sets up, type `workshop help`.
 
-The session lasts 2 hours: Opening 15 min, A 15 min, B 12 min, RAG demo 5 min, C 30 min,
-D 13 min, E 18 min, Closing 12 min. The facilitator keeps time and tells you when to move on.
+The session lasts 2 hours: Opening 15 min, A 15 min, B 12 min, RAG demo 5 min, C 25 min,
+D 13 min, E 13 min, F 10 min, Closing 12 min. The facilitator keeps time and tells you when to move on.
 
 ---
 
@@ -726,7 +730,7 @@ cheap, but the model only sees what the search engine picked.
 
 ---
 
-## Block C - Let it search, and curate what it knows (★★★, 30 min)
+## Block C - Let it search, and curate what it knows (★★★, 25 min)
 
 ### 📖 Searching is cheaper than reading everything, and its failures are visible
 
@@ -1036,7 +1040,7 @@ territories. What would a model that guesses say?)
 
 ---
 
-## Block E - Organise what it knows: the wiki (★★★, 18 min) - Capstone
+## Block E - Organise what it knows: the wiki (★★★, 13 min) - Capstone
 
 ### 📖 A wiki written in advance saves searching at every question
 
@@ -1077,6 +1081,7 @@ check its consistency.
    ```
    Wiki ready: 18 pages in wiki/ (start with wiki/index.md, history in wiki/log.md).
    New skills: ingest and lint (.claude/skills/).
+   Also: the knowledge graph of the wiki (wiki/graphify-out/), for block F: wiki-explore
    Next: workshop E, then for example: ingest summaries/8N-… into the wiki
    ```
 
@@ -1128,7 +1133,14 @@ check its consistency.
    **1 to 5 topic pages**, puts a footnote on each fact, compares every figure with the wiki,
    and writes a line in `wiki/log.md`. **Watch which pages change.** Its report lists the pages
    created and updated, and the contradictions it found.
-5. **See where your document went**, in the second terminal:
+5. **Replay** in the second terminal while you go on (it takes about 2 minutes), then **score
+   column E**:
+
+   ```bash
+   replay E
+   ```
+
+6. **See where your document went**, in the second terminal:
 
    ```bash
    wiki-graph --highlight 80
@@ -1136,7 +1148,7 @@ check its consistency.
 
    Open `wiki/graph.md` again (`Ctrl+Shift+V`): **your document and the pages it feeds are
    orange.**
-6. **Check the wiki**. In the conversation, ask:
+7. **If time allows, check the wiki**. In the conversation, ask:
 
    ```
    lint the wiki
@@ -1146,18 +1158,13 @@ check its consistency.
    sources: it takes **about 2 minutes** and fills about half of the gauge. **It fixes nothing
    without your agreement**: the lint reports, the human decides. Read its proposals, choose one
    or two to apply (or none), then leave: press Ctrl+C twice.
-7. **Replay** and **score column E**:
-
-   ```bash
-   replay E
-   ```
 
 > ℹ️ **Note.** **When two sources disagree, the wiki keeps both.** The rule of `ingest` is to write
 > "According to one source, X; according to another, Y", with a footnote on each, and never to
 > drop or reword a figure. This is why the log lists contradictions instead of hiding them.
 
-> 💡 **Tip.** **Checkpoint before the Closing**: `wiki-graph --highlight 80` shows orange pages, the lint
-> gave its report, and column E is scored.
+> 💡 **Tip.** **Checkpoint before block F**: `wiki-graph --highlight 80` shows orange pages, and
+> column E is scored.
 
 ### Think about it
 
@@ -1167,6 +1174,134 @@ talk, and a listener who read the other source.)
 
 > **You built** a knowledge base that stays organised as it grows. **Reused in** the *Knowledge*
 > box, when you give it clean pages instead of raw documents.
+
+---
+
+## Block F - Explore the knowledge graph (★★, 10 min)
+
+### 📖 A graph is a map: for people, and for very large wikis
+
+**Context**: the pages of the wiki are linked by "See also" lines and by their footnotes. Before
+the session, the facilitator gave the whole wiki to **graphify**, a free tool. A model read
+every page (it took about 10 minutes) and turned the wiki into a **knowledge graph**: each
+**node** is a page, a rule, an organisation, a figure or an idea; each **edge** says how two
+nodes are related. Some edges were **written in the pages** (graphify marks them `EXTRACTED`).
+Others were **guessed by the model** (`INFERRED`): they are suggestions, not facts.
+
+**Goal**: explore the graph, find a connection you would not have looked for, and **check it
+in the sources**.
+
+**What you will discover**:
+
+- **Communities**: groups of nodes strongly linked together, found by a calculation, not by a
+  person.
+- **Hubs**: the most connected nodes of the wiki.
+- **Surprising connections**: links between documents of different countries.
+- **`EXTRACTED` and `INFERRED`**: what a page says, and what the model guessed.
+
+**What is provided** (unpacked by `wiki-start` in block E):
+
+- `wiki/graphify-out/graph.html`: the **interactive map** of the graph.
+- `wiki/graphify-out/GRAPH_REPORT.md`: the **report** of graphify: hubs, communities,
+  surprising connections, and questions to ask.
+- `wiki-explore`: a command to read the graph. **It calls no model: it is free.**
+
+> ℹ️ **Note.** The graph is a **snapshot** made before the session. Your Benevento page is
+> **not** in it: updating a graph means asking a model to read the pages again.
+
+### What to do
+
+1. **Open the map** (in the terminal, outside a conversation):
+
+   ```bash
+   wiki-explore
+   ```
+
+   You should see:
+
+   ```
+   The map of the wiki is at: http://localhost:8765/graph.html
+   Your browser should open it in a new tab. If not: Ports tab (bottom panel) -> 8765 -> Open in Browser.
+   Drag to move, scroll to zoom, click a node to see its links. To stop: Ctrl+C.
+   ```
+
+   A new browser tab shows the map. **Explore it**: on the right, tick or untick the
+   **communities**; use **Search nodes** to find "Montoro"; **click a node** to see its links.
+   When you are done, go back to the terminal and press **Ctrl+C**.
+2. **Read the report**. Open `wiki/graphify-out/GRAPH_REPORT.md` and press `Ctrl+Shift+V`.
+   1. Read the first lines, **"Corpus Check"**. What does graphify say about the size of our wiki?
+   2. Read **"God Nodes"** (the hubs) and **"Surprising Connections"**. Choose one connection
+      that surprises you.
+3. **Ask the graph**, in the terminal. For example, the shortest path between two nodes:
+
+   ```bash
+   wiki-explore path "Montoro protection strips" "Obligations légales de débroussaillement"
+   ```
+
+   You should see:
+
+   ```
+   Shortest path (1 hops):
+     Montoro protection strips (20 m around settlements, 5 m around land) --semantically_similar_to [INFERRED]--> Obligations légales de débroussaillement (OLD): 200 m zone, 50 m around buildings, 10 m along access
+   ```
+
+   Then one node and all its neighbours:
+
+   ```bash
+   wiki-explore explain pla_alfa_catalonia
+   ```
+
+   If a name matches several nodes, the command lists them with their **id**: copy the id, and
+   try again. Copy names from the map or from the report.
+4. **Check a connection the graph guessed.** The edge between Montoro and the French brush
+   clearing is `INFERRED`: the model guessed it. Is it right? Start mode E and ask:
+
+   ```bash
+   workshop E
+   ```
+
+   ```
+   Compare the clearing distances of the Montoro ordinance and of the French brush-clearing obligation, with their sources.
+   ```
+
+   The answer should confirm the connection, with its sources: **20 m** around settlements in
+   Montoro, **50 m** around buildings in France. **A graph proposes; a person checks**, as for
+   the summaries in block C. Leave: press Ctrl+C twice.
+5. **Discuss in your pair**: does the graph make the chatbot **faster**? The facilitator
+   measured it during the rehearsal, with the graph given to the model as an MCP tool
+   (mode `F`), against mode `E`:
+
+   | Questions | Mode E (wiki) | Mode F (wiki + graph) |
+   |---|---|---|
+   | 1, 3, 5 and 10 | $0.46, 1 min 26 s | $0.51, 1 min 38 s |
+   | "Compare the clearing distances…" | $0.20, 42 s | $0.20, 33 s |
+
+   On our 18 pages, **no**: the index of the wiki is already a good enough map, and the model
+   still reads the pages to get the exact facts. A graph becomes useful when a wiki has
+   **hundreds of pages**, too many for one index, and for **people** who explore.
+
+> 💡 **Tip.** **Checkpoint before the Closing**: the map opened in your browser, and you checked
+> one surprising connection in the sources.
+
+### To go further (if time allows)
+
+Measure it yourselves. **Mode F** is mode E plus the graph, given to the model as tools (MCP):
+
+```bash
+replay F 1 3 10
+```
+
+Compare the context size and the cost with the same questions in your `answers/E-…` file.
+
+### Think about it
+
+The graph took a model about 10 minutes to build for 18 pages, and your Benevento page is
+already missing from it. **What does it cost to keep a graph up to date? And who checks the
+connections the model guessed?**
+
+> **You built** a map of your knowledge. **Reused in** preparing a WikiYouthBot session: the map
+> shows what your documents say together, and the weakly connected nodes show where documents
+> are missing.
 
 ---
 
@@ -1249,6 +1384,10 @@ After the session, if you want to go deeper:
 
 ## Troubleshooting
 
+**"The map of `wiki-explore` does not open."** - Look at the **Ports** tab of the bottom panel:
+on the line `8765`, click the globe icon (**Open in Browser**). If the tab is empty, check that
+`wiki-explore` is still running in the terminal (it stops with Ctrl+C), and type it again.
+
 **`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
 for permission). Type `workshop-login` again and paste the key once: you should see the `*`.
 
@@ -1271,11 +1410,12 @@ the message to the facilitator.
 **`No API key yet. Type: workshop-login`** - You have not saved your key yet. Do
 [Setup, step 3](#step-3---save-the-key-of-your-pair).
 
-**`Unknown mode: Z. Modes: bare, A, B, C, D, E (workshop help).`** - Check the letter after
-`workshop` or `replay`. The modes are `bare`, `A`, `B`, `C`, `D` and `E`.
+**`Unknown mode: Z. Modes: bare, A, B, C, D, E, F (workshop help).`** - Check the letter after
+`workshop` or `replay`. The modes are `bare`, `A`, `B`, `C`, `D`, `E` (and `F`, to go further
+in block F).
 
 **`No wiki yet. First type: wiki-start`** - Mode E needs the wiki. Type `wiki-start` first
-(block E, step 1).
+(block E, step 1). The same for `wiki-explore` and mode F: `No graph of the wiki yet. First type: wiki-start`.
 
 **"I cannot leave the conversation!"** - Don't panic. Press `Ctrl+C` twice. (`/exit` works only
 from mode C on; in modes bare, A and B it says "Unknown command".)

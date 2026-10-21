@@ -4,6 +4,7 @@
 #   wiki/                       pages by topic, index.md, log.md, CLAUDE.md (the rules of the wiki)
 #   .claude/skills/ingest/      "ingest summaries/8N-… into the wiki"
 #   .claude/skills/lint/        "lint the wiki": checks footnotes, links, contradictions
+#   wiki/graphify-out/          the knowledge graph of the wiki, built with graphify (block F)
 # Then: workshop E.
 set -euo pipefail
 
@@ -11,7 +12,7 @@ KIT="${WORKSHOP_HOME:-$HOME/workshop}"
 PACK="$KIT/.workshop/wiki-pack.tar.gz"
 
 case "${1:-}" in
-  -h|--help|help) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help|help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 if [[ ! -f "$PACK" ]]; then
   echo "Wiki pack not found ($PACK). Ask the facilitator." >&2
@@ -26,4 +27,5 @@ tar -xzf "$PACK" -C "$KIT" --no-same-owner
 pages="$(find "$KIT/wiki" -maxdepth 1 -name '*.md' ! -name index.md ! -name log.md ! -name CLAUDE.md | wc -l)"
 echo "Wiki ready: $pages pages in wiki/ (start with wiki/index.md, history in wiki/log.md)."
 echo "New skills: ingest and lint (.claude/skills/)."
+echo "Also: the knowledge graph of the wiki (wiki/graphify-out/), for block F: wiki-explore"
 echo "Next: workshop E, then for example: ingest summaries/8N-… into the wiki"
