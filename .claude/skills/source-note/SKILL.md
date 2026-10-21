@@ -24,3 +24,5 @@ template `summaries/00-template.md`. You never change `corpus/`: it holds the fu
 
 - Invent a source, an organisation or a figure to "complete" the document.
 - Change an existing document without the user's agreement.
+- Create or change a file with a shell command (`cat >`, `sed -i`, `printf >>`, `echo >`…): use the
+  Write and Edit tools, so that the person sees exactly what changes before accepting.

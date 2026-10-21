@@ -761,8 +761,9 @@ yourselves.
 - `corpus-add`: the command that adds a document to `corpus/`.
 
 > ℹ️ **Note.** **Claude Code asks for your permission** before it writes or changes a file. In this block,
-> the skills write files: read what it wants to do, then accept (**Yes**). Searching and
-> reading do not need your permission.
+> the skills write files: read what it wants to do, then accept with **1. Yes**. Do not choose
+> "Yes, and don't ask again": you would no longer see what it writes. Searching and reading do
+> not need your permission.
 
 ### Part 1 - Watch the model search
 

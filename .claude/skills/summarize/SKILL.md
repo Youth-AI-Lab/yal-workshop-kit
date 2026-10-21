@@ -65,3 +65,8 @@ draft and a verification table; a person validates it (skill `validate-summary`)
   ("According to this document, X; summary MM says Y."). Do not decide.
 - If a sentence has no passage to support it, delete the sentence.
 - Never add a `verified` entry yourself, and never mark a summary as checked.
+
+## What you don't do
+
+- Create or change a file with a shell command (`cat >`, `sed -i`, `printf >>`, `echo >`…): use the
+  Write and Edit tools, so that the person sees exactly what changes before accepting.

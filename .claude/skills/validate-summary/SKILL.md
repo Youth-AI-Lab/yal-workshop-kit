@@ -36,3 +36,5 @@ Only a person can validate a summary. You write down what they did and said, not
 - Add it before every row is checked and every correction is confirmed.
 - Change a sentence that the person did not correct.
 - Validate a summary yourself, even if it looks right to you.
+- Create or change a file with a shell command (`cat >`, `sed -i`, `printf >>`, `echo >`…): use the
+  Write and Edit tools, so that the person sees exactly what changes before accepting.
