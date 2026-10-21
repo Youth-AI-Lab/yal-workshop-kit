@@ -629,9 +629,9 @@ This is like the *Knowledge* box of a Claude Project or a Gemini Gem, when it is
 be read in full.
 
 A context window has a maximum size, counted in **tokens**. A token is a piece of a word: on
-average, 4 characters of English text. Here the window holds 200,000 tokens. Our documents and
-summaries take about 60,000 tokens: **about a third of the window**, before you have typed
-anything.
+average, 4 characters of English text (more in French, Italian, Catalan or Dutch). Here the
+window holds 200,000 tokens. Our documents and summaries take about 100,000 tokens: **half of
+the window**, sent again with every message, even the shortest one.
 
 **Goal**: give the chatbot all the knowledge, and see what it gains and what it costs.
 
@@ -652,9 +652,11 @@ anything.
    workshop B
    ```
 
-   Watch the gauge jump to **about a third of the window, before your first question**.
-3. **Read the numbers of the gauge**: how many tokens are used **before** your first question,
-   out of 200k? Write it down: you will compare it with mode C.
+   The gauge shows `0 / 200k`: it counts what was **sent** at the last message, and nothing
+   has been sent yet.
+3. **Say hello** (type `Hello` and press Enter), then **read the numbers of the gauge**: about
+   **100k / 200k**, half the window, for a simple hello. Write it down: you will compare it with
+   mode C.
 
 4. **Try the contradiction experiment.** `summaries/10-…` and `summaries/90-…` summarise two
    official pages of the European Commission, published the same day. **They disagree.** Ask:
@@ -677,7 +679,7 @@ anything.
 **What to watch**: the precise questions are now answered. But we only have about twenty
 documents. **With ten times more, they would not fit in the window at all.**
 
-> 💡 **Tip.** **Checkpoint before moving on**: you saw the gauge at about a third before any question, you
+> 💡 **Tip.** **Checkpoint before moving on**: you saw the gauge at about half the window after a simple hello, you
 > tried question 10, and column B is scored.
 
 ### Think about it
