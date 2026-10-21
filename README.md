@@ -1,6 +1,6 @@
 # Youth AI Lab - Customising a chatbot
 
-### Erasmus+ project Youth AI Lab - hands-on workshop for youth workers
+### Erasmus+ project Youth AI Lab - hands-on workshop for partners and mentors
 
 - **Project:** Youth AI Lab (Erasmus+), with five partners:
   - L.A.B. (Aix-en-Provence, France)
@@ -8,24 +8,24 @@
   - Perlatecnica (Naples, Italy)
   - Digitale Wolven (Antwerp, Belgium)
   - CSC Vent des Îles (La Rochelle, France)
-- **Facilitator:** Sébastien Nedjar
+- **Facilitator:** Sébastien
 - **Need help?**
-  - Raise your hand and ask the facilitator: this is what they are here for.
+  - Raise your hand and ask to Sébastien.
   - If something breaks, don't panic: your files stay in the Codespace.
 
 ## Workshop - Customising a chatbot: from a bare model to a wildfire-prevention expert
 
-> 🎯 **A 2-hour workshop, in pairs.** Nothing is graded. The goal is to **see what happens
-> behind a chatbot**: what it reads before it answers, and who decides what it reads. You will
-> use what you learn today when you run the **WikiYouthBot** activity with young people.
+> 🎯 **A 2-hour workshop, in pairs.** The goal is to **see what happens
+> behind a chatbot**: what it reads before it answers, and who decides what it reads. You can
+> use what you learn today if you run the **WikiYouthBot** activity with young people.
 
 > 🎓 **Open your Codespace** (one per pair): 👉 **https://codespaces.new/Youth-AI-Lab/yal-workshop-kit**
 >
-> This link creates your own copy of the workshop kit, in VS Code, in your browser. Nothing to
+> This link creates your own copy of the workshop kit, in an online editor based on VS Code. All will be in your browser. Nothing to
 > install. The detailed steps are in [Setup](#setup).
 
-> 📚 **The facilitator's slides** use the same words as this page. You can follow the session
-> here, at your own pace.
+> 📚 **The Sébastien's slides** use the same words as this page. You can follow the session
+> here, at your own pace and come back after the meeting to continue your exploration.
 
 ### Contents
 
@@ -51,10 +51,10 @@
 
 ### What you will be able to do by the end of this session
 
-You have **probably already chatted with a chatbot** such as ChatGPT, Gemini or Claude. You type
+You have **already chatted with a chatbot** such as ChatGPT, Gemini or Claude. You type
 a question, and an answer comes back. But you cannot see **what the chatbot read** before it
 answered. Was it a document? A web page? Nothing at all, only its memory? Soon, you may
-customise a chatbot with young people, in the **WikiYouthBot** activity. There, a Claude Project
+customise a chatbot with young people (like we did it during the **WikiYouthBot** activity). There, a Claude Project
 or a Gemini Gem gives you only **two boxes**: *Instructions* and *Knowledge*. This workshop
 shows you what happens behind these two boxes, one step at a time.
 
@@ -70,11 +70,11 @@ new).
 | **Create** | E, F, Closing | **grow a wiki** with a new source and find its contradictions; **explore** it as a graph and **check** a connection the model guessed; **plan your own chatbot** (Instructions and Knowledge) for your territory | `E`, `wiki-explore` |
 
 **All session long**, you also practise **testing a chatbot**: the same 11 questions, asked again
-after each block, and scored in the same way. This is the most useful habit you can take home.
+after each block, and scored in the same way. This is the most useful habit you can take home to mesure the performance of a customisation of a chatbot.
 
 ### Why this approach?
 
-All the blocks of the day answer **one single question**:
+All the blocks of the day answer **the same questions**:
 
 > **What enters the model's context, when, and who decides?**
 
@@ -89,19 +89,19 @@ adds something to the context, in a different way.
   idea of the "Press Conference" in WikiYouthBot.
 - **Why is "I don't know" worth more than a wrong answer?** An invented answer looks **exactly as
   confident** as a true one. About fire, a wrong rule can be dangerous. So an invented answer
-  gets **0**, and an honest "I don't know" gets 1 or 2.
+  gets **0**, and an honest "I don't know" gets 1 and good a aswer get 2.
 - **Why Claude Code in a terminal, and not a chat website?** On a chat website, you see the
   boxes, but not what happens behind them. Here, you **see everything**: how full the context
   is, every file the model opens, every search, every tool it calls. The mechanisms are the
   same as in the tools you will use with young people.
-- **Why one theme for the whole day?** With one running example, the steps can be compared. Our
+- **Why one theme for the whole session?** With one running example, the steps can be compared. Our
   theme is **wildfire prevention**, with real official documents from the EU, France,
-  Catalonia, Flanders and Italy. Our running example is **Feurisson**, the chatbot made by
-  young people in La Rochelle to help prevent wildfires.
+  Catalonia, Flanders and Italy. Our running example is called **Feurisson**, the chatbot made by
+  young people in La Rochelle to help prevent wildfires during this summer.
 - **Why the same model for everyone?** Comparing two versions of a chatbot only makes sense with
   the **same base model**. The model is set for all pairs when you save your key.
 
-**The chatbot is what you study today, not your teacher.** It can be wrong, and sound sure of
+**The chatbot is what you study today.** It can be wrong, and sound sure of
 itself. Each time, look at **what it read**, and compare with the source. A good question to
 ask it after an answer: `Which document did you use for this answer?`. Then open that document
 and check. In the first blocks, the facilitator will help you read what you see. In the last
@@ -109,12 +109,12 @@ blocks, try to explain it yourselves, in your pair.
 
 ### How this connects to WikiYouthBot
 
-With young people (12 to 15 years old), you will customise a chatbot in a Claude Project or a
+With young people (12 to 18 years old), you can customise a chatbot in a Claude Project or a
 Gemini Gem. Each block of today matches a part of that work:
 
 - **Block A** (system prompt) is the **Instructions** box: always read, in full.
 - **Blocks B and C** (documents and summaries) are the **Knowledge** box. When it is small, it
-  is read in full (block B). When it is big, it is searched for pieces (the RAG demo).
+  is read in full (block B). When it is big, it is searched for pieces.
 - **Your test questions** are the **Press Conference**: the same questions before and after
   each change.
 - **Blocks D and E** go one step further: live data, and knowledge that stays organised.
@@ -126,32 +126,31 @@ you cannot see from the outside how a box is used. **That is why the test questi
 
 #### What you need to know
 
-- **No programming**: you will type about ten commands. They are all written on this page:
-  copy them.
+- **No programming**: you will type about ten commands in a terminal. They are all written on this page:
+  copy/paste them.
 - **A little English**: the chatbot, the commands and this page are in English. Some official
   documents are in French, Italian, Catalan or Dutch. You don't need to read them all: dates and
   numbers are easy to compare in any language.
 - **No expertise on wildfires**: the documents are here. You will learn as you go.
-- **Your pair**: you work two by two, on one screen. One person types, the other reads the
-  instructions and watches the gauge. Swap at each block.
+- **Your pair**: you work two by two, on one screen. Swap at each block who type to be sure to understand how the tools are working to be able to continue when you are back at home.
 
 #### Your environment
 
-You work in a **GitHub Codespace**: VS Code (a text editor) running in your browser, on a
+You work in a **GitHub Codespace**: a text editor (VS Code) running in your browser, on a
 computer of GitHub. Everything is already installed. You need **one free GitHub account per
-pair**. The facilitator gives each pair a **card** with an **API key**: a long password that
-lets your Codespace use the model. The keys have a spend limit.
+pair**. The facilitator sends each pair an **API key** on WhatsApp: a long password that
+lets your Codespace use the model on Anthropic. The keys have a spend limit and a short duration.
 
 The chatbot runs in **Claude Code**, a program that lets a model work in a folder of files.
 Developers use it to write code. We use it because it **shows everything**: what the model
 reads, searches and does.
 
 > ℹ️ **Note.** **This is intentional.** Claude Code is not the tool you will use with young people. It is a
-> glass box: the same mechanisms as in a Claude Project or a Gemini Gem, but you can see inside.
+> glass box: the same mechanisms as in a Claude Project or a Gemini Gem, but you can see inside. At the end of the workshop, I'll show how you can create your own chatbot based on what you do during the workshop.
 
 ### Reference documents
 
-All of these are in your Codespace, in the file list on the left:
+All of these are in your Codespace, in the file list on the left panel:
 
 - `test-questions.md`: the 11 test questions, their expected answers and the scoring rules.
 - `scores.md`: your score sheet, one short line per question.
@@ -161,7 +160,8 @@ All of these are in your Codespace, in the file list on the left:
   summaries.
 - `inbox/README.md`: the document you will add in block C.
 - `mcp/fire-danger.json`: the live data of block D.
-- In the terminal: `workshop help`, `corpus-add --help`, `wiki-start --help`, `wiki-graph --help`.
+
+In the terminal you can try: `workshop help`, `corpus-add --help`, `wiki-start --help`, `wiki-graph --help`.
 
 ---
 
@@ -191,7 +191,7 @@ then **"Terminal"**, then **"New Terminal"**.
 ### Step 2 - Let the Codespace wait for you
 
 By default, a Codespace stops after **30 minutes** without activity. You lose nothing, but it
-takes time to restart. To avoid this:
+takes 30s to restart. To avoid this:
 
 1. **Open** https://github.com/settings/codespaces in a new browser tab.
 2. **Find** the setting **"Default idle timeout"**.
@@ -199,14 +199,17 @@ takes time to restart. To avoid this:
 
 ### Step 3 - Save the key of your pair
 
-1. **Click in the terminal**, at the bottom of the screen.
-2. **Type** this command, then press **Enter**:
+1. **Copy the key** from the WhatsApp message of the facilitator. Open WhatsApp **on this
+   computer** (WhatsApp Web, `web.whatsapp.com`, or the desktop app), so that you can paste the
+   key in the Codespace. Copy the **whole** key: one long word that starts with `sk-ant-`.
+2. **Click in the terminal**, at the bottom of the screen.
+3. **Type** this command, then press **Enter**:
 
    ```bash
    workshop-login
    ```
 
-3. **Paste the key** written on your card when the terminal asks for it:
+4. **Paste the key** when the terminal asks for it:
 
    ```
    Paste the API key of your pair, then press Enter:
@@ -216,7 +219,7 @@ takes time to restart. To avoid this:
    > normal: it is a password. The first time, the browser may ask for permission to paste:
    > accept, then check that the `*` appeared. **Paste only once.**
 
-4. **Press Enter.** The key is tested at once, with a very small request to the model.
+5. **Press Enter.** The key is tested at once, with a very small request to the model.
 
 You should see (with the start and the last 4 characters of your key):
 
@@ -225,9 +228,7 @@ Key received: sk-ant-…a1b2 (… characters). Testing it…
 Key OK (Anthropic, model claude-sonnet-5-5). You can start: workshop bare
 ```
 
-If your card has a key that starts with `sk-or-`, the message says `OpenRouter` and another
-model name: this is fine too. If you see another message, look at
-[Troubleshooting](#troubleshooting).
+If you see another message, look at [Troubleshooting](#troubleshooting).
 
 ### Step 4 - Your first conversation
 
@@ -399,8 +400,10 @@ Each mode keeps what the previous one had, **except B**: from C on, nothing is l
 advance. The model knows **where** the knowledge is, and goes to fetch what it needs. To see
 what a mode sets up, type `workshop help`.
 
-The session lasts 2 hours: Opening 15 min, A 15 min, B 12 min, RAG demo 5 min, C 25 min,
-D 13 min, E 13 min, F 10 min, Closing 12 min. The facilitator keeps time and tells you when to move on.
+The session can is planed for 2 hours: Opening 15 min, A 15 min, B 12 min, RAG demo 5 min, C 25 min,
+D 13 min, E 13 min, F 10 min, Closing 12 min. 
+
+Sébastien keeps time and tells you when to move on faster to be in time for lunch.
 
 ---
 
@@ -439,8 +442,8 @@ This first block is fully guided. Follow each step.
 
 #### Step 2 - Replace questions (optional, now or never)
 
-If you like, replace some questions with your own, for example a question about your
-territory. For each question you replace:
+If you want, replace some questions with your own, for example a question about your
+territory or your own preoccupation. For each question you replace:
 
 1. **Keep the same category**, so that the test stays balanced.
 2. **Write the expected answer, with its source** (the document where you found it).
@@ -449,7 +452,7 @@ territory. For each question you replace:
 4. **Save** the file (`Ctrl+S`, or `Cmd+S` on a Mac).
 
 > ⚠️ **Important.** **Change the questions only BEFORE `replay bare`. Never afterwards.** If a question changes in
-> the middle of the day, its scores can no longer be compared.
+> the middle of the session, its scores can no longer be compared.
 
 #### Step 3 - Replay the questions with the model alone
 
@@ -477,7 +480,27 @@ territory. For each question you replace:
 3. **While it runs**, open the folder `answers/` in the file list: the file is written as the
    answers arrive. You can start reading at once.
 
-#### Step 4 - Read the answer file
+#### Step 4 - Talk to the model alone, while the replay runs
+
+1. **Go back to your first terminal** and start the bare chatbot:
+
+   ```bash
+   workshop bare
+   ```
+
+2. **Ask** question 1 of the test set:
+
+   ```
+   How many hectares burnt in the EU in 2025 according to EFFIS, and how many fires were mapped?
+   ```
+
+3. **Then ask**: `Where does this figure come from? Give me your source.` Does it give a
+   document, a link, or nothing? Does it say when its knowledge stops?
+4. **Look at the gauge**: a few thousand tokens only. The model alone has nothing to read: it
+   answers from what it learnt during its training.
+5. **Leave**: press **Ctrl+C twice**.
+
+#### Step 5 - Read the answer file
 
 The file starts like this:
 
@@ -494,7 +517,7 @@ Under each question, you find the **answer** of the chatbot, then a line such as
 `*What the model did:*` also lists the files it read, the searches it ran and the tools it
 called. In mode `bare`, it can do none of this.
 
-#### Step 5 - Score column Bare
+#### Step 6 - Score column Bare
 
 1. **Compare** each answer with the expected answer in `test-questions.md`.
 2. **Decide** 0, 1 or 2 with the [scoring rules](#how-to-score). Discuss it in your pair: you
@@ -1428,11 +1451,11 @@ for permission). Type `workshop-login` again and paste the key once: you should 
 **`The key seems to be pasted twice.`** - Type `workshop-login` again and paste the key only once.
 
 **`This does not look like a key (it should start with sk-ant- or sk-or-). Nothing saved.`** -
-The text you pasted is not a whole key. Copy it again from your card, with nothing before or
+The text you pasted is not a whole key. Copy it again from the WhatsApp message, with nothing before or
 after it, and type `workshop-login` again.
 
 **`Key saved, but Anthropic refuses it (HTTP 401). Check it with the facilitator.`** - The key
-was saved, but it does not work. Show your card to the facilitator.
+was saved, but it does not work. Tell the facilitator.
 
 **`Key saved, but Anthropic could not be reached (network?). Try: workshop bare`** - The network
 did not answer during the test. Your key is saved: try `workshop bare`. If it fails, ask the
@@ -1454,8 +1477,8 @@ in block F).
 **"I cannot leave the conversation!"** - Don't panic. Press `Ctrl+C` twice. (`/exit` works only
 from mode C on; in modes bare, A and B it says "Unknown command".)
 
-**The key does not appear when I paste it.** - This is normal: it is hidden, like a password.
-Paste it once, then press Enter.
+**I see `*` instead of my key.** - This is normal: the key is hidden, like a password. You see
+one `*` per character. Paste it once, then press Enter.
 
 **Claude Code asks "Do you want to…?" before writing a file.** - This is normal: it asks for your
 permission each time a skill writes or changes a file. Read what it wants to do, then accept.
