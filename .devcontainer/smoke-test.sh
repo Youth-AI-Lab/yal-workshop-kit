@@ -94,11 +94,11 @@ grep -qxF -- --mcp-config <<< "$r" || echec "mode E : serveur MCP absent"
 grep -q "wiki/index.md" <<< "$r" || echec "mode E : le wiki n'est pas indiqué au modèle"
 for m in C D E; do
   r="$(WORKSHOP_HOME="$copie" reglages "$m")"
-  for regle in "Read(./test-questions.md)" "Read(./answers/**)" "Read(./examples/**)"; do
-    grep -qxF -- "$regle" <<< "$r" || echec "mode $m : $regle absent (réponses attendues lisibles)"
-  done
+  grep -q "disableAutoMode" <<< "$r" || echec "mode $m : mode auto non désactivé"
+  grep -qxF -- --disallowedTools <<< "$r" && echec "mode $m : règle de refus (demande de permission à chaque cd …; grep)"
+  grep -q "test-questions.md, scores.md, answers/ or examples/" <<< "$r" || echec "mode $m : consigne sur le matériel de test absente"
 done
-echo "C : recherche et skills ; D : + MCP ; E : + wiki (après wiki-start) ; matériel de test bloqué"
+echo "C : recherche et skills ; D : + MCP ; E : + wiki (après wiki-start) ; mode auto désactivé"
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {

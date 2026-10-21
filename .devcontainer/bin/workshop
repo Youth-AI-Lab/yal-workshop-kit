@@ -35,16 +35,19 @@ export CLAUDE_CODE_AUTO_CONNECT_IDE=false CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL=1
 export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1
 
 # All modes: only the kit's MCP server can be loaded, and only in D and E. Permission mode
-# "manual" (not the default "auto"): Claude Code asks you before it writes a file.
-args=(--strict-mcp-config --permission-mode manual)
+# "manual" (not the default "auto"): Claude Code asks you before it writes a file. The auto and
+# bypass modes are switched off, so a permission prompt cannot offer "switch to auto mode".
+args=(--strict-mcp-config --permission-mode manual
+      --settings '{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}}')
 [[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
 
 # Read-only commands allowed without confirmation from C on (file search goes through Bash).
 read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(rg:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
            "Bash(find:*)")
-# The test material is not a source: the expected answers, earlier answers, the example prompt.
-not_sources=("Read(./test-questions.md)" "Read(./answers/**)" "Read(./examples/**)")
-knowledge="The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English, one per source: start there; their OKF header says who verified them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used. Never open or search test-questions.md, answers/ or examples/: they are the test material of the workshop, not sources."
+# The test material (expected answers, earlier answers, example prompt) is not a source: the
+# prompt says so, and replay flags any answer where the model saw it. No Read() deny rule: with
+# one, Claude Code asks permission for every "cd …; grep …", and nobody can answer during replay.
+knowledge="The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English, one per source: start there; their OKF header says who verified them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used. Never open or search test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not sources. You are already in the kit folder: run your commands from here, without cd."
 
 case "$mode" in
   bare|Bare|BARE)
@@ -79,13 +82,13 @@ case "$mode" in
     # The model knows where the knowledge is; it decides what to read. Skills, no MCP.
     cd "$KIT"
     args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}"
-           --disallowedTools "${not_sources[@]}" "Read(./mcp/**)" --append-system-prompt "$knowledge")
+           --append-system-prompt "$knowledge")
     ;;
   D|d)
     # C + the MCP server of the kit: a deterministic tool that reads live data.
     cd "$KIT"
     args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger"
-           --disallowedTools "${not_sources[@]}" --mcp-config "$KIT/.mcp.json" --append-system-prompt "$knowledge")
+           --mcp-config "$KIT/.mcp.json" --append-system-prompt "$knowledge")
     ;;
   E|e)
     # D + the wiki, installed by wiki-start: pages by topic, read before the sources.
@@ -95,7 +98,7 @@ case "$mode" in
       exit 1
     fi
     args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger"
-           --disallowedTools "${not_sources[@]}" --mcp-config "$KIT/.mcp.json"
+           --mcp-config "$KIT/.mcp.json"
            --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its source. If the wiki is not enough, search the sources. $knowledge")
     ;;
   -h|--help|help)

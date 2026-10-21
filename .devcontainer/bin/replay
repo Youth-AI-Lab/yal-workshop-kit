@@ -22,7 +22,7 @@ KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
-TEST_MATERIAL = re.compile(r"test-questions\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
+TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
 
 
 def read_questions():
@@ -125,7 +125,7 @@ def main():
             in_a_row = 0
             if peeked:
                 print("  Warning: the model looked at the test material.", flush=True)
-                lines += ["**Warning: the model looked at the test material (test-questions.md, answers/ "
+                lines += ["**Warning: the model looked at the test material (test-questions.md, scores.md, answers/ "
                           "or examples/). It may have copied the expected answer: score 0.**", ""]
             lines += [answer, "", f"*Context: {context:,} tokens*"]
             if actions:
