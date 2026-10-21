@@ -606,8 +606,10 @@ you write here is exactly what young people will write in the *Instructions* box
    workshop A
    ```
 
-   **Look at the gauge before you type anything**, and compare it with mode `bare`. The
-   difference is the cost of your system prompt, paid at every message.
+   The gauge shows `0 / 200k`: it counts what was **sent** at the last message, and nothing has
+   been sent yet. **Say hello** (type `Hello` and press Enter), then read the gauge, and compare
+   it with the same `Hello` in mode `bare` (a few thousand tokens). The difference is the cost of
+   your system prompt, paid again at every message.
 
 6. **Test the behaviour**. Ask a few questions, for example:
    - `Who are you?`
