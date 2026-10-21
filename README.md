@@ -292,7 +292,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `corpus-add …` | terminal | adds an official document to `corpus/` (block C) |
 | `wiki-start` | terminal | unpacks the wiki (block E) |
 | `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
-| `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser; `wiki-explore help` for more (block F) |
+| `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
 | `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
@@ -1220,14 +1220,14 @@ in the sources**.
    You should see:
 
    ```
-   The map of the wiki is at: http://localhost:8765/graph.html
+   The map of the wiki is open at: http://localhost:8765
    Your browser should open it in a new tab. If not: Ports tab (bottom panel) -> 8765 -> Open in Browser.
-   Drag to move, scroll to zoom, click a node to see its links. To stop: Ctrl+C.
+   Drag to move, scroll to zoom, click a node to see its links. To close it: wiki-explore stop
    ```
 
    A new browser tab shows the map. **Explore it**: on the right, tick or untick the
    **communities**; use **Search nodes** to find "Montoro"; **click a node** to see its links.
-   When you are done, go back to the terminal and press **Ctrl+C**.
+   The map stays open while you go on: the terminal is free for the next commands.
 2. **Read the report**. Open `wiki/graphify-out/GRAPH_REPORT.md` and press `Ctrl+Shift+V`.
    1. Read the first lines, **"Corpus Check"**. What does graphify say about the size of our wiki?
    2. Read **"God Nodes"** (the hubs) and **"Surprising Connections"**. Choose one connection
@@ -1261,11 +1261,12 @@ in the sources**.
    ```
 
    ```
-   Compare the clearing distances of the Montoro ordinance and of the French brush-clearing obligation, with their sources.
+   Compare the clearing distances of the Montoro ordinance and of the French brush-clearing obligation. Check the figures in the original documents (corpus/text/) and give their sources.
    ```
 
    The answer should confirm the connection, with its sources: **20 m** around settlements in
-   Montoro, **50 m** around buildings in France. **A graph proposes; a person checks**, as for
+   Montoro, **50 m** around buildings in France. Click on the grey line of its steps: did it
+   open the original documents? **A graph proposes; a person checks**, as for
    the summaries in block C. Leave: press Ctrl+C twice.
 5. **Discuss in your pair**: does the graph make the chatbot **faster**? The facilitator
    measured it during the rehearsal, with the graph given to the model as an MCP tool
@@ -1385,8 +1386,8 @@ After the session, if you want to go deeper:
 ## Troubleshooting
 
 **"The map of `wiki-explore` does not open."** - Look at the **Ports** tab of the bottom panel:
-on the line `8765`, click the globe icon (**Open in Browser**). If the tab is empty, check that
-`wiki-explore` is still running in the terminal (it stops with Ctrl+C), and type it again.
+on the line `8765`, click the globe icon (**Open in Browser**). If the page shows a list of files
+instead of the map, click on `graph.html`. If nothing answers, type `wiki-explore` again.
 
 **`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
 for permission). Type `workshop-login` again and paste the key once: you should see the `*`.

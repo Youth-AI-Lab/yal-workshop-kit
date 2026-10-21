@@ -62,9 +62,11 @@ etape "wiki-explore : le graphe de graphify se lit sans modèle, sans installer 
 WORKSHOP_HOME="$copie" wiki-explore path "Montoro protection strips" "Obligations légales de débroussaillement" \
   | grep -q "Shortest path" || echec "wiki-explore path"
 WORKSHOP_HOME="$copie" wiki-explore explain pla_alfa_catalonia | grep -q "Connections" || echec "wiki-explore explain"
-( WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 timeout 5 wiki-explore > /dev/null 2>&1 & )
-sleep 2
+WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore > /dev/null || echec "wiki-explore : carte non lancée"
+[[ "$(curl -s -o /dev/null -w '%{redirect_url}' http://127.0.0.1:8799/)" == */graph.html ]] \
+  || echec "wiki-explore : la racine du port ne mène pas à la carte"
 curl -sf -o /dev/null http://127.0.0.1:8799/graph.html || echec "wiki-explore : carte non servie"
+WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore stop | grep -q closed || echec "wiki-explore stop"
 [[ ! -e "$HOME/.claude/skills/graphify" ]] || echec "graphify a installé sa skill dans ~/.claude (fausse les modes)"
 echo "wiki-explore : OK"
 

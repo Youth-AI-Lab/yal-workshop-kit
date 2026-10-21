@@ -2,7 +2,8 @@
 # Block F: explore the knowledge graph of the wiki, built by graphify before the session.
 # No model is called: these commands only read wiki/graphify-out/graph.json.
 #
-#   wiki-explore                     opens the interactive map in your browser (Ctrl+C to stop)
+#   wiki-explore                     opens the interactive map in your browser (it stays open)
+#   wiki-explore stop                closes the map
 #   wiki-explore explain "<name>"    one node of the graph and all its neighbours
 #   wiki-explore path "<A>" "<B>"    the shortest path between two nodes
 #   wiki-explore query "<words>"     the nodes around some words
@@ -16,10 +17,17 @@ OUT="$KIT/wiki/graphify-out"
 GRAPH="$OUT/graph.json"
 GRAPHIFY="${WORKSHOP_GRAPHIFY:-/opt/workshop/venv/bin/graphify}"
 PORT="${WORKSHOP_GRAPH_PORT:-8765}"
+RUN_DIR="${WORKSHOP_RUN_DIR:-$HOME/.workshop-run}"
+PID_FILE="$RUN_DIR/wiki-explore-$PORT.pid"
 # graphify must never install or refresh its own skill in ~/.claude: it would change every mode.
 export GRAPHIFY_NO_AUTO_REFRESH=1
 
-case "${1:-}" in -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+stop_map() {
+  if [[ -f "$PID_FILE" ]] && kill "$(cat "$PID_FILE")" 2>/dev/null; then echo "The map is closed."; fi
+  rm -f "$PID_FILE"
+}
+
+case "${1:-}" in -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 if [[ ! -f "$GRAPH" ]]; then
   echo "No graph of the wiki yet. First type: wiki-start" >&2
   exit 1
@@ -27,11 +35,34 @@ fi
 
 case "${1:-}" in
   "")
-    echo "The map of the wiki is at: http://localhost:$PORT/graph.html"
+    stop_map > /dev/null
+    mkdir -p "$RUN_DIR"
+    # A tiny web server in the background: the address of the port opens the map directly, and
+    # the terminal stays free for the other commands.
+    nohup python3 - "$OUT" "$PORT" > "$RUN_DIR/wiki-explore.log" 2>&1 <<'PY' &
+import functools, http.server, sys
+class Map(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/", "/index.html"):
+            self.send_response(302); self.send_header("Location", "/graph.html"); self.end_headers(); return
+        super().do_GET()
+    def log_message(self, *args):
+        pass
+handler = functools.partial(Map, directory=sys.argv[1])
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[2])), handler).serve_forever()
+PY
+    echo $! > "$PID_FILE"
+    sleep 1
+    if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+      echo "The map could not start (is port $PORT already used?). Ask the facilitator." >&2
+      exit 1
+    fi
+    echo "The map of the wiki is open at: http://localhost:$PORT"
     echo "Your browser should open it in a new tab. If not: Ports tab (bottom panel) -> $PORT -> Open in Browser."
-    echo "Drag to move, scroll to zoom, click a node to see its links. To stop: Ctrl+C."
-    cd "$OUT"
-    exec python3 -m http.server "$PORT" --bind 127.0.0.1
+    echo "Drag to move, scroll to zoom, click a node to see its links. To close it: wiki-explore stop"
+    ;;
+  stop)
+    stop_map
     ;;
   explain)
     [[ $# -eq 2 ]] || { echo 'Usage: wiki-explore explain "<name>"' >&2; exit 1; }
