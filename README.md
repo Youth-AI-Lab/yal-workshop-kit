@@ -990,12 +990,15 @@ source.
 3. **Look at the tool**: in the conversation, type `/mcp`. It shows the server `fire-danger` and
    its tools.
 4. **Fill in today's data**. Open `mcp/fire-danger.json`:
-   1. **Write today's date** in `date`, in the form year-month-day, for example `"2026-10-22"`.
+   1. **Write today's date** in `date`, in the form year-month-day. The line becomes, for
+      example: `"date": "2026-10-22",`
    2. **Open the source of Antwerp** in a new browser tab: https://natuurenbos.be/waarschuwingen
-      (province Antwerpen).
-   3. **Copy today's colour code** into the `level` of Antwerp (for example `"groen"`), or
-      `"season over"` if the source says so. The scale is in the file: groen, geel, oranje,
-      rood.
+      (province Antwerpen, under "Brandwaarschuwingen").
+   3. **Copy what it says** into the `level` of Antwerp, in the block
+      `"Antwerp — Flanders, Belgium"`. The line becomes, for example:
+      `"level": "groen: weinig gevaar",` (or `"season over"` if the source says so). The scale
+      is in the file: groen, geel, oranje, rood. **Keep the quotes and the comma** at the end
+      of the line, and change nothing else.
    4. **Save** the file (`Ctrl+S`).
 
    > 🚫 **Warning.** **Keep the quotes and the commas** of the file. If one is missing, the tool answers
