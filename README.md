@@ -293,7 +293,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `workshop help` | terminal | what each mode puts in the context |
 | `corpus-add …` | terminal | adds an official document to `corpus/` (block C) |
 | `wiki-start` | terminal | unpacks the wiki (block E) |
-| `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
+| `wiki-graph` | terminal | draws which wiki pages a document feeds, in `wiki/graph.md` (block E) |
 | `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
 | `chatbot-export` | terminal | packs your chatbot (instructions + knowledge) into one `.zip` file (Closing) |
 | `Ctrl+Shift+V` | in an open `.md` file | shows it as a readable page: titles, tables, lists (`Cmd+Shift+V` on a Mac) |
@@ -396,7 +396,7 @@ Each block answers the question of the day in a different way:
 | (demo) | Vector RAG: excerpts found by similarity | Per question | A search engine | - |
 | C | Search in the files, and skills to curate the knowledge | Per question, what it finds | The model, step by step | `C` |
 | D | A tool that reads live data (MCP) | Per question, if needed | The model, through a tool | `D` |
-| E | A wiki, organised by topic, with a map | Per question, pages already written | The model, beforehand | `E` |
+| E | A wiki, organised by topic, each fact with its source | Per question, pages already written | The model, beforehand | `E` |
 | F | A knowledge graph of the wiki, to explore | Not in the context: you read the map | You, then you check | `wiki-explore` |
 | (slide) | A local model; fine-tuning | - | - | - |
 
@@ -1211,8 +1211,8 @@ model reads pages already written.
 The facilitator built a wiki before the session, from all the documents of `corpus/` (but not
 the Benevento one: you added it yourselves), then checked it.
 
-**Goal**: open the wiki, look at its map, add your Benevento summary to it, and let the model
-check its consistency.
+**Goal**: open the wiki, add your Benevento summary to it, see which pages it feeds, and let
+the model check its consistency.
 
 **What you will discover**:
 
@@ -1223,7 +1223,7 @@ check its consistency.
 **What is provided**:
 
 - `wiki-start`: unpacks the wiki in `wiki/`, with the skills `ingest` and `lint`.
-- `wiki-graph`: draws the map of the wiki in `wiki/graph.md`.
+- `wiki-graph`: draws, in `wiki/graph.md`, which pages of the wiki a document feeds.
 - Your summary 80, validated in block C.
 
 ### What to do
@@ -1239,7 +1239,6 @@ check its consistency.
    ```
    Wiki ready: 18 pages in wiki/ (start with wiki/index.md, history in wiki/log.md).
    New skills: ingest and lint (.claude/skills/).
-   Also: the knowledge graph of the wiki (wiki/graphify-out/). For block F, type: wiki-explore
    Next: workshop E, then for example: ingest summaries/8N-… into the wiki
    ```
 
@@ -1250,33 +1249,7 @@ check its consistency.
       footnote gives the title of the source. In the header at the top, `sources` gives its
       file in `corpus/`.
    2. **Open** `wiki/log.md` (`Ctrl+Shift+V`): the history of the wiki. Look for the lines **Contradiction**.
-3. **Draw the map**:
-
-   ```bash
-   wiki-graph
-   ```
-
-   You should see:
-
-   ```
-   Wrote wiki/graph.md: 18 pages, 20 source documents.
-   To view it in VS Code: open wiki/graph.md and press Ctrl+Shift+V (Cmd+Shift+V on a Mac). This needs the extension bierner.markdown-mermaid.
-   ```
-
-   **Open** `wiki/graph.md` and press `Ctrl+Shift+V`. The legend:
-
-   | Shape | Meaning |
-   |---|---|
-   | Rectangle | a page of the wiki |
-   | Solid arrow | one page links to another |
-   | Cylinder | a full document of `corpus/` |
-   | Rounded shape (green) | a summary of `summaries/` |
-   | Dotted arrow | from a document to each page that cites it |
-   | Red dashed outline | cited, but does not exist |
-   | Orange | the highlighted document, and the pages that cite it |
-
-   The facilitator projects the same map for the whole wiki.
-4. **Add your Benevento summary**. Your document is not in the wiki yet. Start mode E:
+3. **Add your Benevento summary**. Your document is not in the wiki yet. Start mode E:
 
    ```bash
    workshop E
@@ -1292,22 +1265,32 @@ check its consistency.
    **1 to 5 topic pages**, puts a footnote on each fact, compares every figure with the wiki,
    and writes a line in `wiki/log.md`. **Watch which pages change.** Its report lists the pages
    created and updated, and the contradictions it found.
-5. **Replay** in the second terminal while you go on (it takes about 2 minutes), then **score
+4. **Replay** in the second terminal while you go on (it takes about 2 minutes), then **score
    column E**:
 
    ```bash
    replay E
    ```
 
-6. **See where your document went**, in the second terminal:
+5. **See where your document went**, in the second terminal:
 
    ```bash
    wiki-graph --highlight 80
    ```
 
-   Open `wiki/graph.md` again (`Ctrl+Shift+V`): **your document and the pages it feeds are
-   orange.**
-7. **If time allows, check the wiki**. In the conversation, ask:
+   You should see a line `In orange: …80-benevento-aib-2026.md and the N page(s) that cite it.`
+   **Open** `wiki/graph.md` and press `Ctrl+Shift+V` (it needs the extension
+   `bierner.markdown-mermaid`, already installed). Look only at the orange part:
+
+   | In the drawing | Meaning |
+   |---|---|
+   | Orange rounded shape | your summary 80 |
+   | Orange rectangles | the wiki pages that cite it: what your document feeds |
+   | Dotted arrow | from a document to a page that cites it |
+
+   Every arrow of this drawing is **written in a page**: a link, or a footnote to its source.
+   Nothing is guessed. Keep this in mind for block F.
+6. **If time allows, check the wiki**. In the conversation, ask:
 
    ```
    lint the wiki
@@ -1340,12 +1323,17 @@ talk, and a listener who read the other source.)
 
 ### 📖 A graph is a map: for people, and for very large wikis
 
-**Context**: the pages of the wiki are linked by "See also" lines and by their footnotes. Before
-the session, the facilitator gave the whole wiki to **graphify**, a free tool. A model read
-every page (it took about 10 minutes) and turned the wiki into a **knowledge graph**: each
-**node** is a page, a rule, an organisation, a figure or an idea; each **edge** says how two
-nodes are related. Some edges were **written in the pages** (graphify marks them `EXTRACTED`).
+**Context**: in block E, `wiki-graph` drew only what the pages **write**: their "See also" links
+and their footnotes. Every arrow was certain, and every box was a page or a document. A graph
+can go further, and show the **ideas** inside the pages. Before the session, the facilitator gave
+the whole wiki to **graphify**, a free tool. A model read every page (it took about 10 minutes)
+and turned the wiki into a **knowledge graph**: each **node** is a page, a rule, an
+organisation, a figure or an idea; each **edge** says how two nodes are related. Some edges
+were **written in the pages** (graphify marks them `EXTRACTED`), like the arrows of block E.
 Others were **guessed by the model** (`INFERRED`): they are suggestions, not facts.
+
+The facilitator projects both, side by side: the drawing of block E for the whole wiki, and the
+map of graphify.
 
 **Goal**: explore the graph, find a connection you would not have looked for, and **check it
 in the sources**.
@@ -1647,7 +1635,7 @@ your computer, drag it into the file list of the Codespace, then give its file n
 `mcp/fire-danger.json`. Compare the line you changed with the lines around it, save, and ask
 again.
 
-**The map in `wiki/graph.md` shows text, not a drawing.** - Open the preview with `Ctrl+Shift+V`
+**`wiki/graph.md` shows text, not a drawing.** - Open the preview with `Ctrl+Shift+V`
 (`Cmd+Shift+V` on a Mac), not the file itself. Run `wiki-graph` again after each ingest: the
 file is rewritten from scratch.
 

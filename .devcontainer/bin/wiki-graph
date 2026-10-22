@@ -1,5 +1,5 @@
 #!/opt/workshop/venv/bin/python3
-"""Draws the wiki as a graph, to see how its pages and sources are connected.
+"""Draws the wiki pages and their sources, to see which pages a document feeds.
 
     wiki-graph                  writes wiki/graph.md
     wiki-graph --highlight 85   same, and colours the pages that cite document 85
@@ -292,11 +292,11 @@ def write_markdown(lines, pages, sources, broken, absent, chosen, marked_pages, 
     text = [
         "---",
         "type: Graph View",
-        'title: "Map of the wiki"',
+        'title: "Pages and sources of the wiki"',
         'description: "Drawing of the wiki pages, their links and their sources. '
         'Written by the wiki-graph command: do not edit by hand."',
         "---",
-        "# Map of the wiki",
+        "# Pages and sources of the wiki",
         "",
         "<!-- Written by the wiki-graph command. Do not edit: run wiki-graph again instead. -->",
         "",

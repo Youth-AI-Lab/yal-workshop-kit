@@ -27,5 +27,4 @@ tar -xzf "$PACK" -C "$KIT" --no-same-owner
 pages="$(find "$KIT/wiki" -maxdepth 1 -name '*.md' ! -name index.md ! -name log.md ! -name CLAUDE.md | wc -l)"
 echo "Wiki ready: $pages pages in wiki/ (start with wiki/index.md, history in wiki/log.md)."
 echo "New skills: ingest and lint (.claude/skills/)."
-echo "Also: the knowledge graph of the wiki (wiki/graphify-out/). For block F, type: wiki-explore"
 echo "Next: workshop E, then for example: ingest summaries/8N-… into the wiki"
