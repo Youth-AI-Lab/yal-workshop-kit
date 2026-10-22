@@ -930,16 +930,42 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
 
 #### Step 2 - Let the model write a draft summary
 
+**First, remember what a summary is.** A summary, in `summaries/`, is a **short text in English**
+about one document: 5 to 15 sentences, **one fact per sentence**, chosen for wildfire prevention
+(rules, levels, dates, figures, who decides, what to do). It is the second layer of knowledge,
+between the full document (long, in its own language) and the wiki (block E). The chatbot reads
+the summaries **first**, because they are short, and opens the full document only when it needs
+more. Its header says where it comes from and **who checked it**. This is why a person must check
+it: a wrong summary is a wrong answer, given with confidence.
+
+**Then, remember the skill `summarize`** that you read in Part 2. Its description says to use it
+when you ask "summarize corpus/…". Its steps say that the model will:
+
+1. read the **readable copy** of the document, `corpus/text/80-…md`, never the original PDF;
+2. write the **draft summary**, with `status: draft` and **no** `verified` line;
+3. write the **verification table**: for each sentence, the original passage, copied word for word;
+4. add a line to `summaries/index.md`, marked "(draft, not verified)";
+5. tell you how to finish: check the table, then validate.
+
+And its rules: only what the document says, figures copied exactly, the conditions and exceptions
+kept, a contradiction with another summary pointed out, and **never** mark the summary as checked.
+
+Now watch it work:
+
 1. **In** `workshop C`, **ask**:
 
    ```
    summarize corpus/80-benevento-aib-2026.pdf
    ```
 
-2. **Accept** when Claude Code asks for permission to write files. The `summarize` skill writes
-   two files and adds a line to `summaries/index.md`:
-   - `summaries/80-benevento-aib-2026.md`: the **draft summary**, 5 to 15 short sentences in
-     English, one fact per sentence. Its header says `status: draft`, with no `verified` line.
+2. **Look for the line `Skill(summarize)`**: this is the moment the model opens the activity
+   sheet. Click on the grey line of its steps: does it read `corpus/text/80-…md`, as the skill
+   says?
+3. **Accept** when Claude Code asks for permission to write files (`1. Yes`). Each request
+   shows the file it wants to write: you can already read the summary there.
+4. **Look at what it wrote**: two files, and a line in `summaries/index.md`:
+   - `summaries/80-benevento-aib-2026.md`: the **draft summary**. Its header says
+     `status: draft`, with no `verified` line.
    - `summaries/checks/80-benevento-aib-2026.md`: the **verification table**, with one row per
      sentence:
 
@@ -948,6 +974,9 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
      ```
 
      The original passage is copied exactly, in Italian, so that you can find it with `Ctrl+F`.
+
+   Did it follow every step of the skill? Did it point out a contradiction with another summary
+   (look at its report)?
 
 #### Step 3 - Check each sentence yourselves
 
