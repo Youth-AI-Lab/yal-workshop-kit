@@ -31,7 +31,8 @@ Before you add it, the best the chatbot can say is "I don't know" (scored 1).
    corpus-add inbox/benevento-campagna-aib-2026.pdf --name benevento-aib-2026 --title "Campagna AIB 2026 — Provincia di Benevento" --publisher "Provincia di Benevento (Campania)" --language it --description "Province of Benevento (Campania) plan for the 2026 forest-fire campaign." --url "https://www.provincia.benevento.it/system/files/field/allegati/2026/06/campagna_aib_2026_-_provincia_di_benevento_signed.pdf"
    ```
 
-2. **Paste it** in the terminal, outside a conversation, and press **Enter**.
+2. **Paste it** in the terminal, outside a conversation, with `Ctrl+Shift+V` (`Cmd+V` on a Mac),
+   and press **Enter**. In the terminal, `Ctrl+V` alone may not paste.
 
 You should see:
 

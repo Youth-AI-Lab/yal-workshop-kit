@@ -209,7 +209,8 @@ takes about 30 seconds to restart. To avoid this:
    workshop-login
    ```
 
-4. **Paste the key** when the terminal asks for it:
+4. **Paste the key** when the terminal asks for it: `Ctrl+Shift+V` (`Cmd+V` on a Mac), or
+   right-click, then **Paste**:
 
    ```
    Paste the API key of your pair, then press Enter:
@@ -296,6 +297,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
 | `chatbot-export` | terminal | packs your chatbot (instructions + knowledge) into one `.zip` file (Closing) |
 | `Ctrl+Shift+V` | in an open `.md` file | shows it as a readable page: titles, tables, lists (`Cmd+Shift+V` on a Mac) |
+| `Ctrl+Shift+C` / `Ctrl+Shift+V` | terminal | copy / paste in the terminal, also inside a conversation (`Cmd+C` / `Cmd+V` on a Mac) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
 | `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
@@ -303,6 +305,12 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 
 The **mode** letters are not case-sensitive: `workshop a` works as well as `workshop A`.
 
+
+> ⚠️ **Important.** **To copy and paste in the terminal**, use `Ctrl+Shift+C` and `Ctrl+Shift+V`
+> (`Cmd+C` and `Cmd+V` on a Mac), or right-click, then **Copy** or **Paste**. In the terminal,
+> `Ctrl+C` alone does **not** copy: it stops what is running, and twice it leaves the
+> conversation. Click in the terminal before you paste: in an open `.md` file, `Ctrl+Shift+V`
+> shows the preview instead.
 
 > 💡 **Tip.** **To read a Markdown file** (a file whose name ends in `.md`), open it, then press
 > `Ctrl+Shift+V` (`Cmd+Shift+V` on a Mac), or right-click on it in the file list and choose
@@ -814,7 +822,8 @@ yourselves.
    ```
 
    Look at the gauge: it is far below mode B. Nothing is loaded in advance.
-2. **Ask question 3** of the test set (copy it from `test-questions.md`):
+2. **Ask question 3** of the test set (copy it from `test-questions.md`, then paste it in the
+   conversation with `Ctrl+Shift+V`):
 
    ```
    In Bouches-du-Rhône, at which fire-risk levels is access to forest massifs forbidden, and at the 'severe' level, when is work allowed?
@@ -904,7 +913,8 @@ This is the work young people do in the *Data Box* of WikiYouthBot.
 
 1. **Open** `inbox/README.md` (`Ctrl+Shift+V` to read it as a page) and **copy** its `corpus-add`
    command. It is one single line.
-2. **Paste it** in the terminal (outside a conversation) and press **Enter**.
+2. **Paste it** in the terminal (outside a conversation) with `Ctrl+Shift+V` (`Cmd+V` on a
+   Mac), and press **Enter**.
 
 You should see:
 
@@ -1505,7 +1515,8 @@ on the line `8765`, click the globe icon (**Open in Browser**). If the page show
 instead of the map, click on `graph.html`. If nothing answers, type `wiki-explore` again.
 
 **`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
-for permission). Type `workshop-login` again and paste the key once: you should see the `*`.
+for permission, or because `Ctrl+V` does not paste in the terminal). Type `workshop-login` again
+and paste the key once with `Ctrl+Shift+V` (`Cmd+V` on a Mac): you should see the `*`.
 
 **`The key seems to have been pasted twice.`** - Type `workshop-login` again and paste the key only once.
 
