@@ -778,6 +778,10 @@ The tool of the demo is **Open WebUI**, a chatbot tool you can install on your o
 command `openwebui` starts it in your Codespace, with your key, and loads the same documents as
 block B.
 
+> ⚠️ **Important.** **After the session, two things change.** The workshop key stops working:
+> first save **your own key** with `workshop-login`. And a Codespace created before this command
+> existed does not have it: see Troubleshooting, "`openwebui: command not found`".
+
 1. **Start it** (in the terminal, outside a conversation):
 
    ```bash
@@ -1629,8 +1633,20 @@ instead of the map, click on `graph.html`. If nothing answers, type `wiki-explor
 few seconds after the Codespace: wait one minute and type `openwebui start` again. On the
 workshop server (not a Codespace), Open WebUI is not available: ask the facilitator.
 
-**Open WebUI says "Open WebUI is not running", or its page does not answer.** - It stops with
-the Codespace. Type `openwebui start` again: your knowledge and your chatbots are kept.
+**`Open WebUI is not running, or not ready yet.`**, or the Open WebUI page does not answer. - It
+stops with the Codespace. Type `openwebui start` again: your knowledge and your chatbots are kept.
+
+**`openwebui: command not found`** - Your Codespace was created before this command existed.
+Update it; your files are kept:
+
+1. In the terminal, type `git pull`. If git says that your local changes would be overwritten,
+   ask the facilitator.
+2. Press `Ctrl+Shift+P` (`Cmd+Shift+P` on a Mac), type `Rebuild`, and choose
+   **Codespaces: Rebuild Container**. It takes a few minutes.
+3. When the Codespace is back, type `workshop-login` again: the key is not kept.
+
+**`Your key changed since Open WebUI started.`** - You saved a new key with `workshop-login`.
+Type `openwebui start`: Open WebUI starts again with the new key.
 
 **`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
 for permission, or because `Ctrl+V` does not paste in the terminal). Type `workshop-login` again

@@ -16,6 +16,7 @@ In it, choose a model at the top left:
 """
 
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -34,7 +35,8 @@ from pathlib import Path
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 KEY_FILE = Path.home() / ".workshop-key"
 IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.11.4")
-CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER", "yal-openwebui")
+# Not the names of the facilitator's demo (facilitator/openwebui/compose.yaml): never touch it.
+CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER", "yal-kit-openwebui")
 VOLUME = CONTAINER + "-data"
 PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
 URL = f"http://127.0.0.1:{PORT}"
@@ -109,6 +111,18 @@ def provider():
     fail("The saved key is not an Anthropic or OpenRouter key. Type workshop-login again.")
 
 
+def check_same_key(key):
+    """Open WebUI keeps the key it was started with: it must still be the saved one.
+    The keys are compared here, never printed."""
+    result = docker("inspect", "--format", "{{json .Config.Env}}", CONTAINER)
+    if result.returncode != 0:
+        fail("Open WebUI is not running. Type: openwebui start")
+    env = dict(item.split("=", 1) for item in json.loads(result.stdout) if "=" in item)
+    if env.get("OPENAI_API_KEY") != key:
+        fail("Your key changed since Open WebUI started. Type openwebui start (it takes the new key),\n"
+             "then this command again.")
+
+
 def address():
     """The address to open: the forwarded port of the Codespace, or localhost."""
     name = os.environ.get("CODESPACE_NAME")
@@ -170,7 +184,8 @@ def start_container():
                 return model
         except (urllib.error.URLError, OSError):
             time.sleep(2)
-    fail("Open WebUI did not start. See its log with: docker logs yal-openwebui")
+    fail(f"Open WebUI did not start in time. Its log: docker logs {CONTAINER}\n"
+         "Wait one minute, then type: openwebui start")
 
 
 # --- API ----------------------------------------------------------------------------------------
@@ -209,8 +224,8 @@ class OpenWebUI:
             except (ValueError, AttributeError):
                 pass
             raise ApiError(e.code, f"{method} {path}: HTTP {e.code}: {detail}") from None
-        except urllib.error.URLError:
-            fail("Open WebUI is not running. Type: openwebui start")
+        except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError):
+            fail("Open WebUI is not running, or not ready yet. Type: openwebui start")
         return json.loads(text) if text else None
 
     def login(self):
@@ -279,6 +294,13 @@ class OpenWebUI:
         present = {}
         for f in self.files_of(knowledge["id"]):
             present[f.get("filename") or f.get("meta", {}).get("name")] = f
+        # A file deleted or renamed in the kit leaves the collection too: the same files as on disk.
+        wanted = {label for label, _ in files}
+        for label, old in list(present.items()):
+            if label not in wanted:
+                self.request("POST", f"/knowledge/{knowledge['id']}/file/remove",
+                             body={"file_id": old["id"]})
+                del present[label]
         failed = []
         for i, (label, path) in enumerate(files, 1):
             old = present.get(label)
@@ -381,7 +403,9 @@ def cmd_chatbot(args):
         name = args[1].strip()
     elif args:
         fail('Usage: openwebui chatbot --name "<the name of your chatbot>"')
-    model = provider()[2]
+    key, _, model = provider()
+    check_docker()
+    check_same_key(key)
     api = OpenWebUI().login()
     # The same package as for a Claude Project or a Gemini Gem.
     if subprocess.run(["chatbot-export", "--name", name]).returncode != 0:
@@ -444,4 +468,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except ApiError as e:
+        fail(f"Open WebUI refused a request ({e}).\n"
+             "Type openwebui start again. If it happens again, ask the facilitator.")
