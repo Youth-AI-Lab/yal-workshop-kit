@@ -295,12 +295,19 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `wiki-graph` | terminal | draws the map of the wiki in `wiki/graph.md` (block E) |
 | `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
 | `chatbot-export` | terminal | packs your chatbot (instructions + knowledge) into one `.zip` file (Closing) |
+| `Ctrl+Shift+V` | in an open `.md` file | shows it as a readable page: titles, tables, lists (`Cmd+Shift+V` on a Mac) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
 | `/context` | in a conversation | shows in detail what fills the context window (modes C, D, E) |
 | `/mcp` | in a conversation | shows the live-data tool and its state (modes D and E) |
 | `/status` | in a conversation | shows the gateway and the key in use (modes C, D, E) |
 
 The **mode** letters are not case-sensitive: `workshop a` works as well as `workshop A`.
+
+
+> 💡 **Tip.** **To read a Markdown file** (a file whose name ends in `.md`), open it, then press
+> `Ctrl+Shift+V` (`Cmd+Shift+V` on a Mac), or right-click on it in the file list and choose
+> **"Open Preview"**: titles, tables and lists become a readable page. **To write in a file**
+> (`AGENTS.md`, `scores.md`…), stay in the normal editor, where you can type.
 
 ### 📋 Memo - The words of the day
 
@@ -434,7 +441,8 @@ This first block is fully guided. Follow each step.
 
 #### Step 1 - Read the test set
 
-1. **Open** `test-questions.md`: click on its name in the file list on the left.
+1. **Open** `test-questions.md`: click on its name in the file list on the left, then press
+   `Ctrl+Shift+V` to read it as a page (to change a question, close the preview and edit the file).
 2. **Read** the scoring rules at the top, then the 11 questions. Notice the **categories**: some
    questions are precise, some ask for an explanation, one is about something nobody knows
    (7), one about today's level (8), two are traps (9 and 10), and one is about a document you
@@ -478,7 +486,7 @@ territory or a topic that matters to you. For each question you replace:
    **about 2 minutes** and costs about $0.10.
 
 3. **While it runs**, open the folder `answers/` in the file list: the file is written as the
-   answers arrive. You can start reading at once.
+   answers arrive. You can start reading at once (`Ctrl+Shift+V` to read it as a page).
 
 #### Step 4 - Talk to the model alone, while the replay runs
 
@@ -588,7 +596,8 @@ you write here is exactly what young people will write in the *Instructions* box
 ### What to do
 
 1. **Open** `AGENTS.md`, then **open the example next to it**: right-click on
-   `examples/AGENTS.feurisson.md` in the file list, then **"Open to the Side"**.
+   `examples/AGENTS.feurisson.md` in the file list, then **"Open to the Side"**. In the example,
+   press `Ctrl+Shift+V` to read it as a page. Keep `AGENTS.md` in the normal editor: you write in it.
 2. **Read the example** section by section. Notice the **Rules**: say "I don't know", never
    invent, point out contradictions, never guess today's level.
 3. **Write your own** system prompt in `AGENTS.md`, under each section title. You can take what
@@ -674,7 +683,7 @@ the window**, sent again with every message, even the shortest one.
 
 ### What to do
 
-1. **Have a look** at `summaries/index.md` and `corpus/index.md`. This is everything we know.
+1. **Have a look** at `summaries/index.md` and `corpus/index.md` (open them, then `Ctrl+Shift+V`). This is everything we know.
    Notice the label at the end of each summary line: "(human-reviewed)" or "(machine-confirmed)".
 2. **Start a conversation** in mode B:
 
@@ -833,7 +842,7 @@ A **skill** is a folder with a file `SKILL.md`: a procedure the model follows wh
 Only its **description** (at the top of the file) is always in the context. The rest is read
 only when the skill is used. So a chatbot can have many skills without filling its context.
 
-1. **Open** `.claude/skills/summarize/SKILL.md`.
+1. **Open** `.claude/skills/summarize/SKILL.md`, then press `Ctrl+Shift+V`.
 2. **Read the header** between the two `---` lines: `name` and `description`. The description
    says **when** the model should use the skill.
 3. **Read the steps and the rules**. Notice: "Never add a `verified` entry yourself, and never
@@ -847,7 +856,8 @@ This is the work young people do in the *Data Box* of WikiYouthBot.
 
 #### Step 1 - Add the document to the corpus
 
-1. **Open** `inbox/README.md` and **copy** its `corpus-add` command. It is one single line.
+1. **Open** `inbox/README.md` (`Ctrl+Shift+V` to read it as a page) and **copy** its `corpus-add`
+   command. It is one single line.
 2. **Paste it** in the terminal (outside a conversation) and press **Enter**.
 
 You should see:
@@ -924,7 +934,7 @@ readable copy goes to `corpus/text/`, and a line is added to `corpus/index.md`.
 
 #### Step 5 - Check the result
 
-1. **Open** `summaries/index.md`. At the bottom, under "Added during the session", your summary
+1. **Open** `summaries/index.md` (`Ctrl+Shift+V`). At the bottom, under "Added during the session", your summary
    went from **"(draft, not verified)"** to **"(human-reviewed)"**.
 2. **Leave** the conversation: press **Ctrl+C twice**.
 3. **Replay** the questions in your second terminal, then **score column C**:
@@ -1112,11 +1122,12 @@ check its consistency.
    ```
 
 2. **Explore the wiki**:
-   1. **Open** `wiki/index.md`, then one page, for example `wiki/2025-eu-wildfire-season.md`.
+   1. **Open** `wiki/index.md`, then one page, for example `wiki/2025-eu-wildfire-season.md`,
+      and press `Ctrl+Shift+V` in each to read them as pages.
       Each fact ends with a footnote such as `[^jrc2025]`. At the bottom of the page, the
       footnote gives the title of the source. In the header at the top, `sources` gives its
       file in `corpus/`.
-   2. **Open** `wiki/log.md`: the history of the wiki. Look for the lines **Contradiction**.
+   2. **Open** `wiki/log.md` (`Ctrl+Shift+V`): the history of the wiki. Look for the lines **Contradiction**.
 3. **Draw the map**:
 
    ```bash
