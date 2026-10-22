@@ -321,7 +321,7 @@ Each word is explained again the first time a block uses it.
 | **System prompt** | Instructions the model reads at the start of every conversation: who it is, its rules. |
 | **Corpus** | The collection of official documents the chatbot can use. |
 | **Summary** | A short text in English about one document, written by the model and checked by a person. |
-| **Skill** | A written procedure that the model follows when it needs it. |
+| **Skill** | A procedure written in plain English (a file `SKILL.md`), like an activity sheet: the model opens it only when your request matches its description, then follows its steps. |
 | **MCP** | *Model Context Protocol*: a standard way to give a tool to a model (here, a tool that reads live data). |
 | **RAG** | *Retrieval-Augmented Generation*: a search engine picks pieces of documents, and only these pieces go to the model. |
 | **Wiki** | Pages organised by topic, linked together, each fact with a note that gives its source. |
@@ -723,7 +723,7 @@ documents. **With ten times more, they would not fit in the window at all.**
 
 ### Think about it
 
-A youth centre has 200 documents about its town. **Why can't it use mode B?** And even with 20
+A youth centre with 200 documents about its town. **Why can't it use mode B?** And even with 20
 documents, **why is mode B expensive?** (Hint: look at the gauge, and at what happens at each
 new message.)
 
@@ -838,15 +838,61 @@ yourselves.
 
 ### Part 2 - Skills: what they are
 
-A **skill** is a folder with a file `SKILL.md`: a procedure the model follows when it needs it.
-Only its **description** (at the top of the file) is always in the context. The rest is read
-only when the skill is used. So a chatbot can have many skills without filling its context.
+**Think of your binder of activity sheets.** When you run a session with young people, you do
+not read every sheet before you start. The table of contents is on the table. When the group
+needs a game or a debate, you open the right sheet and follow it, step by step. A **skill** is
+an activity sheet for the chatbot.
+
+**What a skill is, concretely**: a text file called `SKILL.md`, in its own folder in
+`.claude/skills/`. It is written in plain English, like a procedure for a colleague. No code.
+It has four parts:
+
+- a **name**, for example `summarize`;
+- a **description**: one or two sentences that say **when** to use it, for example "Use when the
+  user says 'summarize corpus/…'";
+- the **steps** to follow, in order;
+- what the model must **never** do during this task.
+
+**How the chatbot uses it**, in three moments:
+
+1. **At the start of a conversation**, the model sees only the **list of skills**: the name and
+   the description of each one, a few lines in all. Like the table of contents of the binder.
+2. **When your request matches a description**, the model decides to open that skill. You see it
+   in the conversation, on a line such as `Skill(summarize)`.
+3. **It reads the whole file and follows the steps**, then it stops using it. For an ordinary
+   question, it opens no skill at all.
+
+**Skill or system prompt?** Both are instructions written by a person, but they do not work the
+same way:
+
+| | System prompt (`AGENTS.md`, block A) | Skill (`SKILL.md`) |
+|---|---|---|
+| When the model reads it | always, with every message | only when a request needs it |
+| What it says | who the chatbot is, and the rules for **every** answer | how to do **one** task, step by step |
+| Who decides to use it | you: it is always there | the model, from the description |
+| Cost in the context | the whole text, every time | a few lines, until it is used |
+
+**Why it matters**:
+
+- **The context stays small**: a chatbot can have many skills, and pays for the full text only
+  of the one it uses.
+- **The same task is done the same way every time**: the summary always gets its verification
+  table, the header always says "draft".
+- **Some rules cannot be skipped**: the skill `summarize` says "never mark a summary as checked".
+  Only a person can do that, with the skill `validate-summary`.
+- **You can improve it yourselves**: change a step in the file, save, and the next time the
+  model follows the new version.
+
+Now look at a real one:
 
 1. **Open** `.claude/skills/summarize/SKILL.md`, then press `Ctrl+Shift+V`.
 2. **Read the header** between the two `---` lines: `name` and `description`. The description
-   says **when** the model should use the skill.
+   says **when** the model should use the skill. Would your request "summarize corpus/80-…"
+   match it?
 3. **Read the steps and the rules**. Notice: "Never add a `verified` entry yourself, and never
    mark a summary as checked." Only a person can do that.
+
+In Part 3, you will see the model open this skill: look for the line `Skill(summarize)`.
 
 ### Part 3 - Let a new document in, and vouch for it
 
