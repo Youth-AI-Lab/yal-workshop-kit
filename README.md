@@ -1028,7 +1028,8 @@ Now watch it work:
    replay C
    ```
 
-**Question 11 can now be answered: by you, not by the model.** Before you added the document,
+**The chatbot can now answer question 11, thanks to the document you added and checked.** You
+decided what went in, not the model. Before you added the document,
 "I don't know" was worth 1. Now the right answer is in the corpus, and a person has checked it.
 
 > 💡 **Tip.** **Checkpoint before moving on**: `corpus/80-…` exists, `summaries/index.md` says
