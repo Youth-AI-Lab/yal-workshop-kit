@@ -1051,8 +1051,45 @@ wrong date in the chatbot, who is responsible for it?)
   Then summarise it, check it and validate it, like Benevento. `corpus-add --help` explains all
   the options. A scanned PDF (only images) is refused: it has no text to read.
 - **Create your own skill**: a folder `.claude/skills/<name>/` with a file `SKILL.md` that has
-  the same header (`name`, `description`). Test it until it triggers **when it should, and only
-  when it should**.
+  the same header (`name`, `description`). Some ideas, close to what you will do with young
+  people:
+
+  | Skill | What it does | In WikiYouthBot |
+  |---|---|---|
+  | `rumour-check` | takes a sentence heard somewhere and answers "True", "False" or "Not in our documents", with the source | I Heard a Rumor |
+  | `quiz-maker` | writes 5 multiple-choice questions for 12 to 15-year-olds from one summary, each with its answer and its source | SDG Bingo |
+  | `explain-for-kids` | rewrites a summary for a 12-year-old: short sentences, no jargon, the same figures and the same source | Chatbot Studio |
+  | `translate-summary` | translates a summary into Italian, Catalan, Dutch or French, keeps the figures, and marks the result as a draft to check | The Data Box |
+  | `press-questions` | prepares test questions in the categories of `test-questions.md`, each with its expected answer and source | The Press Conference |
+
+  For example, a complete `rumour-check`. Create the file `.claude/skills/rumour-check/SKILL.md`
+  and copy this into it:
+
+  ```markdown
+  ---
+  name: rumour-check
+  description: Checks a rumour about wildfires against the documents. Use when the user says "I heard that…", "is it true that…", or gives a sentence to check.
+  ---
+
+  # Checking a rumour
+
+  1. Write the rumour as one short sentence.
+  2. Search summaries/ first, then corpus/text/ if needed.
+  3. Answer with one of three words: TRUE, FALSE, or NOT IN OUR DOCUMENTS.
+  4. Give the sentence of the document that proves it, and the name of the document.
+
+  ## What you don't do
+
+  - Answer from what you know without a document: then the answer is NOT IN OUR DOCUMENTS.
+  - Say TRUE or FALSE when the documents disagree: say so, and give both.
+  ```
+
+  Then **leave and start `workshop C` again**, so that it sees the new skill, and **test it**:
+  - `I heard that you can always have a barbecue near La Rochelle.` should use the skill (look
+    for the line `Skill(rumour-check)`);
+  - `Hello, who are you?` should **not** use it.
+
+  Change the description until it triggers **when it should, and only when it should**.
 
 > **You built** a curation process: a person decides what gets in, and signs what the chatbot
 > says about it. **Reused in** any chatbot: the *Knowledge* box is only as good as what you put
