@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""Open WebUI in your Codespace: the RAG demo, then your own chatbot in a real chatbot tool.
+
+    openwebui start                  starts Open WebUI and loads the workshop knowledge
+                                     (the first time, it downloads Open WebUI: about 4.6 GB)
+    openwebui query "<question>"     shows the 5 excerpts the RAG would give the model
+    openwebui chatbot --name "<name>"
+                                     packs your chatbot (chatbot-export) and adds it to Open WebUI
+    openwebui stop                   stops Open WebUI (your data is kept)
+
+Open WebUI is a chatbot tool you can install on your own server. It uses your key (workshop-login).
+In it, choose a model at the top left:
+  - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
+    the 5 excerpts closest to the question and gives only those to the model.
+  - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+import zipfile
+from pathlib import Path
+
+KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
+KEY_FILE = Path.home() / ".workshop-key"
+IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.11.4")
+CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER", "yal-openwebui")
+VOLUME = CONTAINER + "-data"
+PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
+URL = f"http://127.0.0.1:{PORT}"
+
+# The same model as `workshop` (see workshop-login), through the OpenAI-compatible API of each provider.
+PROVIDERS = {
+    "sk-ant-": ("https://api.anthropic.com/v1",
+                os.environ.get("WORKSHOP_ANTHROPIC_MODEL", "claude-sonnet-5-5")),
+    "sk-or-": ("https://openrouter.ai/api/v1",
+               os.environ.get("WORKSHOP_OPENROUTER_MODEL", "~anthropic/claude-sonnet-latest")),
+}
+
+KNOWLEDGE_NAME = "Wildfire prevention (workshop kit)"
+KNOWLEDGE_DESCRIPTION = ("The knowledge of the workshop kit: summaries/ (short English summaries) and "
+                         "corpus/text/ (readable copies of the official documents). Same files as mode B.")
+RAG_ID = "wildfire-rag"
+RAG_NAME = "Wildfire RAG (workshop kit)"
+# The rules of examples/AGENTS.feurisson.md, adapted: here the model only sees excerpts.
+RAG_PROMPT = """You are a chatbot specialised in wildfire prevention.
+
+Rules:
+If the information is not in the excerpts you were given, say "I don't know". Never invent a figure, a source or an organisation. When two documents contradict each other, point out the contradiction instead of choosing.
+A rule applies to one territory and one period: always say which ones.
+Never guess today's fire danger level: only an official source of the day can give it.
+
+Quality requirements:
+When you state a fact, say where it comes from (the name of the source file of the excerpt).
+Every figure comes with its date and its territory.
+Refuse questions outside wildfire prevention, kindly."""
+
+CHATBOT_ADDENDUM = """
+
+## Your knowledge
+Your knowledge base holds short summaries (summaries__…), the pages of a wiki (wiki__…) and the
+readable copies of the official documents (corpus-text__…). Search it before you answer a
+question about the topic, and say which file you used."""
+
+# Files keep their folder in their name: summaries/11-x.md and corpus/text/11-y.md can have the
+# same file name, and Open WebUI only shows the file name in its citations.
+FOLDERS = [("summaries", "summaries__"), ("corpus/text", "corpus-text__")]
+SKIPPED = {"index.md", "README.md"}
+NO_TOOLS = {"file_context": True, "citations": True, "builtin_tools": False, "file_upload": False,
+            "web_search": False, "image_generation": False, "code_interpreter": False}
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+# --- Docker -------------------------------------------------------------------------------------
+
+def docker(*args, capture=True):
+    return subprocess.run(["docker", *args], text=True,
+                          capture_output=capture, check=False)
+
+
+def check_docker():
+    if not shutil.which("docker") or docker("info").returncode != 0:
+        fail("Docker is not available here, and Open WebUI needs it.\n"
+             "In a Codespace, Docker starts with the Codespace: wait one minute and try again.\n"
+             "On the workshop server, Open WebUI is not available: ask the facilitator.")
+
+
+def provider():
+    if not KEY_FILE.is_file():
+        fail("No key yet. First type: workshop-login")
+    key = KEY_FILE.read_text().strip()
+    for prefix, (base_url, model) in PROVIDERS.items():
+        if key.startswith(prefix):
+            return key, base_url, model
+    fail("The saved key is not an Anthropic or OpenRouter key. Type workshop-login again.")
+
+
+def address():
+    """The address to open: the forwarded port of the Codespace, or localhost."""
+    name = os.environ.get("CODESPACE_NAME")
+    domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    return f"https://{name}-{PORT}.{domain}" if name and domain else f"http://localhost:{PORT}"
+
+
+def start_container():
+    key, base_url, model = provider()
+    if docker("image", "inspect", IMAGE).returncode != 0:
+        print(f"First time: downloading Open WebUI ({IMAGE}, about 4.6 GB, 2 to 4 minutes)…", flush=True)
+        if docker("pull", IMAGE, capture=False).returncode != 0:
+            fail("The download failed. Check the network, then type: openwebui start")
+    # Always a fresh container (your data stays in its volume): it takes the key saved today.
+    docker("rm", "-f", CONTAINER)
+    env = {
+        # One person per Codespace: no accounts. The port is private to your GitHub account.
+        "WEBUI_AUTH": "False",
+        "WEBUI_NAME": "YAL workshop",
+        "ENABLE_OLLAMA_API": "false",
+        "ENABLE_OPENAI_API": "true",
+        "OPENAI_API_BASE_URL": base_url,
+        "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
+        "ENABLE_PERSISTENT_CONFIG": "false",
+        "DEFAULT_MODELS": RAG_ID,
+        # RAG: local embedding model (already in the image), 5 excerpts per question, searched
+        # with the question as it is (no rewording by the model).
+        "RAG_TOP_K": "5",
+        "ENABLE_RETRIEVAL_QUERY_GENERATION": "false",
+        "ENABLE_SEARCH_QUERY_GENERATION": "false",
+        # No hidden calls to the model (titles, tags, suggestions): cheaper and easier to follow.
+        "ENABLE_TITLE_GENERATION": "false",
+        "ENABLE_TAGS_GENERATION": "false",
+        "ENABLE_FOLLOW_UP_GENERATION": "false",
+        "ENABLE_AUTOCOMPLETE_GENERATION": "false",
+        "ENABLE_EVALUATION_ARENA_MODELS": "false",
+        "ENABLE_COMMUNITY_SHARING": "false",
+        "ENABLE_CODE_INTERPRETER": "false",
+        "ENABLE_WEB_SEARCH": "false",
+        "OFFLINE_MODE": "true",
+        "SCARF_NO_ANALYTICS": "true",
+        "DO_NOT_TRACK": "true",
+        "ANONYMIZED_TELEMETRY": "false",
+    }
+    args = ["run", "-d", "--name", CONTAINER, "-p", f"127.0.0.1:{PORT}:8080",
+            "-v", f"{VOLUME}:/app/backend/data"]
+    for name, value in env.items():
+        args += ["-e", f"{name}={value}"]
+    # The key is passed through the environment, never on the command line.
+    args += ["-e", "OPENAI_API_KEY", IMAGE]
+    result = subprocess.run(["docker", *args], text=True, capture_output=True,
+                            env={**os.environ, "OPENAI_API_KEY": key})
+    if result.returncode != 0:
+        fail(f"Open WebUI could not start: {result.stderr.strip()}")
+    print("Open WebUI is starting (about 30 seconds)…", flush=True)
+    for _ in range(90):
+        try:
+            with urllib.request.urlopen(f"{URL}/health", timeout=3):
+                return model
+        except (urllib.error.URLError, OSError):
+            time.sleep(2)
+    fail("Open WebUI did not start. See its log with: docker logs yal-openwebui")
+
+
+# --- API ----------------------------------------------------------------------------------------
+
+class ApiError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+class OpenWebUI:
+    def __init__(self):
+        self.token = ""
+
+    def request(self, method, path, body=None, query=None, raw=None, content_type=None):
+        url = f"{URL}{path}" if path.startswith("/api/") else f"{URL}/api/v1{path}"
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        headers = {"Accept": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        data = raw
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        elif content_type:
+            headers["Content-Type"] = content_type
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=600) as resp:
+                text = resp.read().decode()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")
+            try:
+                detail = json.loads(detail).get("detail", detail)
+            except (ValueError, AttributeError):
+                pass
+            raise ApiError(e.code, f"{method} {path}: HTTP {e.code}: {detail}") from None
+        except urllib.error.URLError:
+            fail("Open WebUI is not running. Type: openwebui start")
+        return json.loads(text) if text else None
+
+    def login(self):
+        # Without accounts (WEBUI_AUTH=False), an empty sign-in gives the admin token.
+        self.token = self.request("POST", "/auths/signin", body={"email": "", "password": ""})["token"]
+        return self
+
+    def collections(self, name):
+        page, seen, found = 1, 0, []
+        while True:
+            answer = self.request("GET", "/knowledge/", query={"page": page})
+            items = answer.get("items", [])
+            found += [k for k in items if k.get("name") == name]
+            seen += len(items)
+            if not items or seen >= answer.get("total", 0):
+                return found
+            page += 1
+
+    def files_of(self, knowledge_id):
+        page, files = 1, []
+        while True:
+            answer = self.request("GET", f"/knowledge/{knowledge_id}/files",
+                                  query={"page": page, "limit": 200})
+            items = answer.get("items", [])
+            files += items
+            if not items or len(files) >= answer.get("total", 0):
+                return files
+            page += 1
+
+    def upload(self, name, path):
+        boundary = uuid.uuid4().hex
+        body = (f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
+                "Content-Type: text/markdown\r\n\r\n").encode() \
+            + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+        # Processed now: when the answer comes, the text is cut into excerpts and indexed.
+        return self.request("POST", "/files/", raw=body,
+                            query={"process": "true", "process_in_background": "false"},
+                            content_type=f"multipart/form-data; boundary={boundary}")
+
+    def model_exists(self, model_id):
+        try:
+            return bool(self.request("GET", "/models/model", query={"id": model_id}))
+        except ApiError as e:
+            if e.status == 404:
+                return False
+            raise
+
+    def save_model(self, form):
+        exists = self.model_exists(form["id"])
+        self.request("POST", "/models/model/update" if exists else "/models/create", body=form)
+
+    def delete_collection(self, knowledge):
+        for f in self.files_of(knowledge["id"]):
+            try:
+                self.request("DELETE", f"/files/{f['id']}")
+            except ApiError:
+                pass
+        self.request("DELETE", f"/knowledge/{knowledge['id']}/delete")
+
+    def fill_collection(self, name, description, files):
+        """Creates the collection if needed and adds the files it does not have yet."""
+        found = self.collections(name)
+        knowledge = found[0] if found else self.request(
+            "POST", "/knowledge/create", body={"name": name, "description": description})
+        present = {}
+        for f in self.files_of(knowledge["id"]):
+            present[f.get("filename") or f.get("meta", {}).get("name")] = f
+        failed = []
+        for i, (label, path) in enumerate(files, 1):
+            old = present.get(label)
+            if old:
+                old_hash = (old.get("meta") or {}).get("file_hash")
+                if not old_hash or old_hash == hashlib.sha256(path.read_bytes()).hexdigest():
+                    continue
+                self.request("POST", f"/knowledge/{knowledge['id']}/file/remove",
+                             body={"file_id": old["id"]})
+            try:
+                file = self.upload(label, path)
+                self.request("POST", f"/knowledge/{knowledge['id']}/file/add",
+                             body={"file_id": file["id"]})
+                print(f"  [{i:2}/{len(files)}] {label}", flush=True)
+            except ApiError as e:
+                print(f"  [{i:2}/{len(files)}] {label}: FAILED ({e})", flush=True)
+                failed.append(label)
+        return knowledge, failed
+
+
+def knowledge_files():
+    """The same files as mode B of `workshop`: summaries/ and corpus/text/."""
+    files = []
+    for folder, prefix in FOLDERS:
+        for path in sorted((KIT / folder).glob("*.md")):
+            if path.name not in SKIPPED and not path.name.startswith("00-"):
+                files.append((prefix + path.name, path))
+    return files
+
+
+def hide_base_model(api, model):
+    """Hides the plain model from the list, without built-in tools: chosen by mistake, it would
+    search every knowledge base with tools (agentic search), not by RAG."""
+    api.save_model({"id": model, "base_model_id": None, "name": model, "is_active": True,
+                    "meta": {"hidden": True, "capabilities": {**NO_TOOLS, "file_context": False,
+                                                              "citations": False}},
+                    "params": {"function_calling": "legacy"}})
+
+
+# --- Commands -----------------------------------------------------------------------------------
+
+def cmd_start():
+    check_docker()
+    model = start_container()
+    api = OpenWebUI().login()
+    files = knowledge_files()
+    print(f"Loading the workshop knowledge: {len(files)} files (same as mode B). "
+          "The first time, it takes 1 to 2 minutes.", flush=True)
+    knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
+    if failed:
+        fail("Some files could not be loaded (see above). Type openwebui start again.")
+    api.save_model({
+        "id": RAG_ID, "base_model_id": model, "name": RAG_NAME, "is_active": True,
+        "meta": {"description": "Claude + the workshop knowledge, by vector search (RAG).",
+                 "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
+                                "description": knowledge.get("description", ""), "type": "collection"}],
+                 # No tools: classic RAG. The excerpts enter the context before each answer.
+                 "capabilities": NO_TOOLS},
+        # "legacy": Open WebUI searches before each answer and adds the excerpts to the context.
+        # No temperature or top_p: Claude Sonnet 5.5 refuses them.
+        "params": {"system": RAG_PROMPT, "function_calling": "legacy"},
+    })
+    hide_base_model(api, model)
+    # No "What's new" window at the first visit: it would hide the chat.
+    version = api.request("GET", "/api/config").get("version")
+    api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
+    print(f'\nOpen WebUI is ready, with the model "{RAG_NAME}".')
+    print(f"Open it: {address()}")
+    print(f"(or: Ports tab of the bottom panel -> {PORT} -> Open in Browser)")
+    print("To see what the RAG finds for a question: openwebui query \"<question>\"")
+
+
+def cmd_query(text):
+    api = OpenWebUI().login()
+    found = api.collections(KNOWLEDGE_NAME)
+    if not found:
+        fail("The workshop knowledge is not loaded yet. Type: openwebui start")
+    answer = api.request("POST", "/retrieval/query/collection",
+                         body={"collection_names": [found[0]["id"]], "query": text, "k": 5})
+    documents = (answer.get("documents") or [[]])[0]
+    metadatas = (answer.get("metadatas") or [[]])[0]
+    print(f"Question: {text}")
+    print(f"The {len(documents)} excerpts the RAG gives the model (closest first):")
+    for i, document in enumerate(documents):
+        meta = metadatas[i] if i < len(metadatas) else {}
+        excerpt = " ".join(document.split())
+        print(f"\n#{i + 1} {meta.get('name') or meta.get('source')}")
+        print(f"   {excerpt[:300]}{'…' if len(excerpt) > 300 else ''}")
+    print("\nThe model sees only these excerpts. Is the answer to your question in them?")
+
+
+def slug(text):
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "my-chatbot"
+
+
+def cmd_chatbot(args):
+    name = "my-chatbot"
+    if args[:1] == ["--name"] and len(args) == 2 and args[1].strip():
+        name = args[1].strip()
+    elif args:
+        fail('Usage: openwebui chatbot --name "<the name of your chatbot>"')
+    model = provider()[2]
+    api = OpenWebUI().login()
+    # The same package as for a Claude Project or a Gemini Gem.
+    if subprocess.run(["chatbot-export", "--name", name]).returncode != 0:
+        fail("chatbot-export failed: nothing was added to Open WebUI.")
+    package = KIT / f"{slug(name)}.zip"
+    with zipfile.ZipFile(package) as archive:
+        system = archive.read("instructions.md").decode().strip() + CHATBOT_ADDENDUM
+        tmp = KIT / ".workshop" / "openwebui-chatbot"
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        files = []
+        for member in archive.namelist():
+            if member.startswith("knowledge/") and member.endswith(".md") and "/.." not in member:
+                target = tmp / Path(member).name
+                target.write_bytes(archive.read(member))
+                files.append((target.name, target))
+    knowledge_name = f"{name} knowledge"
+    for old in api.collections(knowledge_name):  # a new export replaces the previous one
+        api.delete_collection(old)
+    print(f'Adding "{name} chatbot" to Open WebUI: {len(files)} knowledge files…', flush=True)
+    knowledge, failed = api.fill_collection(
+        knowledge_name, f"Everything {name} built during the workshop.", sorted(files))
+    shutil.rmtree(tmp, ignore_errors=True)
+    api.save_model({
+        "id": "chatbot-" + slug(name), "base_model_id": model, "name": f"{name} chatbot",
+        "is_active": True,
+        "meta": {"description": f"The chatbot built by {name}: their instructions and knowledge.",
+                 "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
+                                "description": knowledge.get("description", ""), "type": "collection"}],
+                 # Built-in tools on: the model searches and reads its knowledge itself (mode E).
+                 "capabilities": {**NO_TOOLS, "builtin_tools": True}},
+        "params": {"system": system, "function_calling": "native"},
+    })
+    if failed:
+        fail("Some files could not be added (see above). Type the same command again.")
+    print(f'\nReady. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" at the top left.')
+    print("Ask it your test questions again, and compare with scores.md.")
+
+
+def cmd_stop():
+    check_docker()
+    if docker("rm", "-f", CONTAINER).returncode == 0:
+        print("Open WebUI is stopped. Your data is kept: openwebui start opens it again.")
+
+
+def main(argv):
+    command = argv[0] if argv else "help"
+    if command in ("help", "-h", "--help"):
+        print(__doc__.strip())
+    elif command == "start" and len(argv) == 1:
+        cmd_start()
+    elif command == "query" and len(argv) == 2:
+        cmd_query(argv[1])
+    elif command == "chatbot":
+        cmd_chatbot(argv[1:])
+    elif command == "stop" and len(argv) == 1:
+        cmd_stop()
+    else:
+        fail("Unknown command. See: openwebui help")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -8,14 +8,25 @@
     // Racine du dépôt, pour que le Dockerfile lise .devcontainer/bin et claude-version.
     "context": "../.."
   },
+  // Docker dans le Codespace, pour la commande openwebui (démo RAG et chatbot du binôme dans
+  // Open WebUI). Intégré à l'image publiée : ses réglages (privileged, démarrage du démon)
+  // voyagent dans les métadonnées de l'image, la configuration distribuée n'a rien à ajouter.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
   "remoteUser": "vscode",
   "remoteEnv": {
     "WORKSHOP_HOME": "${containerWorkspaceFolder}"
   },
-  "hostRequirements": { "cpus": 2 },
+  // Open WebUI occupe environ 1,5 Go : 8 Go de mémoire (machine à 2 cœurs, celle par défaut).
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
   // Lecteur PDF (mathematic.vscode-pdf : tomoki1207.pdf est désactivée dans le navigateur).
   // Bloc F : la carte du wiki (wiki-explore) s'ouvre d'elle-même dans un onglet du navigateur.
-  "portsAttributes": { "8765": { "label": "Wiki graph", "onAutoForward": "openBrowser" } },
+  // Open WebUI : la commande affiche l'adresse quand tout est chargé (pas d'onglet ouvert avant).
+  "portsAttributes": {
+    "8765": { "label": "Wiki graph", "onAutoForward": "openBrowser" },
+    "3000": { "label": "Open WebUI", "onAutoForward": "silent" }
+  },
   "customizations": {
     "vscode": { "extensions": ["mathematic.vscode-pdf", "bierner.markdown-mermaid"] }
   }

@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export; do command -v "$c" || echec "$c absent"; done
+for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui; do command -v "$c" || echec "$c absent"; done
 
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
@@ -82,6 +82,14 @@ for p in ('summaries__', 'wiki__', 'corpus-text__'):
     assert any(x.startswith('knowledge/' + p) for x in n), p
 print(len(n), 'fichiers dans le paquet')
 " "$copie/smoke-test.zip" || echec "chatbot-export : paquet incomplet"
+
+etape "openwebui : Docker fonctionne dans le conteneur, la commande demande la clé d'abord"
+# Pas de téléchargement d'Open WebUI ici (4,6 Go) : le démarrage réel est vérifié à la main
+# dans un Codespace (facilitator/SETUP.md).
+docker info > /dev/null || echec "Docker ne répond pas (fonctionnalité docker-in-docker)"
+openwebui help | grep -q "openwebui start" || echec "openwebui help"
+code=0; openwebui start > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sans clé : message attendu workshop-login"; }
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?

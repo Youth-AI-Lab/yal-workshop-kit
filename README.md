@@ -296,6 +296,7 @@ If you got the message `Key OK` and had a first conversation, **everything is re
 | `wiki-graph` | terminal | draws which wiki pages a document feeds, in `wiki/graph.md` (block E) |
 | `wiki-explore` | terminal | opens the knowledge graph of the wiki in your browser (`wiki-explore stop` closes it); `wiki-explore help` for more (block F) |
 | `chatbot-export` | terminal | packs your chatbot (instructions + knowledge) into one `.zip` file (Closing) |
+| `openwebui start` | terminal | starts Open WebUI in your Codespace, with the RAG of the demo; `openwebui chatbot --name "…"` adds your own chatbot; `openwebui help` for more (after the session) |
 | `Ctrl+Shift+V` | in an open `.md` file | shows it as a readable page: titles, tables, lists (`Cmd+Shift+V` on a Mac) |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | terminal | copy / paste in the terminal, also inside a conversation (`Cmd+C` / `Cmd+V` on a Mac) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
@@ -770,6 +771,43 @@ Compare **what the model saw** (the excerpts) with **what it claims**.
 
 This is what most chatbot tools do when the knowledge is too big to be read in full: fast and
 cheap, but the model only sees what the search engine picked.
+
+### Try it yourselves (after the session, or if time allows)
+
+The tool of the demo is **Open WebUI**, a chatbot tool you can install on your own server. The
+command `openwebui` starts it in your Codespace, with your key, and loads the same documents as
+block B.
+
+1. **Start it** (in the terminal, outside a conversation):
+
+   ```bash
+   openwebui start
+   ```
+
+   The first time, it downloads Open WebUI (about 4.6 GB): count **3 to 5 minutes**. The next
+   times, about 1 minute. You should see at the end:
+
+   ```
+   Open WebUI is ready, with the model "Wildfire RAG (workshop kit)".
+   Open it: https://…-3000.app.github.dev
+   ```
+
+2. **Open the address** it gives (`Ctrl` + click on it). If it does not open: **Ports** tab of the
+   bottom panel → `3000` → **Open in Browser**. At the top left, the model is already
+   **Wildfire RAG (workshop kit)**.
+3. **Ask questions 3, 7 and 10** of `test-questions.md`, one per **New Chat**. Under each
+   answer, click the **source** to see the excerpts the model received.
+4. **See what the search engine picks**, without the model, in the terminal:
+
+   ```bash
+   openwebui query "In the Bouches-du-Rhône, when is access to the forest massifs forbidden?"
+   ```
+
+   It shows the 5 excerpts, closest first. Is the answer in them?
+
+> ℹ️ **Note.** Open WebUI uses **your key**, like `workshop`: each answer is paid from it. It
+> keeps running until you type `openwebui stop` or the Codespace stops. Your data stays:
+> `openwebui start` opens it again.
 
 ---
 
@@ -1542,6 +1580,24 @@ Everything you built today fits in one file: your instructions and all your know
 > as in mode E. The RAG demo (after block B) only gave the model 5 excerpts picked by a search
 > engine. Watch the difference on question 10.
 
+4. **Or do it yourselves**, in your Codespace (after the session, or if time allows). Open WebUI
+   must be running (`openwebui start`, see the RAG demo). Then:
+
+   ```bash
+   openwebui chatbot --name "Feurisson"
+   ```
+
+   It packs your chatbot (the same file as step 1) and adds it to Open WebUI, in about 1 minute.
+   You should see at the end:
+
+   ```
+   Ready. In Open WebUI (https://…-3000.app.github.dev): New Chat, then choose "Feurisson chatbot" at the top left.
+   ```
+
+   Ask it questions 3 and 10, then ask the same ones to **Wildfire RAG (workshop kit)**. Under
+   your chatbot's answer, the line **Explored …** shows its searches in its knowledge base. Run
+   the command again after a change (for example in `AGENTS.md`): it replaces the previous version.
+
 The live tool of block D (MCP) is not in the file: in another tool, it has to be connected again.
 
 ---
@@ -1568,6 +1624,13 @@ After the session, if you want to go deeper:
 **"The map of `wiki-explore` does not open."** - Look at the **Ports** tab of the bottom panel:
 on the line `8765`, click the globe icon (**Open in Browser**). If the page shows a list of files
 instead of the map, click on `graph.html`. If nothing answers, type `wiki-explore` again.
+
+**`Docker is not available here, and Open WebUI needs it.`** - In a Codespace, Docker starts a
+few seconds after the Codespace: wait one minute and type `openwebui start` again. On the
+workshop server (not a Codespace), Open WebUI is not available: ask the facilitator.
+
+**Open WebUI says "Open WebUI is not running", or its page does not answer.** - It stops with
+the Codespace. Type `openwebui start` again: your knowledge and your chatbots are kept.
 
 **`Nothing was pasted.`** - The paste did not arrive (often the first time, when the browser asks
 for permission, or because `Ctrl+V` does not paste in the terminal). Type `workshop-login` again
