@@ -412,7 +412,8 @@ def cmd_chatbot(args):
         fail("chatbot-export failed: nothing was added to Open WebUI.")
     package = KIT / f"{slug(name)}.zip"
     with zipfile.ZipFile(package) as archive:
-        system = archive.read("instructions.md").decode().strip() + CHATBOT_ADDENDUM
+        instructions = archive.read("instructions.md").decode().strip()
+        system = instructions + CHATBOT_ADDENDUM
         tmp = KIT / ".workshop" / "openwebui-chatbot"
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(parents=True)
@@ -441,7 +442,17 @@ def cmd_chatbot(args):
     })
     if failed:
         fail("Some files could not be added (see above). Type the same command again.")
-    print(f'\nReady. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" at the top left.')
+    # Say what went into the Instructions box: the pair cannot see it from the chat.
+    text = [line.strip() for line in instructions.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
+    if text:
+        start = text[0] if len(text[0]) <= 70 else text[0][:70].rsplit(" ", 1)[0] + "…"
+        print(f'\nInstructions: your AGENTS.md, {len(text)} lines. It starts with: "{start}"')
+    else:
+        print("\nWarning: your AGENTS.md is still empty, so this chatbot has no instructions.\n"
+              "Fill it in (block A), then type the same command again.")
+    print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" at the top left.')
+    print("To check the instructions, ask it: Who are you?")
     print("Ask it your test questions again, and compare with scores.md.")
 
 

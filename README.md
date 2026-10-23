@@ -1595,8 +1595,13 @@ Everything you built today fits in one file: your instructions and all your know
    You should see at the end:
 
    ```
+   Instructions: your AGENTS.md, 26 lines. It starts with: "You are Feurisson, a friendly hedgehog who helps young people prevent…"
    Ready. In Open WebUI (https://…-3000.app.github.dev): New Chat, then choose "Feurisson chatbot" at the top left.
    ```
+
+   The line **Instructions** shows that your `AGENTS.md` went in. If it says `Warning: your
+   AGENTS.md is still empty`, fill it in (block A) and type the command again. To check in the
+   chat, ask: *Who are you?*
 
    Ask it questions 3 and 10, then ask the same ones to **Wildfire RAG (workshop kit)**. Under
    your chatbot's answer, the line **Explored …** shows its searches in its knowledge base. Run
