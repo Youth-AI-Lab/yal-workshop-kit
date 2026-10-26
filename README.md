@@ -814,6 +814,11 @@ block B.
 > keeps running until you type `openwebui stop` or the Codespace stops. Your data stays:
 > `openwebui start` opens it again.
 
+> 🚫 **Warning.** **Never make port 3000 public** (Ports tab, Port Visibility). This Open WebUI has
+> **no accounts**: anyone with the link would be its administrator. They could read your
+> conversations, change your chatbots and **use your key**. It is for you only. To show a chatbot
+> to a group, use the facilitator's screen, or ask the facilitator.
+
 ---
 
 ## Block C - Let it search, and curate what it knows (★★★, 25 min)
@@ -1607,6 +1612,10 @@ Everything you built today fits in one file: your instructions and all your know
    Ask it questions 3 and 10, then ask the same ones to **Wildfire RAG (workshop kit)**. Under
    your chatbot's answer, the line **Explored …** shows its searches in its knowledge base. Run
    the command again after a change (for example in `AGENTS.md`): it replaces the previous version.
+
+   > 🚫 **Warning.** **Never make port 3000 public** to share your chatbot: this Open WebUI has no
+   > accounts, so anyone with the link would be its administrator and could use your key. Show it
+   > on your own screen instead.
 
 The live tool of block D (MCP) is not in the file: in another tool, it has to be connected again.
 
