@@ -14,15 +14,21 @@ In it, choose a model at the top left:
     the 5 excerpts closest to the question and gives only those to the model.
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
 
-Class mode (OPENWEBUI_MODE=class, set by the Open WebUI guide): Open WebUI with accounts, for a
-teacher who builds chatbots and opens them to students during a class.
-    openwebui start                  starts Open WebUI; you are its administrator
-    openwebui share open             students can sign up and use your chatbots; shows the link
-    openwebui share close            no more sign-ups; tells you to make the port private again
-    openwebui share status           sign-ups open or closed, port public or private, accounts
-    openwebui password               where your administrator password is kept
-    openwebui stop                   stops Open WebUI (your data is kept)
+(With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the class mode.)
 """
+
+CLASS_HELP = """Open WebUI for your classes: you build chatbots, then open them to your students during a class.
+
+    openwebui start          starts Open WebUI and shows how to sign in
+    openwebui password       shows your teacher e-mail and password (never on the projector)
+    openwebui share open     in class: students can sign up and use your chatbots; link and QR code
+    openwebui share close    after class: no more sign-ups; helps you make the link private again
+    openwebui share status   sign-ups open or closed, link public or private, number of accounts
+    openwebui stop           stops Open WebUI (your data is kept)
+    openwebui reset          deletes everything in Open WebUI (asks you to confirm)
+    openwebui help           this list
+
+The guide: https://github.com/Youth-AI-Lab/yal-openwebui-guide"""
 
 import hashlib
 import http.client
@@ -689,7 +695,7 @@ def cmd_class_start():
 
 def show_account(admin, with_password):
     rule = "=" * 72
-    password = admin["password"] if with_password else "type: openwebui password"
+    password = admin["password"] if with_password else "openwebui password shows it (never on the projector)"
     print(f"\n{rule}\n"
           f" Open WebUI is ready. Open it and sign in with YOUR teacher account:\n\n"
           f"   Address:  {address()}\n"
@@ -708,7 +714,9 @@ def cmd_share_open():
     api = OpenWebUI().login()
     # Students need read access to each chatbot, to the model under it and to its documents:
     # without the last one, a chatbot answers without its documents, and says nothing.
-    chatbots = [m for m in api.request("GET", "/models/all") if m.get("base_model_id")]
+    # Active chatbots only: a chatbot switched off in Workspace -> Models stays hidden from students.
+    chatbots = [m for m in api.request("GET", "/models/all")
+                if m.get("base_model_id") and m.get("is_active", True)]
     for base in base_models(key, model):
         api.request("POST", "/models/model/access/update",
                     body={"id": base, "name": base, "access_grants": EVERYONE})
@@ -801,7 +809,7 @@ def class_command(argv):
 def main(argv):
     command = argv[0] if argv else "help"
     if command in ("help", "-h", "--help"):
-        print(__doc__.strip())
+        print(CLASS_HELP if CLASS else __doc__.strip())
     elif CLASS:
         class_command(argv)
     elif command in ("share", "password", "reset"):

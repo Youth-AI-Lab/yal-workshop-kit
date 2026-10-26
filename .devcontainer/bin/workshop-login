@@ -12,12 +12,25 @@ ANTHROPIC_MODEL_ID="${WORKSHOP_ANTHROPIC_MODEL:-claude-sonnet-5-5}"
 OPENROUTER_MODEL_ID="${WORKSHOP_OPENROUTER_MODEL:-~anthropic/claude-sonnet-latest}"
 OPENROUTER_SMALL_ID="${WORKSHOP_OPENROUTER_SMALL_MODEL:-~anthropic/claude-haiku-latest}"
 
+# Class mode (Open WebUI guide, one teacher, no facilitator): the same steps, other words.
+if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
+  ASK='Paste your API key, then press Enter: '
+  NEXT='openwebui start'
+  REFUSED='Create a new key in the Claude Console (guide, step 1), then type workshop-login again.'
+  OTHER='Check that your account has credits and that the key belongs to a workspace (guide, step 1).'
+else
+  ASK='Paste the API key of your pair, then press Enter: '
+  NEXT='workshop bare'
+  REFUSED='Check it with the facilitator.'
+  OTHER='Tell the facilitator.'
+fi
+
 if [[ "${1:-}" == "--key" ]]; then
   key="${2:?--key needs a value}"
 else
   # One * per character: you can see that the paste worked (the key itself is never shown).
   # The first paste in a browser may ask for permission: accept it, then paste once.
-  printf 'Paste the API key of your pair, then press Enter: '
+  printf '%s' "$ASK"
   key=""
   while IFS= read -rsn1 c; do
     [[ -z "$c" ]] && break                                    # Enter
@@ -88,8 +101,8 @@ EOF
 fi
 
 case "$code" in
-  200) echo "Key OK ($provider, model $model). You can start: workshop bare" ;;
-  401|403) echo "Key saved, but $provider refuses it (HTTP $code). Check it with the facilitator." >&2; exit 2 ;;
-  000) echo "Key saved, but $provider could not be reached (network?). Try: workshop bare" >&2; exit 3 ;;
-  *) echo "Key saved, but the test answered HTTP $code (model $model). Tell the facilitator." >&2; exit 4 ;;
+  200) echo "Key OK ($provider, model $model). You can start: $NEXT" ;;
+  401|403) echo "Key saved, but $provider refuses it (HTTP $code). $REFUSED" >&2; exit 2 ;;
+  000) echo "Key saved, but $provider could not be reached (network?). Try: $NEXT" >&2; exit 3 ;;
+  *) echo "Key saved, but the test answered HTTP $code (model $model). $OTHER" >&2; exit 4 ;;
 esac

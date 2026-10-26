@@ -40,6 +40,7 @@ RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/replay /usr/local/bin/works
     /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore \
     /usr/local/bin/chatbot-export /usr/local/bin/openwebui
 
-# Rappel dans chaque nouveau terminal tant que le binôme n'a pas enregistré sa clé.
-RUN echo '[[ -f "$HOME/.workshop-key" ]] || echo "Welcome! First, save the API key of your pair: workshop-login"' \
+# Rappel dans chaque nouveau terminal tant que la clé n'est pas enregistrée (binôme de l'atelier,
+# ou enseignant du guide Open WebUI en mode classe).
+RUN echo '[[ -f "$HOME/.workshop-key" ]] || if [[ "$OPENWEBUI_MODE" == class ]]; then echo "Welcome! First, save your API key: workshop-login"; else echo "Welcome! First, save the API key of your pair: workshop-login"; fi' \
       >> /etc/bash.bashrc
