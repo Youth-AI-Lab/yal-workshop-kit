@@ -14,15 +14,15 @@ In it, choose a model at the top left:
     the 5 excerpts closest to the question and gives only those to the model.
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
 
-(With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the class mode.)
+(With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the group mode.)
 """
 
-CLASS_HELP = """Open WebUI for your classes: you build chatbots, then open them to your students during a class.
+CLASS_HELP = """Open WebUI for your groups: you build chatbots, then open them to the participants during a session.
 
     openwebui start          starts Open WebUI and shows how to sign in
-    openwebui password       shows your teacher e-mail and password (never on the projector)
-    openwebui share open     in class: students can sign up and use your chatbots; link and QR code
-    openwebui share close    after class: no more sign-ups; helps you make the link private again
+    openwebui password       shows your e-mail and password (never on the projector)
+    openwebui share open     in a session: participants can sign up and use your chatbots; link and QR code
+    openwebui share close    after the session: no more sign-ups; helps you make the link private again
     openwebui share status   sign-ups open or closed, link public or private, number of accounts
     openwebui stop           stops Open WebUI (your data is kept)
     openwebui reset          deletes everything in Open WebUI (asks you to confirm)
@@ -51,7 +51,7 @@ from pathlib import Path
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 KEY_FILE = Path.home() / ".workshop-key"
 IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.11.4")
-# "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to students.
+# "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to a group.
 CLASS = os.environ.get("OPENWEBUI_MODE", "workshop") == "class"
 # Not the names of the facilitator's demo (facilitator/openwebui/compose.yaml): never touch it.
 # Each mode has its own container and data: an instance without accounts is never shared.
@@ -71,7 +71,7 @@ PROVIDERS = {
 
 # Class mode also offers a cheaper model, for simple chatbots (Anthropic keys).
 SMALL_MODELS = {"sk-ant-": os.environ.get("WORKSHOP_ANTHROPIC_SMALL_MODEL", "claude-haiku-5-5")}
-ADMIN_EMAIL = os.environ.get("OPENWEBUI_ADMIN_EMAIL", "teacher@class.local")
+ADMIN_EMAIL = os.environ.get("OPENWEBUI_ADMIN_EMAIL", "facilitator@group.local")
 
 KNOWLEDGE_NAME = "Wildfire prevention (workshop kit)"
 KNOWLEDGE_DESCRIPTION = ("The knowledge of the workshop kit: summaries/ (short English summaries) and "
@@ -111,7 +111,7 @@ def fail(message, code=1):
     sys.exit(code)
 
 
-# --- Class mode: the teacher's secrets and the sign-up state -------------------------------------
+# --- Class mode: the facilitator's secrets and the sign-up state -------------------------------------
 
 def state_dir():
     """Next to the repository when possible: it stays when the Codespace is rebuilt."""
@@ -230,20 +230,20 @@ def start_container():
         here = address()
         env.update({
             "WEBUI_AUTH": "True",
-            "WEBUI_NAME": "Class chatbots",
+            "WEBUI_NAME": "Group chatbots",
             "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model] + [
                 small for prefix, small in SMALL_MODELS.items() if key.startswith(prefix)]}}),
-            # The teacher's account, made at the first start only (on empty data).
+            # The facilitator's account, made at the first start only (on empty data).
             "WEBUI_ADMIN_EMAIL": admin["email"],
-            "WEBUI_ADMIN_NAME": "Teacher",
-            # Students sign up during the class only (openwebui share open / close), active at once.
+            "WEBUI_ADMIN_NAME": "Facilitator",
+            # Participants sign up during the session only (openwebui share open / close), active at once.
             "ENABLE_SIGNUP": "true" if signup_is_open() else "false",
             "DEFAULT_USER_ROLE": "user",
             "WEBUI_URL": here,
             # Every address in use: the same list also filters the live connection of the chat.
             "CORS_ALLOW_ORIGIN": ";".join(dict.fromkeys(
                 [here, f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"])),
-            # Students cannot change a chatbot's prompt or settings, nor chat with several models.
+            # Participants cannot change a chatbot's prompt or settings, nor chat with several models.
             "USER_PERMISSIONS_CHAT_SYSTEM_PROMPT": "false",
             "USER_PERMISSIONS_CHAT_PARAMS": "false",
             "USER_PERMISSIONS_CHAT_MULTIPLE_MODELS": "false",
@@ -626,7 +626,7 @@ def gh_set_visibility(visibility):
 
 def set_port(public):
     """Makes the port public (share open) or private (share close): by itself when GitHub allows it,
-    otherwise by guiding the teacher, click by click, and checking after each Enter."""
+    otherwise by guiding the facilitator, click by click, and checking after each Enter."""
     want = "Public" if public else "Private"
     state = port_is_public()
     if state is None:
@@ -668,10 +668,10 @@ def set_port(public):
 
 def show_link():
     url = address()
-    print(f"\nThe link for your students: {url}")
+    print(f"\nThe link for the participants: {url}")
     if shutil.which("qrencode"):
         subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", url], check=False)
-    print("Your students first see a warning page from GitHub: they click Continue.")
+    print("They first see a warning page from GitHub: they click Continue.")
 
 
 def base_models(key, model):
@@ -686,9 +686,9 @@ def cmd_class_start():
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
     admin, _ = class_secrets()
-    print("\nSign-ups are " + ("OPEN: students can join." if signup_is_open() else
-                               "closed. In class: openwebui share open"))
-    # Last, in a frame: after the download, this is what the teacher must not miss. The password is
+    print("\nSign-ups are " + ("OPEN: participants can join." if signup_is_open() else
+                               "closed. In a session: openwebui share open"))
+    # Last, in a frame: after the download, this is what the facilitator must not miss. The password is
     # shown only the first time (this terminal may later be on the projector): openwebui password.
     show_account(admin, with_password=made_now)
 
@@ -697,7 +697,7 @@ def show_account(admin, with_password):
     rule = "=" * 72
     password = admin["password"] if with_password else "openwebui password shows it (never on the projector)"
     print(f"\n{rule}\n"
-          f" Open WebUI is ready. Open it and sign in with YOUR teacher account:\n\n"
+          f" Open WebUI is ready. Open it and sign in with YOUR account (administrator):\n\n"
           f"   Address:  {address()}\n"
           f"   E-mail:   {admin['email']}\n"
           f"   Password: {password}\n\n"
@@ -712,15 +712,15 @@ def cmd_share_open():
     set_signup(True)
     start_container()  # recreated with sign-ups on; sessions are kept (fixed session key)
     api = OpenWebUI().login()
-    # Students need read access to each chatbot, to the model under it and to its documents:
+    # Participants need read access to each chatbot, to the model under it and to its documents:
     # without the last one, a chatbot answers without its documents, and says nothing.
-    # Active chatbots only: a chatbot switched off in Workspace -> Models stays hidden from students.
+    # Active chatbots only: a chatbot switched off in Workspace -> Models stays hidden from participants.
     chatbots = [m for m in api.request("GET", "/models/all")
                 if m.get("base_model_id") and m.get("is_active", True)]
     for base in base_models(key, model):
         api.request("POST", "/models/model/access/update",
                     body={"id": base, "name": base, "access_grants": EVERYONE})
-        # The plain model stays out of the students' list: they use your chatbots.
+        # The plain model stays out of the participants' list: they use your chatbots.
         api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
                         "meta": {"hidden": True}, "params": {}})
     for bot in chatbots:
@@ -734,15 +734,15 @@ def cmd_share_open():
                 except ApiError as e:
                     if e.status != 404:  # a single file, not a knowledge base
                         raise
-    print("\nSign-ups are OPEN. Your students can use these chatbots:")
+    print("\nSign-ups are OPEN. The participants can use these chatbots:")
     for bot in chatbots:
         print(f"  - {bot['name']}")
     if not chatbots:
         print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
     set_port(public=True)
     show_link()
-    print("Each student signs up (any name and e-mail; a nickname is fine), then chats.")
-    print("At the end of the class: openwebui share close")
+    print("Each participant signs up (any name and e-mail; a nickname is fine), then chats.")
+    print("At the end of the session: openwebui share close")
 
 
 def cmd_share_close():
@@ -757,8 +757,8 @@ def cmd_share_close():
                             "meta": {"hidden": False}, "params": {}})
     print("\nSign-ups are closed: nobody new can create an account.")
     set_port(public=False)
-    print("Your chatbots and your students' accounts and conversations are kept.")
-    print("Next class: openwebui share open")
+    print("Your chatbots and the participants' accounts and conversations are kept.")
+    print("Next session: openwebui share open")
 
 
 def cmd_share_status():
@@ -814,7 +814,7 @@ def main(argv):
         class_command(argv)
     elif command in ("share", "password", "reset"):
         fail("Sharing needs accounts, and this Open WebUI has none: it is for you only.\n"
-             "Never make its port public. To open chatbots to a class, use the Open WebUI guide.")
+             "Never make its port public. To open chatbots to a group, use the Open WebUI guide.")
     elif command == "start" and len(argv) == 1:
         cmd_start()
     elif command == "query" and len(argv) == 2:

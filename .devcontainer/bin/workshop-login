@@ -16,8 +16,8 @@ OPENROUTER_SMALL_ID="${WORKSHOP_OPENROUTER_SMALL_MODEL:-~anthropic/claude-haiku-
 if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
   ASK='Paste your API key, then press Enter: '
   NEXT='openwebui start'
-  REFUSED='Create a new key in the Claude Console (guide, step 1), then type workshop-login again.'
-  OTHER='Check that your account has credits and that the key belongs to a workspace (guide, step 1).'
+  REFUSED='Create a new key in the Claude Console (guide: "Your Anthropic API key"), then type workshop-login again.'
+  OTHER='Check that your account has credits and that the key belongs to a workspace (guide: "Your Anthropic API key").'
 else
   ASK='Paste the API key of your pair, then press Enter: '
   NEXT='workshop bare'
