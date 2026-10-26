@@ -605,11 +605,67 @@ def port_is_public():
         return None
 
 
+def gh_set_visibility(visibility):
+    """Asks GitHub to change the port's visibility. It works only if gh may manage Codespaces here."""
+    name = os.environ.get("CODESPACE_NAME")
+    if not name or not shutil.which("gh"):
+        return False
+    try:
+        result = subprocess.run(["gh", "codespace", "ports", "visibility", f"{PORT}:{visibility}",
+                                 "-c", name], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
+
+
+def set_port(public):
+    """Makes the port public (share open) or private (share close): by itself when GitHub allows it,
+    otherwise by guiding the teacher, click by click, and checking after each Enter."""
+    want = "Public" if public else "Private"
+    state = port_is_public()
+    if state is None:
+        print(f"\nThis command cannot check port {PORT} here. In the PORTS tab, set its visibility to {want}.")
+        return
+    if state == public:
+        print(f"\nPort {PORT} is {want.lower()}.")
+        return
+    if gh_set_visibility(want.lower()):
+        time.sleep(3)
+        if port_is_public() == public:
+            print(f"\nPort {PORT} is now {want.lower()}.")
+            return
+    rule = "=" * 72
+    if public:
+        title = " YOUR TURN: make the link public. For now, only you can open it."
+    else:
+        title = " LAST STEP: make the link private again, so that nobody new can open it."
+    print(f"\n{rule}\n{title}\n"
+          f"   1. At the bottom of the window, click the PORTS tab (next to TERMINAL).\n"
+          f"   2. Right-click on the line of port {PORT}.\n"
+          f'   3. Choose "Port Visibility", then "{want}".\n'
+          f"   4. Come back to this terminal and press Enter.\n{rule}")
+    while True:
+        try:
+            input("Press Enter when it is done (Ctrl+C to stop here): ")
+        except (EOFError, KeyboardInterrupt):
+            print(f"\nNot checked. Set port {PORT} to {want} in the PORTS tab.")
+            return
+        state = port_is_public()
+        if state == public:
+            print(f"Done: port {PORT} is now {want.lower()}.")
+            return
+        if state is None:
+            print(f"This command cannot check it. Make sure port {PORT} is {want} in the PORTS tab.")
+            return
+        print(f'Port {PORT} is still {"private" if public else "public"}. In the menu, choose "{want}".')
+
+
 def show_link():
     url = address()
     print(f"\nThe link for your students: {url}")
     if shutil.which("qrencode"):
         subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", url], check=False)
+    print("Your students first see a warning page from GitHub: they click Continue.")
 
 
 def base_models(key, model):
@@ -667,14 +723,7 @@ def cmd_share_open():
         print(f"  - {bot['name']}")
     if not chatbots:
         print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
-    public = port_is_public()
-    while public is False:
-        print(f"\nThe port is still private. Make it public: Ports tab of the bottom panel ->\n"
-              f"right-click on {PORT} -> Port Visibility -> Public. Then press Enter.")
-        input()
-        public = port_is_public()
-    if public is None:
-        print(f"\nCheck that port {PORT} is public (Ports tab -> Port Visibility -> Public).")
+    set_port(public=True)
     show_link()
     print("Each student signs up (any name and e-mail; a nickname is fine), then chats.")
     print("At the end of the class: openwebui share close")
@@ -690,10 +739,10 @@ def cmd_share_close():
         if api.model_exists(base):
             api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
                             "meta": {"hidden": False}, "params": {}})
-    print("\nSign-ups are closed. Students who signed up can still use your chatbots while the")
-    print("port is public.")
-    if port_is_public() is not False:
-        print(f"Make the port private again: Ports tab -> right-click on {PORT} -> Port Visibility -> Private.")
+    print("\nSign-ups are closed: nobody new can create an account.")
+    set_port(public=False)
+    print("Your chatbots and your students' accounts and conversations are kept.")
+    print("Next class: openwebui share open")
 
 
 def cmd_share_status():
