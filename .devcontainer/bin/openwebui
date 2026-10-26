@@ -133,11 +133,9 @@ def address():
 def start_container():
     key, base_url, model = provider()
     if docker("image", "inspect", IMAGE).returncode != 0:
-        print(f"First time: downloading Open WebUI ({IMAGE}, about 4.6 GB, 2 to 4 minutes)…", flush=True)
+        print(f"First time: downloading Open WebUI ({IMAGE}, about 4.6 GB, a few minutes)…", flush=True)
         if docker("pull", IMAGE, capture=False).returncode != 0:
             fail("The download failed. Check the network, then type: openwebui start")
-    # Always a fresh container (your data stays in its volume): it takes the key saved today.
-    docker("rm", "-f", CONTAINER)
     env = {
         # One person per Codespace: no accounts. The port is private to your GitHub account.
         "WEBUI_AUTH": "False",
@@ -167,22 +165,47 @@ def start_container():
         "DO_NOT_TRACK": "true",
         "ANONYMIZED_TELEMETRY": "false",
     }
-    args = ["run", "-d", "--name", CONTAINER, "-p", f"127.0.0.1:{PORT}:8080",
-            "-v", f"{VOLUME}:/app/backend/data"]
-    for name, value in env.items():
-        args += ["-e", f"{name}={value}"]
-    # The key is passed through the environment, never on the command line.
-    args += ["-e", "OPENAI_API_KEY", IMAGE]
-    result = subprocess.run(["docker", *args], text=True, capture_output=True,
-                            env={**os.environ, "OPENAI_API_KEY": key})
-    if result.returncode != 0:
-        fail(f"Open WebUI could not start: {result.stderr.strip()}")
-    print("Open WebUI is starting (about 30 seconds)…", flush=True)
-    for _ in range(90):
+    # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
+    config = hashlib.sha256(json.dumps([IMAGE, env, PORT], sort_keys=True).encode()).hexdigest()[:16]
+    state = docker("inspect", "--format",
+                   '{{json .Config.Env}}|{{index .Config.Labels "yal.kit.config"}}|{{.State.Running}}',
+                   CONTAINER)
+    reuse = False
+    if state.returncode == 0:
+        env_json, label, running = state.stdout.strip().rsplit("|", 2)
+        old_env = {k: v for k, v in (i.split("=", 1) for i in json.loads(env_json) if "=" in i)}
+        # The keys are compared here, never printed.
+        reuse = label == config and old_env.get("OPENAI_API_KEY") == key
+        if reuse and running != "true":
+            reuse = docker("start", CONTAINER).returncode == 0
+    if reuse:
+        print("Open WebUI is already set up with your key: checking that it answers…", flush=True)
+    else:
+        # A new container (your data stays in its volume): it takes the key saved today.
+        docker("rm", "-f", CONTAINER)
+        # It starts again by itself with the Codespace: next time, it is ready sooner.
+        args = ["run", "-d", "--name", CONTAINER, "--restart", "unless-stopped",
+                "--label", f"yal.kit.config={config}",
+                "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{VOLUME}:/app/backend/data"]
+        for name, value in env.items():
+            args += ["-e", f"{name}={value}"]
+        # The key is passed through the environment, never on the command line.
+        args += ["-e", "OPENAI_API_KEY", IMAGE]
+        result = subprocess.run(["docker", *args], text=True, capture_output=True,
+                                env={**os.environ, "OPENAI_API_KEY": key})
+        if result.returncode != 0:
+            fail(f"Open WebUI could not start: {result.stderr.strip()}")
+        print("Open WebUI is starting (from 30 seconds to 3 minutes)…", flush=True)
+    start, next_report = time.monotonic(), 30
+    while time.monotonic() - start < 360:
         try:
             with urllib.request.urlopen(f"{URL}/health", timeout=3):
+                print(f"  Open WebUI answers ({time.monotonic() - start:.0f} s).", flush=True)
                 return model
-        except (urllib.error.URLError, OSError):
+        except (urllib.error.URLError, http.client.HTTPException, OSError):
+            if time.monotonic() - start >= next_report:
+                print(f"  still starting… {next_report} s", flush=True)
+                next_report += 30
             time.sleep(2)
     fail(f"Open WebUI did not start in time. Its log: docker logs {CONTAINER}\n"
          "Wait one minute, then type: openwebui start")
@@ -347,11 +370,13 @@ def cmd_start():
     model = start_container()
     api = OpenWebUI().login()
     files = knowledge_files()
-    print(f"Loading the workshop knowledge: {len(files)} files (same as mode B). "
-          "The first time, it takes 1 to 2 minutes.", flush=True)
+    print(f"Checking the workshop knowledge: {len(files)} files (same as mode B). "
+          "The first time, loading them takes 1 to 2 minutes.", flush=True)
+    start = time.monotonic()
     knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
     if failed:
         fail("Some files could not be loaded (see above). Type openwebui start again.")
+    print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
     api.save_model({
         "id": RAG_ID, "base_model_id": model, "name": RAG_NAME, "is_active": True,
         "meta": {"description": "Claude + the workshop knowledge, by vector search (RAG).",
