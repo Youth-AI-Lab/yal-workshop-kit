@@ -186,7 +186,7 @@ def start_container():
     else:
         # A new container (your data stays in its volume): it takes the key saved today.
         docker("rm", "-f", CONTAINER)
-        # It starts again by itself with the Codespace: next time, it is ready sooner.
+        # "unless-stopped": Docker may start it again by itself (not seen after a Codespace restart).
         args = ["run", "-d", "--name", CONTAINER, "--restart", "unless-stopped",
                 "--label", f"yal.kit.config={config}",
                 "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{VOLUME}:/app/backend/data"]

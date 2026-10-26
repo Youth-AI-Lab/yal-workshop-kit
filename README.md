@@ -788,10 +788,9 @@ block B.
    openwebui start
    ```
 
-   The first time, it downloads Open WebUI (about 4.6 GB): count **a few minutes**. After that,
-   Open WebUI starts again **by itself** with the Codespace, in the background: it can take up to
-   3 minutes. So type `openwebui start` as soon as you open the Codespace, and do something else
-   while it starts. You should see at the end:
+   The first time, it downloads Open WebUI (about 4.6 GB): count **3 to 4 minutes**. The next
+   times, about **1 minute**, as long as Open WebUI takes to start. So when you need it, type
+   `openwebui start` as soon as you open the Codespace. You should see at the end:
 
    ```
    Open WebUI is ready, with the model "Wildfire RAG (workshop kit)".
