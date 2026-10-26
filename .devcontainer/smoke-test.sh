@@ -90,6 +90,11 @@ docker info > /dev/null || echec "Docker ne répond pas (fonctionnalité docker-
 openwebui help | grep -q "openwebui start" || echec "openwebui help"
 code=0; openwebui start > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sans clé : message attendu workshop-login"; }
+# Le partage demande des comptes : refusé dans l'instance de l'atelier (sans comptes).
+code=0; openwebui share open > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "Never make its port public" /tmp/err || { cat /tmp/err; echec "openwebui share hors mode classe : refus attendu"; }
+OPENWEBUI_MODE=class openwebui help | grep -q "share open" || echec "openwebui help (mode classe)"
+command -v qrencode > /dev/null || echec "qrencode absent (QR code de share open)"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?

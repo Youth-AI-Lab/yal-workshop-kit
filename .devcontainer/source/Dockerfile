@@ -16,6 +16,11 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/claude-version
     && install -m 755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude \
     && rm -rf /root/.local/share/claude /root/.local/bin/claude /root/.cache /tmp/claude-version
 
+# qrencode : `openwebui share open` (mode classe) affiche le lien en QR code à projeter.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends qrencode \
+    && rm -rf /var/lib/apt/lists/*
+
 # Environnement Python du serveur MCP, et mod token-weather (jauge de contexte).
 RUN python3 -m venv /opt/workshop/venv \
     && /opt/workshop/venv/bin/pip install --no-cache-dir -q "mcp[cli]>=2,<3" \

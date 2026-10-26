@@ -13,6 +13,15 @@ In it, choose a model at the top left:
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
     the 5 excerpts closest to the question and gives only those to the model.
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
+
+Class mode (OPENWEBUI_MODE=class, set by the Open WebUI guide): Open WebUI with accounts, for a
+teacher who builds chatbots and opens them to students during a class.
+    openwebui start                  starts Open WebUI; you are its administrator
+    openwebui share open             students can sign up and use your chatbots; shows the link
+    openwebui share close            no more sign-ups; tells you to make the port private again
+    openwebui share status           sign-ups open or closed, port public or private, accounts
+    openwebui password               where your administrator password is kept
+    openwebui stop                   stops Open WebUI (your data is kept)
 """
 
 import hashlib
@@ -20,6 +29,7 @@ import http.client
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -35,8 +45,12 @@ from pathlib import Path
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 KEY_FILE = Path.home() / ".workshop-key"
 IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.11.4")
+# "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to students.
+CLASS = os.environ.get("OPENWEBUI_MODE", "workshop") == "class"
 # Not the names of the facilitator's demo (facilitator/openwebui/compose.yaml): never touch it.
-CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER", "yal-kit-openwebui")
+# Each mode has its own container and data: an instance without accounts is never shared.
+CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER",
+                           "yal-openwebui-class" if CLASS else "yal-kit-openwebui")
 VOLUME = CONTAINER + "-data"
 PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
 URL = f"http://127.0.0.1:{PORT}"
@@ -48,6 +62,10 @@ PROVIDERS = {
     "sk-or-": ("https://openrouter.ai/api/v1",
                os.environ.get("WORKSHOP_OPENROUTER_MODEL", "~anthropic/claude-sonnet-latest")),
 }
+
+# Class mode also offers a cheaper model, for simple chatbots (Anthropic keys).
+SMALL_MODELS = {"sk-ant-": os.environ.get("WORKSHOP_ANTHROPIC_SMALL_MODEL", "claude-haiku-5-5")}
+ADMIN_EMAIL = os.environ.get("OPENWEBUI_ADMIN_EMAIL", "teacher@class.local")
 
 KNOWLEDGE_NAME = "Wildfire prevention (workshop kit)"
 KNOWLEDGE_DESCRIPTION = ("The knowledge of the workshop kit: summaries/ (short English summaries) and "
@@ -85,6 +103,42 @@ NO_TOOLS = {"file_context": True, "citations": True, "builtin_tools": False, "fi
 def fail(message, code=1):
     print(message, file=sys.stderr)
     sys.exit(code)
+
+
+# --- Class mode: the teacher's secrets and the sign-up state -------------------------------------
+
+def state_dir():
+    """Next to the repository when possible: it stays when the Codespace is rebuilt."""
+    for base in (KIT.parent, Path.home()):
+        folder = base / ".openwebui-class"
+        try:
+            folder.mkdir(mode=0o700, exist_ok=True)
+            return folder
+        except OSError:
+            continue
+    fail("Cannot create the folder .openwebui-class for your administrator password.")
+
+
+def class_secrets():
+    """The administrator account and the session key, made once and kept (only you can read them).
+    Returns (secrets, made_now)."""
+    path = state_dir() / "admin.json"
+    if path.is_file():
+        return json.loads(path.read_text()), False
+    made = {"email": ADMIN_EMAIL, "password": secrets.token_urlsafe(12),
+            "secret_key": secrets.token_urlsafe(32)}
+    path.write_text(json.dumps(made))
+    path.chmod(0o600)
+    return made, True
+
+
+def signup_is_open():
+    path = state_dir() / "signup"
+    return path.is_file() and path.read_text().strip() == "open"
+
+
+def set_signup(is_open):
+    (state_dir() / "signup").write_text("open\n" if is_open else "closed\n")
 
 
 # --- Docker -------------------------------------------------------------------------------------
@@ -137,18 +191,13 @@ def start_container():
         if docker("pull", IMAGE, capture=False).returncode != 0:
             fail("The download failed. Check the network, then type: openwebui start")
     env = {
-        # One person per Codespace: no accounts. The port is private to your GitHub account.
-        "WEBUI_AUTH": "False",
-        "WEBUI_NAME": "YAL workshop",
         "ENABLE_OLLAMA_API": "false",
         # Any explicit address skips the search for an Ollama server at startup (it runs even when
         # Ollama is off, and can wait for a name that does not exist inside the Codespace).
         "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         "ENABLE_OPENAI_API": "true",
         "OPENAI_API_BASE_URL": base_url,
-        "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
         "ENABLE_PERSISTENT_CONFIG": "false",
-        "DEFAULT_MODELS": RAG_ID,
         # RAG: local embedding model (already in the image), 5 excerpts per question, searched
         # with the question as it is (no rewording by the model).
         "RAG_TOP_K": "5",
@@ -168,6 +217,43 @@ def start_container():
         "DO_NOT_TRACK": "true",
         "ANONYMIZED_TELEMETRY": "false",
     }
+    # Secrets are passed through the environment, never on the command line.
+    hidden = {"OPENAI_API_KEY": key}
+    if CLASS:
+        admin, _ = class_secrets()
+        here = address()
+        env.update({
+            "WEBUI_AUTH": "True",
+            "WEBUI_NAME": "Class chatbots",
+            "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model] + [
+                small for prefix, small in SMALL_MODELS.items() if key.startswith(prefix)]}}),
+            # The teacher's account, made at the first start only (on empty data).
+            "WEBUI_ADMIN_EMAIL": admin["email"],
+            "WEBUI_ADMIN_NAME": "Teacher",
+            # Students sign up during the class only (openwebui share open / close), active at once.
+            "ENABLE_SIGNUP": "true" if signup_is_open() else "false",
+            "DEFAULT_USER_ROLE": "user",
+            "WEBUI_URL": here,
+            # Every address in use: the same list also filters the live connection of the chat.
+            "CORS_ALLOW_ORIGIN": ";".join(dict.fromkeys(
+                [here, f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"])),
+            # Students cannot change a chatbot's prompt or settings, nor chat with several models.
+            "USER_PERMISSIONS_CHAT_SYSTEM_PROMPT": "false",
+            "USER_PERMISSIONS_CHAT_PARAMS": "false",
+            "USER_PERMISSIONS_CHAT_MULTIPLE_MODELS": "false",
+            "USER_PERMISSIONS_CHAT_CONTROLS": "false",
+            # Temporary chats would be missing from the usage statistics.
+            "USER_PERMISSIONS_CHAT_TEMPORARY": "false",
+        })
+        hidden.update({"WEBUI_ADMIN_PASSWORD": admin["password"], "WEBUI_SECRET_KEY": admin["secret_key"]})
+    else:
+        env.update({
+            # One person per Codespace: no accounts. The port is private to your GitHub account.
+            "WEBUI_AUTH": "False",
+            "WEBUI_NAME": "YAL workshop",
+            "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
+            "DEFAULT_MODELS": RAG_ID,
+        })
     # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
     config = hashlib.sha256(json.dumps([IMAGE, env, PORT], sort_keys=True).encode()).hexdigest()[:16]
     state = docker("inspect", "--format",
@@ -192,10 +278,11 @@ def start_container():
                 "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{VOLUME}:/app/backend/data"]
         for name, value in env.items():
             args += ["-e", f"{name}={value}"]
-        # The key is passed through the environment, never on the command line.
-        args += ["-e", "OPENAI_API_KEY", IMAGE]
+        for name in hidden:
+            args += ["-e", name]
+        args.append(IMAGE)
         result = subprocess.run(["docker", *args], text=True, capture_output=True,
-                                env={**os.environ, "OPENAI_API_KEY": key})
+                                env={**os.environ, **hidden})
         if result.returncode != 0:
             fail(f"Open WebUI could not start: {result.stderr.strip()}")
         print("Open WebUI is starting (from 30 seconds to 3 minutes)…", flush=True)
@@ -256,7 +343,17 @@ class OpenWebUI:
 
     def login(self):
         # Without accounts (WEBUI_AUTH=False), an empty sign-in gives the admin token.
-        self.token = self.request("POST", "/auths/signin", body={"email": "", "password": ""})["token"]
+        credentials = {"email": "", "password": ""}
+        if CLASS:
+            admin, _ = class_secrets()
+            credentials = {"email": admin["email"], "password": admin["password"]}
+        try:
+            self.token = self.request("POST", "/auths/signin", body=credentials)["token"]
+        except ApiError:
+            if not CLASS:
+                raise
+            fail("Your administrator password does not open this Open WebUI (its data was made with\n"
+                 "another password). To start again from zero, deleting its chatbots: openwebui reset")
         return self
 
     def collections(self, name):
@@ -484,16 +581,175 @@ def cmd_chatbot(args):
     print("Ask it your test questions again, and compare with scores.md.")
 
 
+# --- Class mode commands ------------------------------------------------------------------------
+
+EVERYONE = [{"principal_type": "user", "principal_id": "*", "permission": "read"}]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def port_is_public():
+    """True or False in a Codespace, None when it cannot tell. Asked from outside: a private port
+    sends the visitor to GitHub's sign-in; a public one lets the request through."""
+    if not os.environ.get("CODESPACE_NAME"):
+        return None
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(f"{address()}/health", timeout=15):
+            return True
+    except urllib.error.HTTPError as e:
+        return False if e.code in (301, 302, 303, 307, 308, 401, 403) else None
+    except (urllib.error.URLError, http.client.HTTPException, OSError):
+        return None
+
+
+def show_link():
+    url = address()
+    print(f"\nThe link for your students: {url}")
+    if shutil.which("qrencode"):
+        subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", url], check=False)
+
+
+def base_models(key, model):
+    return [model] + [small for prefix, small in SMALL_MODELS.items() if key.startswith(prefix)]
+
+
+def cmd_class_start():
+    check_docker()
+    _, made_now = class_secrets()
+    start_container()
+    api = OpenWebUI().login()
+    version = api.request("GET", "/api/config").get("version")
+    api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
+    admin, _ = class_secrets()
+    print(f"\nOpen WebUI is ready. Open it: {address()}")
+    print(f"(or: Ports tab of the bottom panel -> {PORT} -> Open in Browser)")
+    print(f"Sign in as {admin['email']}.")
+    if made_now:
+        print(f"Your password (shown once; also kept in {state_dir() / 'admin.json'}):\n"
+              f"    {admin['password']}")
+    else:
+        print("Your password: openwebui password")
+    print("Sign-ups are " + ("OPEN: students can join." if signup_is_open() else
+                             "closed. In class: openwebui share open"))
+
+
+def cmd_share_open():
+    check_docker()
+    key, _, model = provider()
+    set_signup(True)
+    start_container()  # recreated with sign-ups on; sessions are kept (fixed session key)
+    api = OpenWebUI().login()
+    # Students need read access to each chatbot, to the model under it and to its documents:
+    # without the last one, a chatbot answers without its documents, and says nothing.
+    chatbots = [m for m in api.request("GET", "/models/all") if m.get("base_model_id")]
+    for base in base_models(key, model):
+        api.request("POST", "/models/model/access/update",
+                    body={"id": base, "name": base, "access_grants": EVERYONE})
+        # The plain model stays out of the students' list: they use your chatbots.
+        api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
+                        "meta": {"hidden": True}, "params": {}})
+    for bot in chatbots:
+        api.request("POST", "/models/model/access/update",
+                    body={"id": bot["id"], "name": bot["name"], "access_grants": EVERYONE})
+        for item in (bot.get("meta") or {}).get("knowledge") or []:
+            if isinstance(item, dict) and item.get("id"):
+                try:
+                    api.request("POST", f"/knowledge/{item['id']}/access/update",
+                                body={"access_grants": EVERYONE})
+                except ApiError as e:
+                    if e.status != 404:  # a single file, not a knowledge base
+                        raise
+    print("\nSign-ups are OPEN. Your students can use these chatbots:")
+    for bot in chatbots:
+        print(f"  - {bot['name']}")
+    if not chatbots:
+        print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
+    public = port_is_public()
+    while public is False:
+        print(f"\nThe port is still private. Make it public: Ports tab of the bottom panel ->\n"
+              f"right-click on {PORT} -> Port Visibility -> Public. Then press Enter.")
+        input()
+        public = port_is_public()
+    if public is None:
+        print(f"\nCheck that port {PORT} is public (Ports tab -> Port Visibility -> Public).")
+    show_link()
+    print("Each student signs up (any name and e-mail; a nickname is fine), then chats.")
+    print("At the end of the class: openwebui share close")
+
+
+def cmd_share_close():
+    check_docker()
+    key, _, model = provider()
+    set_signup(False)
+    start_container()
+    api = OpenWebUI().login()
+    for base in base_models(key, model):  # back in your list, to build new chatbots on it
+        if api.model_exists(base):
+            api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
+                            "meta": {"hidden": False}, "params": {}})
+    print("\nSign-ups are closed. Students who signed up can still use your chatbots while the")
+    print("port is public.")
+    if port_is_public() is not False:
+        print(f"Make the port private again: Ports tab -> right-click on {PORT} -> Port Visibility -> Private.")
+
+
+def cmd_share_status():
+    check_docker()
+    api = OpenWebUI().login()
+    users = api.request("GET", "/users/", query={"page": 1})
+    count = users.get("total") if isinstance(users, dict) else len(users or [])
+    public = port_is_public()
+    print("Sign-ups:", "open" if signup_is_open() else "closed")
+    print("Port", PORT, ":", {True: "public", False: "private", None: "unknown"}[public])
+    print("Accounts (you included):", count)
+
+
+def cmd_password():
+    admin, _ = class_secrets()
+    print(f"Account: {admin['email']}\nPassword: {admin['password']}\n"
+          f"(kept in {state_dir() / 'admin.json'}, readable only by you)")
+
+
+def cmd_reset():
+    check_docker()
+    print("This deletes Open WebUI's data here: your chatbots, documents, accounts and conversations.")
+    if input('Type "delete" to go on: ').strip() != "delete":
+        fail("Nothing was deleted.")
+    docker("rm", "-f", CONTAINER)
+    docker("volume", "rm", VOLUME)
+    for name in ("admin.json", "signup"):
+        (state_dir() / name).unlink(missing_ok=True)
+    print("Deleted. Type openwebui start to begin again.")
+
+
 def cmd_stop():
     check_docker()
     if docker("rm", "-f", CONTAINER).returncode == 0:
         print("Open WebUI is stopped. Your data is kept: openwebui start opens it again.")
 
 
+def class_command(argv):
+    commands = {("start",): cmd_class_start, ("share", "open"): cmd_share_open,
+                ("share", "close"): cmd_share_close, ("share", "status"): cmd_share_status,
+                ("password",): cmd_password, ("reset",): cmd_reset, ("stop",): cmd_stop}
+    command = commands.get(tuple(argv))
+    if not command:
+        fail("Unknown command. See: openwebui help")
+    command()
+
+
 def main(argv):
     command = argv[0] if argv else "help"
     if command in ("help", "-h", "--help"):
         print(__doc__.strip())
+    elif CLASS:
+        class_command(argv)
+    elif command in ("share", "password", "reset"):
+        fail("Sharing needs accounts, and this Open WebUI has none: it is for you only.\n"
+             "Never make its port public. To open chatbots to a class, use the Open WebUI guide.")
     elif command == "start" and len(argv) == 1:
         cmd_start()
     elif command == "query" and len(argv) == 2:
