@@ -250,6 +250,20 @@ def start_container():
             "USER_PERMISSIONS_CHAT_CONTROLS": "false",
             # Temporary chats would be missing from the usage statistics.
             "USER_PERMISSIONS_CHAT_TEMPORARY": "false",
+            # For groups of young people: no files or photos of their own, no voice recordings kept,
+            # no sharing of conversations between accounts (facilitator's choice, 2026-10-26).
+            # These hide the buttons; the guide says it is not a lock.
+            "USER_PERMISSIONS_CHAT_FILE_UPLOAD": "false",
+            "USER_PERMISSIONS_CHAT_WEB_UPLOAD": "false",
+            "USER_PERMISSIONS_CHAT_STT": "false",
+            "USER_PERMISSIONS_CHAT_CALL": "false",
+            "USER_PERMISSIONS_CHAT_SHARE": "false",
+            # A simpler menu, with no AI actions paid outside the chatbots.
+            "ENABLE_NOTES": "false",
+            "ENABLE_CALENDAR": "false",
+            "WEBUI_BANNERS": json.dumps([{
+                "id": "no-personal-data", "type": "info", "dismissible": False, "timestamp": 0,
+                "content": "Do not write personal information (yours or anyone else's) in your questions."}]),
         })
         hidden.update({"WEBUI_ADMIN_PASSWORD": admin["password"], "WEBUI_SECRET_KEY": admin["secret_key"]})
     else:
