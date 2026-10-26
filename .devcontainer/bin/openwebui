@@ -141,6 +141,9 @@ def start_container():
         "WEBUI_AUTH": "False",
         "WEBUI_NAME": "YAL workshop",
         "ENABLE_OLLAMA_API": "false",
+        # Any explicit address skips the search for an Ollama server at startup (it runs even when
+        # Ollama is off, and can wait for a name that does not exist inside the Codespace).
+        "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         "ENABLE_OPENAI_API": "true",
         "OPENAI_API_BASE_URL": base_url,
         "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
