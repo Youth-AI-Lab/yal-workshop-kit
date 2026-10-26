@@ -680,16 +680,24 @@ def cmd_class_start():
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
     admin, _ = class_secrets()
-    print(f"\nOpen WebUI is ready. Open it: {address()}")
-    print(f"(or: Ports tab of the bottom panel -> {PORT} -> Open in Browser)")
-    print(f"Sign in as {admin['email']}.")
-    if made_now:
-        print(f"Your password (shown once; also kept in {state_dir() / 'admin.json'}):\n"
-              f"    {admin['password']}")
-    else:
-        print("Your password: openwebui password")
-    print("Sign-ups are " + ("OPEN: students can join." if signup_is_open() else
-                             "closed. In class: openwebui share open"))
+    print("\nSign-ups are " + ("OPEN: students can join." if signup_is_open() else
+                               "closed. In class: openwebui share open"))
+    # Last, in a frame: after the download, this is what the teacher must not miss. The password is
+    # shown only the first time (this terminal may later be on the projector): openwebui password.
+    show_account(admin, with_password=made_now)
+
+
+def show_account(admin, with_password):
+    rule = "=" * 72
+    password = admin["password"] if with_password else "type: openwebui password"
+    print(f"\n{rule}\n"
+          f" Open WebUI is ready. Open it and sign in with YOUR teacher account:\n\n"
+          f"   Address:  {address()}\n"
+          f"   E-mail:   {admin['email']}\n"
+          f"   Password: {password}\n\n"
+          f" Keep this password for you (do not show it on the projector).\n"
+          f" To see it again: openwebui password\n"
+          f" If the address does not open: PORTS tab -> {PORT} -> Open in Browser.\n{rule}")
 
 
 def cmd_share_open():
@@ -758,8 +766,8 @@ def cmd_share_status():
 
 def cmd_password():
     admin, _ = class_secrets()
-    print(f"Account: {admin['email']}\nPassword: {admin['password']}\n"
-          f"(kept in {state_dir() / 'admin.json'}, readable only by you)")
+    show_account(admin, with_password=True)
+    print(f"(kept in {state_dir() / 'admin.json'}, readable only by you)")
 
 
 def cmd_reset():
