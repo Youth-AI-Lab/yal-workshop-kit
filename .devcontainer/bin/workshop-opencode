@@ -301,7 +301,9 @@ def tools_of(mode):
                   # OpenCode 2.1.4 matches "cat *" against the whole line, so it would also let through
                   # "cat a > test-questions.md", "find -delete", "find -exec" and "cat ~/.workshop-key"
                   # (external_directory does not apply to shell commands). grep, glob and read search the kit.
-                  rule("edit", "*", "ask"), rule("shell", "*", "ask")]
+                  rule("edit", "*", "ask"), rule("shell", "*", "ask"),
+                  # "opencode api get /api/model" prints the key in clear (OpenCode 2.1.4): never.
+                  rule("shell", "opencode*", "deny"), rule("shell", "*opencode *", "deny")]
         # Outside the kit: never without asking (OpenCode's default is to allow).
         perms += [rule("external_directory", "*", "ask")]
         # The pair's key: the read tool can never open it. (grep is matched on its pattern, not on its
