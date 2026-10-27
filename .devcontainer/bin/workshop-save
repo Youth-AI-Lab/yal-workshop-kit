@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+"""Saves your work in one .zip file, to take it to the next workshop.
+
+    workshop-save                      writes my-work.zip
+    workshop-save --name "Team Fox"    writes team-fox.zip
+
+Each workshop starts in a new Codespace. Before you close this one, save your work, download
+the file (right-click on it in the file list, then "Download"), and next time type:
+    workshop-start <number of the workshop> --from my-work.zip
+
+What goes in the file: only what you made or changed. Your AGENTS.md, your other instructions
+(.md files of yours next to AGENTS.md or in examples/, e.g. a draft for replay --agents), your
+test questions, your scores, your answers (answers/), your own skills, your summaries and their
+checks, the documents you added (corpus/ 80 to 89), today's fire danger data, your wiki pages.
+A file MANIFEST.md inside lists them.
+
+If a save with the same name is already here and holds something else, it is kept under another
+name (with its date): saving never deletes an earlier save.
+"""
+
+import argparse
+import datetime
+import hashlib
+import io
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tarfile
+import unicodedata
+import zipfile
+
+KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
+PACK = ".workshop/wiki-pack.tar.gz"
+# Skills of the kit itself. Used only when git cannot tell what is new (plan B server).
+KIT_SKILLS = {"source-note", "summarize", "validate-summary"}
+# Personalities of the kit (examples/). Used only without git: there, a file of examples/ with
+# another name is the pair's; a kit example that the pair edited cannot be told apart, and is
+# not saved.
+KIT_EXAMPLES = {"AGENTS.feurisson.md", "AGENTS.liar.md", "AGENTS.overcautious.md",
+                "AGENTS.sophist.md", "AGENTS.storyteller.md"}
+# .md files at the top of the kit that are not other instructions (scores*.md are scores).
+NOT_DRAFTS = {"README.md", "CLAUDE.md", "AGENTS.md", "MANIFEST.md", "test-questions.md"}
+DRAFT = re.compile(r"(examples/)?[^./\\][^/\\]*\.md")    # "My bot.md", "examples/AGENTS.mine.md"
+# Single files of the kit that the pair may change.
+SINGLE_FILES = ("test-questions.md", "mcp/fire-danger.json")
+# Folders where the pair's work lands. corpus/index.md and summaries/index.md are kept line by
+# line (index-lines/ in the zip), so that a restore adds lines instead of replacing the index.
+FOLDERS = ("answers", ".claude/skills", "summaries", "corpus", "wiki")
+INDEXES = ("corpus/index.md", "summaries/index.md")
+SKIP_PARTS = {"__pycache__", "graphify-out", ".DS_Store"}   # rebuilt, or not yours
+ADDED = re.compile(r"^8[0-9]-")                             # numbers given by corpus-add
+LINK = re.compile(r"\]\(([^)\s]+)\)")
+LIST_ITEM = re.compile(r"\s*[*+-] \[")                     # "* [Title](…)", "- [Title](…)"
+DRAFTS_LABEL = "Your other instructions (.md files, examples/)"
+
+CATEGORIES = (                                   # (prefix of the path in the zip, label)
+    ("AGENTS.md", "Your chatbot's instructions (AGENTS.md)"),
+    ("examples/", DRAFTS_LABEL),
+    ("test-questions.md", "Your test questions (test-questions.md)"),
+    ("scores", "Your scores"),
+    ("answers/", "Your answers (answers/)"),
+    (".claude/skills/", "Skills (.claude/skills/)"),
+    ("summaries/", "Summaries and their checks (summaries/)"),
+    ("corpus/", "Documents you added (corpus/)"),
+    ("index-lines/", "Your lines of corpus/index.md and summaries/index.md"),
+    ("mcp/", "Today's fire danger data (mcp/fire-danger.json)"),
+    ("wiki/", "Your wiki pages (wiki/)"),
+)
+
+
+class Item:
+    """One file of the save: its path in the zip (= its path in the kit), its content, and
+    whether we are sure it is the pair's work (False: no way to compare with the original)."""
+    def __init__(self, arcname, data, certain=True):
+        self.arcname, self.data, self.certain = arcname, data, certain
+
+
+def is_draft(rel):
+    """Other instructions the pair may write: a .md file at the top of the kit (not a file of
+    the kit) or in examples/. Same rule in workshop-start, for what it may restore."""
+    return (bool(DRAFT.fullmatch(rel)) and rel not in NOT_DRAFTS
+            and not rel.startswith("scores"))
+
+
+def category(arcname):
+    for prefix, label in CATEGORIES:
+        if arcname.startswith(prefix):
+            return label
+    if is_draft(arcname):
+        return DRAFTS_LABEL
+    return "Other files"
+
+
+def slug(text):
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60].strip("-")
+
+
+def has_content(text):
+    """True if AGENTS.md has text of its own: not only titles and hint comments."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return any(l.strip() and not l.lstrip().startswith("#") for l in text.splitlines())
+
+
+def link_target(line):
+    """'* [Title](text/80-x.md) - … Original: [80-x.pdf](80-x.pdf)' -> 'text/80-x.md'."""
+    match = LINK.search(line)
+    return match.group(1) if match else None
+
+
+class Original:
+    """The kit as it was given: git (HEAD of the kit's repository) for the files of the kit,
+    the wiki pack for wiki/ and its skills. Without git, `known()` is False for kit files."""
+
+    def __init__(self, kit):
+        self.kit = kit
+        self.pack = {}
+        try:
+            with tarfile.open(kit / PACK) as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        self.pack[member.name.removeprefix("./")] = tar.extractfile(member).read()
+        except (OSError, tarfile.TarError):
+            pass
+        self.tree, self.algo = {}, hashlib.sha1
+        try:
+            run = subprocess.run(["git", "-C", str(kit), "ls-tree", "-r", "-z", "HEAD", "."],
+                                 capture_output=True, timeout=30)
+            if run.returncode == 0:
+                for entry in run.stdout.split(b"\0"):
+                    if b"\t" in entry:
+                        meta, path = entry.split(b"\t", 1)
+                        self.tree[path.decode("utf-8", "replace")] = meta.split()[2].decode()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        self.git = "AGENTS.md" in self.tree     # the kit is the root of a git repository
+        if self.git and len(next(iter(self.tree.values()))) == 64:
+            self.algo = hashlib.sha256          # repository in SHA-256 format
+
+    def in_pack(self, rel):
+        return rel.startswith("wiki/") or any(rel.startswith(p.rsplit("/", 1)[0] + "/")
+                                              for p in self.pack if p.startswith(".claude/"))
+
+    def known(self, rel):
+        """Can we tell whether rel is new or changed?"""
+        return self.git or (self.pack and self.in_pack(rel))
+
+    def same(self, rel, data):
+        """True if rel exists in the original kit with exactly this content."""
+        if self.pack and self.in_pack(rel):
+            return self.pack.get(rel) == data
+        blob = self.tree.get(rel)
+        if blob is None:
+            return False
+        return self.algo(b"blob %d\0" % len(data) + data).hexdigest() == blob
+
+    def lines(self, rel):
+        """Lines of the original version of rel, or None if unknown."""
+        if not self.git or rel not in self.tree:
+            return None
+        run = subprocess.run(["git", "-C", str(self.kit), "cat-file", "-p", self.tree[rel]],
+                             capture_output=True, timeout=30)
+        return run.stdout.decode("utf-8", "replace").splitlines() if run.returncode == 0 else None
+
+
+def unknown_but_yours(rel):
+    """Without git: files that cannot come from the kit, whatever their content."""
+    parts = rel.split("/")
+    if parts[0] in ("answers", "wiki") or rel.startswith("summaries/checks/"):
+        return True
+    if parts[0] in ("summaries", "corpus") and ADDED.match(parts[-1]):
+        return True
+    return rel.startswith(".claude/skills/") and len(parts) > 3 and parts[2] not in KIT_SKILLS
+
+
+def collect(kit=KIT):
+    """Everything the pair made or changed, as a list of Item."""
+    original = Original(kit)
+    items = []
+
+    agents = kit / "AGENTS.md"
+    if agents.is_file() and has_content(agents.read_text(encoding="utf-8", errors="replace")):
+        items.append(Item("AGENTS.md", agents.read_bytes()))
+
+    singles = list(SINGLE_FILES) + sorted(p.name for p in kit.glob("scores*.md"))
+    for rel in singles:
+        path = kit / rel
+        if not path.is_file() or path.is_symlink():
+            continue
+        data = path.read_bytes()
+        if not original.known(rel):
+            items.append(Item(rel, data, certain=False))   # no git: kept anyway, to be safe
+        elif not original.same(rel, data):
+            items.append(Item(rel, data))
+
+    # Other instructions: drafts for "replay --agents", a new or edited personality of examples/.
+    drafts = sorted(kit.glob("*.md")) + sorted((kit / "examples").glob("*.md"))
+    for path in drafts:
+        rel = path.relative_to(kit).as_posix()
+        if not path.is_file() or path.is_symlink() or not is_draft(rel):
+            continue
+        data = path.read_bytes()
+        if original.known(rel):
+            if not original.same(rel, data):
+                items.append(Item(rel, data))
+        elif "/" not in rel or path.name not in KIT_EXAMPLES:
+            items.append(Item(rel, data))
+
+    for folder in FOLDERS:
+        base = kit / folder
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*")):
+            rel = path.relative_to(kit).as_posix()
+            if (not path.is_file() or path.is_symlink() or rel in INDEXES
+                    or SKIP_PARTS.intersection(rel.split("/")) or path.name.startswith(".corpus-add-")):
+                continue
+            data = path.read_bytes()
+            if original.known(rel):
+                if not original.same(rel, data):
+                    items.append(Item(rel, data))
+            elif unknown_but_yours(rel):
+                items.append(Item(rel, data))
+
+    for rel in INDEXES:
+        path = kit / rel
+        if not path.is_file():
+            continue
+        before = original.lines(rel)
+        mine = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            target = link_target(line)
+            if not LIST_ITEM.match(line) or not target:
+                continue
+            if (before is not None and line not in before) or \
+               (before is None and ADDED.match(target.rsplit("/", 1)[-1])):
+                mine.append(line)
+        if mine:
+            items.append(Item(f"index-lines/{rel}", ("\n".join(mine) + "\n").encode("utf-8")))
+    return items
+
+
+def fingerprint(entries):
+    """Same files with the same content <=> same fingerprint. entries: {arcname: bytes}."""
+    digest = hashlib.sha256()
+    for name in sorted(entries):
+        digest.update(name.encode() + b"\0" + hashlib.sha256(entries[name]).digest())
+    return digest.hexdigest()
+
+
+def items_fingerprint(items):
+    return fingerprint({i.arcname: i.data for i in items})
+
+
+def zip_fingerprint(path):
+    """Fingerprint of a save (without its MANIFEST.md), or None if it is not a save."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = [n for n in archive.namelist() if not n.endswith("/")]
+            if "MANIFEST.md" not in names:
+                return None
+            return fingerprint({n: archive.read(n) for n in names if n != "MANIFEST.md"})
+    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError):
+        return None
+
+
+def manifest(items, name):
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines = [f"# Workshop save: {name}", "",
+             f"Saved on: {now}", f"Files: {len(items)}", "",
+             "This file was written by `workshop-save` (Youth AI Lab workshop). It holds only what",
+             "you made or changed in the kit.", "", "## What is inside", ""]
+    groups = {}
+    for item in items:
+        groups.setdefault(category(item.arcname), []).append(item.arcname)
+    for label, names in groups.items():
+        lines.append(f"### {label}")
+        lines.append("")
+        lines += [f"- `{n}`" for n in names]
+        lines.append("")
+    if any(not i.certain for i in items):
+        lines += ["> ℹ️ **Note.** Some files were kept without being compared with the original kit",
+                  "> (no git in this workspace): " + ", ".join(f"`{i.arcname}`" for i in items if not i.certain) + ".",
+                  ""]
+    lines += ["## How to restore", "",
+              "1. Open a new Codespace for the next workshop.",
+              "2. Drag this .zip file into the file list (left panel), next to `README.md`.",
+              "3. In the terminal, type this, with the number of the workshop instead of `<n>`",
+              "   (for example `workshop-start 2 --from …` for workshop 2):", "",
+              "   ```bash",
+              f"   workshop-start <n> --from {name}.zip",
+              "   ```", "",
+              "`workshop-start` puts every file back in its place. The lines of `index-lines/` are",
+              "added to `corpus/index.md` and `summaries/index.md`.", ""]
+    return "\n".join(lines)
+
+
+def write_zip(items, out, name):
+    tmp = out.with_name(f".{out.name}.tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("MANIFEST.md", manifest(items, name))
+        for item in items:
+            archive.writestr(item.arcname, item.data)
+    os.replace(tmp, out)
+
+
+def keep_previous(out, items):
+    """If out is an earlier save that holds something else, renames it (with its date) instead
+    of writing over it. Returns (new name, names of its files missing from items) or None."""
+    if not out.exists() or zip_fingerprint(out) == items_fingerprint(items):
+        return None
+    with zipfile.ZipFile(out) as archive:
+        names = [n for n in archive.namelist() if not n.endswith("/") and n != "MANIFEST.md"]
+        saved_on = re.search(r"^Saved on: (.+)$",
+                             archive.read("MANIFEST.md").decode("utf-8", "replace"), re.M)
+    stamp = slug(saved_on.group(1)) if saved_on else ""
+    if not stamp:
+        stamp = datetime.datetime.fromtimestamp(out.stat().st_mtime).strftime("%Y-%m-%d-%H%M")
+    kept, k = out.with_name(f"{out.stem}-{stamp}.zip"), 2
+    while kept.exists():
+        kept, k = out.with_name(f"{out.stem}-{stamp}-{k}.zip"), k + 1
+    os.replace(out, kept)
+    now = {i.arcname for i in items}
+    return kept.name, [n for n in names if n not in now]
+
+
+def summary_lines(names):
+    """Short list for the terminal: one line per category, with a few names."""
+    groups = {}
+    for n in names:
+        groups.setdefault(category(n), []).append(n)
+    out = []
+    for label, group in groups.items():
+        shown = ", ".join(group[:3]) + (f" and {len(group) - 3} more" if len(group) > 3 else "")
+        out.append(f"  {label}: {len(group)} file{'s' if len(group) > 1 else ''} ({shown})")
+    return out
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="workshop-save", description=__doc__.split("\n\n")[0],
+                                     epilog=__doc__.split("\n\n", 1)[1],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--name", default="my-work", help="a name for the file, e.g. your team's name")
+    args = parser.parse_args()
+    if not (KIT / "test-questions.md").is_file():
+        sys.exit(f"No workshop kit in {KIT}: run this command in the workshop.")
+
+    name = slug(args.name) or "my-work"
+    out = KIT / f"{name}.zip"
+    if out.exists() and zip_fingerprint(out) is None:
+        sys.exit(f"{out.name} already exists and is not a save of your work (from chatbot-export?).\n"
+                 f'Choose another name, for example: workshop-save --name "{name}-work"')
+
+    items = collect(KIT)
+    if not items:
+        print("Nothing to save yet: AGENTS.md is still empty and nothing else was made or changed.")
+        return
+    previous = keep_previous(out, items)
+    write_zip(items, out, name)
+    print(f"Saved {len(items)} file{'s' if len(items) > 1 else ''} in {out.name}:")
+    print("\n".join(summary_lines([i.arcname for i in items])))
+    if previous:
+        kept, missing = previous
+        print(f"Your earlier {out.name} is kept as {kept}, just in case. The newest is {out.name}.")
+        if missing:
+            shown = ", ".join(missing[:5]) + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+            many = len(missing) > 1
+            print(f"! It has {len(missing)} file{'s' if many else ''} that {'are' if many else 'is'} not in "
+                  f"the new save: {shown}.\n"
+                  f"  If you forgot to bring it back with workshop-start, type:\n"
+                  f"    workshop-start <number of the workshop> --from {kept}\n"
+                  f"  then workshop-save again.")
+    print(f'To keep it: right-click on {out.name} in the file list, then "Download".')
+    print(f"Next workshop, in a new Codespace: drag {out.name} into the file list, then type:")
+    print(f"  workshop-start <number of the workshop> --from {out.name}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:                        # never a Python traceback for participants
+        sys.exit(f"workshop-save stopped on an unexpected error ({type(e).__name__}: {e}). "
+                 "Nothing was changed in the kit. Ask the facilitator.")

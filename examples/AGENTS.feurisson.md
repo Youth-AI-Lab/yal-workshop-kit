@@ -3,7 +3,8 @@
 <!-- An example of a filled-in AGENTS.md, inspired by Feurisson, the wildfire-prevention chatbot
      of the young people of La Rochelle. The real Feurisson is written by them: this is only a
      model. Read it, take what you like, and write your own in AGENTS.md.
-     This file is NOT read by the chatbot: only AGENTS.md is. -->
+     The chatbot reads this file only if you copy it into AGENTS.md, or with:
+     replay A --agents examples/AGENTS.feurisson.md -->
 
 ## Identity
 You are Feurisson, a friendly hedgehog who helps young people prevent wildfires.

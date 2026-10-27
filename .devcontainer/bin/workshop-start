@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""Gets this Codespace ready for one workshop of the series (1 to 5).
+
+    workshop-start 3                       prepares workshop 3
+    workshop-start 3 --from my-work.zip    first puts back the work you saved last time
+
+Each workshop starts in a new Codespace. To bring your work: drag the .zip you downloaded
+(made by workshop-save) into the file list, then give its name after --from.
+
+What it does, in this order:
+  1. if you already made something here, it saves it first (my-work-before-workshop-….zip);
+  2. with --from: it puts every file of your save back in its place;
+  3. it adds what this workshop needs from the earlier ones, yours if you have it, the kit's
+     example if not: your AGENTS.md (from workshop 2), the Benevento document (from
+     workshop 4), the wiki (workshop 5);
+  4. it tells you the first command to type.
+You can run it again: it never adds anything twice.
+
+Exit code: 0 ready; 1 something to fix (see the lines with !, or the message); 2 mistake in
+the command (no number, wrong number, unknown option).
+"""
+
+import argparse
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import pathlib
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+
+KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
+HERE = pathlib.Path(__file__).resolve().parent
+MARKER = ".workshop/last-start.json"   # fingerprint of the work right after the last workshop-start
+MAX_RESTORE = 400 * 1024 * 1024        # a save is a few MB; refuse anything absurd
+FIRST_COMMAND = {1: "replay bare", 2: "workshop B", 3: "workshop C", 4: "workshop D", 5: "workshop E"}
+EXAMPLE_AGENTS = "examples/AGENTS.feurisson.md"
+SECTION = "# Added during the session"   # heading used by corpus-add and the summarize skill
+HOW_TO = ("Type the number of today's workshop (1 to 5), for example: workshop-start 2\n"
+          "With the work you saved last time: workshop-start 2 --from my-work.zip")
+
+
+class Refused(Exception):
+    """A plain-language reason to stop."""
+
+
+def tool(name):
+    """A workshop command: the one in PATH (as typed by participants), else the one next to this file."""
+    found = shutil.which(name)
+    if found:
+        return found
+    local = HERE / name
+    if local.is_file():
+        return str(local)
+    raise Refused(f"The command {name} is missing. Ask the facilitator.")
+
+
+def load_save():
+    """workshop-save as a module: same rules for 'what is your work' in both commands."""
+    sys.dont_write_bytecode = True
+    path = HERE / "workshop-save"
+    if not path.is_file():
+        path = pathlib.Path(tool("workshop-save"))
+    loader = importlib.machinery.SourceFileLoader("workshop_save", str(path))
+    spec = importlib.util.spec_from_loader("workshop_save", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    module.KIT = KIT
+    return module
+
+
+def run(cmd, **kw):
+    """Runs a workshop command on this kit, returns (exit code, output)."""
+    env = dict(os.environ, WORKSHOP_HOME=str(KIT))
+    try:
+        done = subprocess.run(cmd, cwd=KIT, env=env, capture_output=True, text=True, **kw)
+    except (OSError, subprocess.SubprocessError) as e:   # e.g. its Python environment is missing
+        return 127, f"{pathlib.Path(cmd[0]).name} could not run ({e})."
+    return done.returncode, (done.stdout + done.stderr).strip()
+
+
+# 1. Save first ------------------------------------------------------------------------------
+
+def read_marker():
+    try:
+        return json.loads((KIT / MARKER).read_text(encoding="utf-8")).get("fingerprint")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def write_marker(save, n):
+    data = {"workshop": n, "at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "fingerprint": save.items_fingerprint(save.collect(KIT))}
+    try:
+        (KIT / MARKER).parent.mkdir(exist_ok=True)
+        (KIT / MARKER).write_text(json.dumps(data) + "\n", encoding="utf-8")
+    except OSError:
+        pass                                    # only used to avoid a useless extra save
+
+
+def overwritten(items, source):
+    """True if restoring source would replace one of these files with other content."""
+    if not source:
+        return False
+    with zipfile.ZipFile(source) as archive:
+        names = set(archive.namelist())
+        return any(i.arcname in names and archive.read(i.arcname) != i.data for i in items)
+
+
+def save_first(save, n, source):
+    """Saves the work already in the kit, unless an identical save exists. Returns a message or None.
+    Files that may be the kit's own (no git: test questions, scores…) are saved only if the
+    restore would replace them."""
+    items = save.collect(KIT)
+    if not any(i.certain for i in items) and not overwritten(items, source):
+        return None
+    current = save.items_fingerprint(items)
+    if current == read_marker():
+        return None                             # nothing new since the last workshop-start
+    for zip_path in sorted(KIT.glob("*.zip")) + ([source] if source else []):
+        if save.zip_fingerprint(zip_path) == current:
+            return f"Your work here is already saved in {zip_path.name}."
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out = KIT / f"my-work-before-workshop-{n}-{stamp}.zip"
+    save.write_zip(items, out, out.stem)
+    count = f"{len(items)} file{'s' if len(items) > 1 else ''}"
+    return f"First, your work here was saved in {out.name} ({count}), just in case."
+
+
+# 2. Restore ---------------------------------------------------------------------------------
+
+def allowed(rel, save):
+    """Only the kinds of files that workshop-save writes: nothing else can be overwritten."""
+    if save.is_draft(rel):                      # other instructions: "My bot.md", examples/….md
+        return True
+    if rel in ("AGENTS.md", "test-questions.md", "mcp/fire-danger.json") or re.fullmatch(r"scores[\w-]*\.md", rel):
+        return True
+    if rel in ("index-lines/corpus/index.md", "index-lines/summaries/index.md"):
+        return True
+    if rel in ("corpus/index.md", "summaries/index.md"):
+        return False                            # restored line by line, from index-lines/
+    parts = rel.split("/")
+    if parts[0] in ("answers", "summaries", "corpus", "wiki") and len(parts) > 1:
+        return True
+    return rel.startswith(".claude/skills/") and len(parts) > 3
+
+
+def check_zip(path, save):
+    """Opens a save and checks every name in it. Returns (zip, files to restore, skipped names)."""
+    if not path.is_file():
+        raise Refused(f"File not found: {path.name}. Drag your .zip into the file list (left panel), "
+                      f'then type its name, between quotes if it has spaces: --from "{path.name}"')
+    if not zipfile.is_zipfile(path):
+        raise Refused(f"{path.name} is not a .zip file (or it is damaged). Download your save again.")
+    archive = zipfile.ZipFile(path)
+    names = archive.namelist()
+    if "MANIFEST.md" not in names:
+        archive.close()
+        raise Refused(f"{path.name} is not a save made by workshop-save (no MANIFEST.md inside). "
+                      "Nothing was restored.")
+    files, skipped, total = [], [], 0
+    for info in archive.infolist():
+        name = info.filename
+        if name.endswith("/") or name == "MANIFEST.md":
+            continue
+        parts = name.split("/")
+        if (name.startswith("/") or "\\" in name or re.match(r"[A-Za-z]:", name)
+                or any(p in ("", ".", "..") for p in parts)
+                or (info.external_attr >> 16) & 0o170000 == 0o120000):      # a symbolic link
+            archive.close()
+            raise Refused(f"{path.name} contains a file with a dangerous path ({name}). "
+                          "Nothing was restored. Ask the facilitator.")
+        total += info.file_size
+        (files if allowed(name, save) else skipped).append(info)
+    if total > MAX_RESTORE:
+        archive.close()
+        raise Refused(f"{path.name} is too large to be a save ({total // 2**20} MB). Nothing was restored.")
+    return archive, files, [i.filename for i in skipped]
+
+
+def inside_kit(target):
+    root = KIT.resolve()
+    resolved = target.resolve()
+    return resolved == root or root in resolved.parents
+
+
+def write_file(target, data):
+    """Writes through a temporary file. Returns False if the content was already the same."""
+    if target.is_symlink() or not inside_kit(target):
+        raise Refused(f"Refused to write {target}: it points outside the kit. Ask the facilitator.")
+    if target.is_file() and target.read_bytes() == data:
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not inside_kit(target.parent):
+        raise Refused(f"Refused to write {target}: it points outside the kit. Ask the facilitator.")
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".workshop-start-")
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    os.replace(tmp, target)
+    return True
+
+
+def merge_index(rel, saved_lines, save):
+    """Adds the saved lines to corpus/index.md or summaries/index.md. A line that links to the
+    same file replaces the old one; an identical line is left alone. Returns the number changed."""
+    path = KIT / rel
+    lines = path.read_text(encoding="utf-8").rstrip("\n").splitlines() if path.is_file() else []
+    changed = 0
+    for line in saved_lines:
+        target = save.link_target(line)
+        if not target or line in lines:
+            continue
+        same = [k for k, old in enumerate(lines) if save.link_target(old) == target and save.LIST_ITEM.match(old)]
+        if same:
+            lines[same[0]] = line
+        else:
+            if SECTION not in lines:
+                lines += ["", SECTION, ""]
+            lines.append(line)
+        changed += 1
+    if changed:
+        write_file(path, ("\n".join(lines) + "\n").encode("utf-8"))
+    return changed
+
+
+def check_targets(files):
+    """Every place is checked before anything is written: no file may land outside the kit,
+    even through a link (a folder of the kit that points elsewhere)."""
+    for info in files:
+        target = KIT / info.filename.removeprefix("index-lines/")
+        if not inside_kit(target) or any(p.is_symlink() for p in [target, *target.parents]
+                                         if p != KIT and KIT in p.parents):
+            raise Refused(f"Refused to restore {info.filename}: in this kit, it would land outside the "
+                          "kit (through a link). Nothing was restored. Ask the facilitator.")
+
+
+def restore(path, save):
+    """Puts the files of a save back in the kit.
+    Returns (date of the save, files changed, files already there, names skipped, index lines added)."""
+    archive, files, skipped = check_zip(path, save)
+    with archive:
+        check_targets(files)
+        saved_on = re.search(r"^Saved on: (.+)$", archive.read("MANIFEST.md").decode("utf-8", "replace"), re.M)
+        # Wiki pages and the ingest/lint skills are saved as changes to the wiki pack: unpack the
+        # pack first, then put the changes over it.
+        if any(i.filename.startswith(("wiki/", ".claude/skills/ingest/", ".claude/skills/lint/")) for i in files) \
+                and not (KIT / "wiki" / "index.md").is_file():
+            code, out = run([tool("wiki-start")])
+            if code != 0:
+                raise Refused(f"Could not unpack the wiki before restoring your pages:\n{out}")
+        changed, unchanged, lines = [], [], {}
+        for info in files:
+            data = archive.read(info)
+            name = info.filename
+            if name.startswith("index-lines/"):
+                rel = name[len("index-lines/"):]
+                lines[rel] = merge_index(rel, data.decode("utf-8", "replace").splitlines(), save)
+            elif write_file(KIT / name, data):
+                changed.append(name)
+            else:
+                unchanged.append(name)
+    return (saved_on.group(1) if saved_on else "unknown date"), changed, unchanged, skipped, lines
+
+
+def number_clashes():
+    """Numbers 80-89 used by two different documents (e.g. Benevento added by workshop-start 4,
+    then a save whose own document also has number 80)."""
+    stems = {}
+    for path in (KIT / "corpus").glob("8[0-9]-*"):
+        if path.is_file():
+            stems.setdefault(path.name[:2], set()).add(path.stem)
+    return {n: sorted(s) for n, s in stems.items() if len(s) > 1}
+
+
+def find_zip(given):
+    """The --from file: as typed, else in the kit folder (where a dragged file lands)."""
+    path = pathlib.Path(given).expanduser()
+    if not path.is_file() and not path.is_absolute() and (KIT / path).is_file():
+        path = KIT / path
+    return path
+
+
+# 3. Prepare ---------------------------------------------------------------------------------
+
+def inbox_command():
+    """The corpus-add command written in inbox/README.md (one single line), as a list."""
+    readme = KIT / "inbox" / "README.md"
+    try:
+        for line in readme.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("corpus-add inbox/"):
+                return shlex.split(line.strip())
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def added_name(command):
+    """The name corpus-add gives to the inbox document (without its number): the slug of --name,
+    else of --title, else of the file name. Same rule as corpus-add."""
+    def option(flag):
+        return command[command.index(flag) + 1] if flag in command[:-1] else None
+    text = option("--name") or option("--title") or pathlib.Path(command[1]).stem
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50].strip("-") or "document"
+
+
+def prepare(n, save):
+    """Brings what workshop n needs from the earlier ones. Returns (done, problems)."""
+    done, problems = [], []
+
+    if n >= 2:
+        agents = KIT / "AGENTS.md"
+        text = agents.read_text(encoding="utf-8", errors="replace") if agents.is_file() else ""
+        if not save.has_content(text):
+            example = KIT / EXAMPLE_AGENTS
+            if example.is_file():
+                # Without the example's own comment ("This file is NOT read by the chatbot…"):
+                # wrong once the text is in AGENTS.md.
+                copy = re.sub(r"<!--.*?-->\s*",
+                              f"<!-- Copied from {EXAMPLE_AGENTS} by workshop-start. "
+                              "Change it to make it yours. -->\n\n",
+                              example.read_text(encoding="utf-8"), count=1, flags=re.S)
+                write_file(agents, copy.encode("utf-8"))
+                done.append(f"AGENTS.md was empty: it is now a copy of {EXAMPLE_AGENTS} (Feurisson). "
+                            "Change it to make it yours.")
+            else:
+                problems.append(f"AGENTS.md is empty and {EXAMPLE_AGENTS} is missing. Ask the facilitator.")
+
+    # Benevento (Q11) is needed even when the pair added a document of its own territory in
+    # workshop 3: look for it by name, not for any number 80-89. corpus-add takes the next free number.
+    if n >= 4:
+        command = inbox_command()
+        if not command:
+            problems.append("Could not find the corpus-add command in inbox/README.md. Ask the facilitator.")
+        elif not any(p.is_file() for p in (KIT / "corpus").glob(f"8[0-9]-{added_name(command)}.*")):
+            code, out = run([tool("corpus-add")] + command[1:], timeout=300)
+            if code == 0:
+                added = re.search(r"Added: (\S+)", out)
+                done.append(f"The Benevento document was not in the corpus (workshop 3): it is now "
+                            f"({added.group(1) if added else 'corpus/8…'}), with the command of inbox/README.md.")
+            else:
+                problems.append(f"Could not add the Benevento document (corpus-add stopped):\n    {out}")
+
+    if n == 5 and not (KIT / "wiki" / "index.md").is_file():
+        code, out = run([tool("wiki-start")])
+        if code == 0:
+            done.append("The wiki is ready (wiki-start): wiki/, and the skills ingest and lint.")
+        else:
+            problems.append(f"Could not unpack the wiki (wiki-start):\n    {out}")
+
+    # TODO (REFONTE, workshop 2): prepare the three RAG knowledge bases and models
+    # ("Wildfire RAG 500 / 1000 / 2000") once openwebui can hold several of them. Not started
+    # here: the first "openwebui start" takes about 3 minutes.
+    return done, problems
+
+
+# Main ---------------------------------------------------------------------------------------
+
+def wrong_command(message):
+    """A mistake on the command line: says what to type, exit code 2."""
+    print(message, file=sys.stderr)
+    sys.exit(2)
+
+
+class Parser(argparse.ArgumentParser):
+    """argparse, with a plain-language message instead of its usage line."""
+    def error(self, message):
+        wrong_command(f"{message[:1].upper()}{message[1:]}.\n{HOW_TO}")
+
+
+def main():
+    parser = Parser(prog="workshop-start", description=__doc__.split("\n\n")[0],
+                    epilog=__doc__.split("\n\n", 1)[1],
+                    formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("number", nargs="?", help="the number of the workshop: 1, 2, 3, 4 or 5")
+    parser.add_argument("--from", dest="source", metavar="FILE.zip", help="your save, made by workshop-save")
+    args = parser.parse_args()
+    if args.number is None:
+        wrong_command(HOW_TO)
+    if args.number not in {"1", "2", "3", "4", "5"}:
+        wrong_command(f"There is no workshop {args.number}: they are numbered 1 to 5.\n{HOW_TO}")
+    n = int(args.number)
+    if not (KIT / "test-questions.md").is_file():
+        raise Refused(f"No workshop kit in {KIT}: run this command in the workshop.")
+    save = load_save()
+    source = find_zip(args.source) if args.source else None
+    if source:
+        archive, files, _ = check_zip(source, save)   # a bad file stops here, before anything changes
+        with archive:
+            check_targets(files)
+
+    print(f"Getting ready for workshop {n}.")
+    message = save_first(save, n, source)
+    if message:
+        print(message)
+
+    if source:
+        saved_on, changed, unchanged, skipped, lines = restore(source, save)
+        print(f"\nRestored from {source.name} (saved on {saved_on}):")
+        if changed:
+            print("\n".join(save.summary_lines(changed)))
+        added = [f"{rel} ({k} line{'s' if k > 1 else ''})" for rel, k in lines.items() if k]
+        if added:
+            print(f"  Your lines added to the catalogues: {', '.join(added)}")
+        if unchanged:
+            print(f"  Already in place: {len(unchanged)} file{'s' if len(unchanged) > 1 else ''}.")
+        if skipped:
+            print(f"  Not restored (not workshop work): {', '.join(skipped)}")
+        for number, stems in sorted(number_clashes().items()):
+            print(f"  ! Number {number} is now used by two documents ({', '.join(stems)}). "
+                  "Ask the facilitator which one to keep.")
+
+    done, problems = prepare(n, save)
+    print("\nPrepared for this workshop:")
+    print("\n".join(f"  - {line}" for line in done) if done else "  - nothing needed: everything is already here.")
+    for problem in problems:
+        print(f"  ! {problem}")
+
+    write_marker(save, n)
+    print(f"\nAlmost ready for workshop {n}: see the lines with ! above." if problems else f"\nReady for workshop {n}.")
+    if n == 2:
+        print("This workshop uses Open WebUI. Start it now in a second terminal (about 3 minutes "
+              "the first time):\n  openwebui start")
+    if n == 5:
+        print("The wiki is in wiki/: start with wiki/index.md.")
+    print(f"First command: {FIRST_COMMAND[n]}")
+    if problems:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Refused as e:
+        sys.stdout.flush()
+        print(e, file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:                      # never a Python traceback for participants
+        sys.stdout.flush()
+        print(f"workshop-start stopped on an unexpected error ({type(e).__name__}: {e}). "
+              "Ask the facilitator.", file=sys.stderr)
+        sys.exit(1)

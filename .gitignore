@@ -2,5 +2,7 @@
 answers/
 graphify-out/
 __pycache__/
-# Paquets écrits par chatbot-export
+scores-judge.md
+scores-personas.md
+# Files written by chatbot-export and workshop-save
 /*.zip

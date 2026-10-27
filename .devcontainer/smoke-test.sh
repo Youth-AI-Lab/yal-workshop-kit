@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui; do command -v "$c" || echec "$c absent"; done
+for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
 
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
@@ -140,6 +140,24 @@ for m in C D E; do
   grep -q "test-questions.md, scores.md, answers/ or examples/" <<< "$r" || echec "mode $m : consigne sur le matériel de test absente"
 done
 echo "C : recherche et skills ; D : + MCP ; E : + wiki (après wiki-start) ; mode auto désactivé"
+grep -q "never write tool calls" <<< "$(reglages A)" || echec "mode A : consigne « pas d'outils » absente (faux appels d'outils)"
+grep -q "never write tool calls" "$(a_la_suite "$(reglages B)" --append-system-prompt-file)" || echec "mode B : consigne « pas d'outils » absente"
+
+etape "Personnalités (replay --agents), notes (score), sauvegarde et reprise (workshop-save, workshop-start)"
+r="$(WORKSHOP_AGENTS="$KIT/examples/AGENTS.liar.md" reglages A)"
+grep -qxF -- --add-dir <<< "$r" || echec "WORKSHOP_AGENTS : dossier des instructions non ajouté"
+grep -q claudeMdExcludes <<< "$r" || echec "WORKSHOP_AGENTS : AGENTS.md du kit non exclu"
+for p in liar storyteller sophist; do
+  grep -q "Demo bot: this answer contains deliberate errors" "$KIT/examples/AGENTS.$p.md" || echec "AGENTS.$p.md : étiquette de démonstration absente"
+done
+score --help > /dev/null || echec "score --help"
+code=0; WORKSHOP_HOME="$copie" score A > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "replay A" /tmp/err || { cat /tmp/err; echec "score sans réponses : message attendu replay A"; }
+code=0; workshop-start > /dev/null 2>&1 || code=$?
+[[ $code == 2 ]] || echec "workshop-start sans numéro : code 2 attendu, obtenu $code"
+(cd "$copie" && WORKSHOP_HOME="$copie" workshop-save > /dev/null) || echec "workshop-save"
+[[ -f "$copie/my-work.zip" ]] || echec "workshop-save : my-work.zip absent"
+rm -f "$copie/my-work.zip"
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {

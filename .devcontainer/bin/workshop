@@ -11,6 +11,10 @@
 #
 # Without a mode: D. Arguments after the mode are passed to claude
 # (this is how `replay` asks its questions: workshop B -p "question").
+#
+# Other instructions, without touching AGENTS.md (modes A to F; bare has none):
+#   WORKSHOP_AGENTS=examples/AGENTS.liar.md workshop A
+# (this is how `replay A --agents examples/AGENTS.liar.md` tries a demo personality).
 set -euo pipefail
 
 KIT="${WORKSHOP_HOME:-$HOME/workshop}"
@@ -36,11 +40,56 @@ export CLAUDE_CODE_AUTO_CONNECT_IDE=false CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL=1
 # fresh session of each replay question), and no git status of the kit in the context.
 export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1
 
+# WORKSHOP_AGENTS=<file>: the chatbot follows this file instead of AGENTS.md, which stays as it
+# is. Claude Code still starts in the kit, so search, skills and MCP see the real folders; the
+# kit's CLAUDE.md is excluded, and a run folder holding a copy of the file as its CLAUDE.md is
+# added as a working directory whose CLAUDE.md is loaded: the same way into the context as
+# AGENTS.md, HTML comments left out. A copy, not "@AGENTS.md": Claude Code does not follow an
+# import out of the kit without asking (and nobody can answer during replay). Not a copy of the
+# kit made of symlinks either: grep -r, find and rg do not follow symlinked folders.
+agents_dir=""
+excludes=""
+case "$mode" in
+  help|-h|--help) ;;
+  bare|Bare|BARE)
+    [[ -n "${WORKSHOP_AGENTS:-}" ]] \
+      && echo "Mode bare has no instructions at all: WORKSHOP_AGENTS is ignored." >&2
+    ;;
+  *)
+    if [[ -n "${WORKSHOP_AGENTS:-}" ]]; then
+      agents="$WORKSHOP_AGENTS"
+      # A relative path: from here, or else from the kit (examples/AGENTS.liar.md).
+      [[ "$agents" != /* && ! -f "$agents" && -f "$KIT/$agents" ]] && agents="$KIT/$agents"
+      if [[ ! -f "$agents" ]]; then
+        echo "Instructions file not found: $WORKSHOP_AGENTS" >&2
+        echo "Give the path of a file, for example: examples/AGENTS.feurisson.md" >&2
+        exit 1
+      fi
+      # Name of the run folder: AGENTS.liar.md -> liar, My bot.md -> my-bot (same rule as replay).
+      name="$(basename "$agents")"; name="${name%.md}"; name="${name#AGENTS.}"
+      name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+      # A new folder at each start, so a fresh copy of the file: two sessions with the same file
+      # (one person chats while the other runs replay) never delete each other's copy. Run
+      # folders older than a day are removed first, so they do not pile up.
+      mkdir -p "$RUN_DIR"
+      find "$RUN_DIR" -maxdepth 1 -type d -name 'agents-*' -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+      agents_dir="$(mktemp -d "$RUN_DIR/agents-${name:-custom}-XXXXXX")"
+      cp "$agents" "$agents_dir/CLAUDE.md"
+      # The kit's own instructions are left out (both spellings of its path, in case of a link).
+      excludes="$(python3 -c 'import json, sys; print(json.dumps(sorted(set(sys.argv[1:]))))' \
+        "$KIT/CLAUDE.md" "$KIT/AGENTS.md" "$(realpath "$KIT")/CLAUDE.md" "$(realpath "$KIT")/AGENTS.md")"
+      export CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1
+    fi
+    ;;
+esac
+
 # All modes: only the kit's MCP server can be loaded, and only in D and E. Permission mode
 # "manual" (not the default "auto"): Claude Code asks you before it writes a file. The auto and
 # bypass modes are switched off, so a permission prompt cannot offer "switch to auto mode".
-args=(--strict-mcp-config --permission-mode manual
-      --settings '{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}}')
+settings='{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}}'
+[[ -n "$excludes" ]] && settings="${settings%\}}, \"claudeMdExcludes\": $excludes}"
+args=(--strict-mcp-config --permission-mode manual --settings "$settings")
+[[ -n "$agents_dir" ]] && args+=(--add-dir "$agents_dir")
 [[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
 
 # Read-only commands allowed without confirmation from C on (file search goes through Bash).
@@ -51,6 +100,11 @@ read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(rg:*)" "Bash(cat:*)" "Bash(head:*)"
 # one, Claude Code asks permission for every "cd …; grep …", and nobody can answer during replay.
 knowledge="The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English, one per source: start there; their OKF header, up to the second ---, says who verified them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used. Never open or search test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not sources. You are already in the kit folder: run your commands from here, without cd. To create or change a file, use the Write and Edit tools, never shell commands (cat >, sed -i, printf >>): the person sees exactly what changes before accepting."
 
+# Modes A and B have no tools, but Claude Code's own instructions still describe them: an AGENTS.md
+# that asks to name a document made the model write fake tool calls as text instead of an answer
+# (Haiku, then Sonnet 5.5). The facilitator's choice (2026-10-27): say it plainly.
+no_tools="You have no tools in this conversation: you cannot open, search or read any file. Answer from what you know and from these instructions, and never write tool calls."
+
 case "$mode" in
   bare|Bare|BARE)
     # Empty directory outside the kit: no CLAUDE.md can be found from here.
@@ -60,13 +114,15 @@ case "$mode" in
     ;;
   A|a)
     cd "$KIT"
-    args+=(--tools "" --disable-slash-commands)
+    args+=(--tools "" --disable-slash-commands --append-system-prompt "$no_tools")
     ;;
   B|b)
     cd "$KIT"
     mkdir -p "$RUN_DIR"
     everything="$RUN_DIR/knowledge-in-context.md"
     {
+      echo "$no_tools"
+      echo
       echo "# Reference knowledge, loaded in full at startup:"
       echo "# summaries/ (short summaries, one per source; their header says who verified them) and"
       echo "# corpus/text/ (readable copies of the full official documents)"
@@ -124,7 +180,7 @@ PY
            --append-system-prompt "The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, get_neighbors, shortest_path): each node is a concept, an organisation, a rule or a page of the wiki, with the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the sources. $knowledge")
     ;;
   -h|--help|help)
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
   *)
@@ -136,6 +192,13 @@ esac
 # Banner, except when a question is asked directly (-p): the output must stay clean.
 if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then
   echo "Workshop — mode $mode. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F" >&2
+  if [[ -n "$agents_dir" ]]; then
+    echo "Instructions: $agents (a copy; AGENTS.md is not used)" >&2
+    # The demo personalities of examples/ (liar, sophist, storyteller) carry this label.
+    if grep -qF "Demo bot:" "$agents_dir/CLAUDE.md"; then
+      echo "This demo bot makes deliberate errors." >&2
+    fi
+  fi
 fi
 # WORKSHOP_DRY_RUN=1: print the command instead of running it (used by the smoke test).
 if [[ -n "${WORKSHOP_DRY_RUN:-}" ]]; then

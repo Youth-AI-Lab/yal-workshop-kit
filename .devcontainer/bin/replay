@@ -3,10 +3,16 @@
 
     replay B          all questions, in mode B
     replay D 8 11     only questions 8 and 11, in mode D
+    replay A --agents examples/AGENTS.liar.md 2 6
+                      questions 2 and 6, in mode A, with other instructions than AGENTS.md
+                      (a demo personality of examples/, or a draft of yours): AGENTS.md is
+                      not changed; modes A to F only
 
 Each question is asked in a fresh session (nothing carries over from one question to the next).
-Answers are written to answers/<mode>-<time>.md, each with the size of the context (the gauge)
-and what the model read or searched. All that is left is to score them from 0 to 2.
+Answers are written to answers/<mode>-<time>.md (with --agents: answers/<mode>-<name>-<time>.md,
+for instance A-liar-14h05.md), each with the size of the context (the gauge) and what the model
+read or searched. Then score them from 0 to 2: score <mode> (with --agents: score answers/<file>
+--blind).
 """
 
 import json
@@ -23,6 +29,9 @@ WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
 TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
+# The label every answer of a deceptive demo bot must start with (examples/AGENTS.liar.md...).
+DEMO_LABEL = "⚠️ Demo bot: this answer contains deliberate errors."
+HAS_LABEL = re.compile(r"demo bot: this answer contains deliberate errors", re.I)
 
 
 def read_questions():
@@ -35,15 +44,42 @@ def read_questions():
     return questions
 
 
-def ask(mode, question):
+def persona_name(path):
+    """AGENTS.liar.md -> liar; any other name -> a slug of it (My bot.md -> my-bot).
+    The same rule as the run folder of workshop (agents-<name>)."""
+    stem = path.name[:-3] if path.name.endswith(".md") else path.name
+    if stem.startswith("AGENTS."):
+        stem = stem[len("AGENTS."):]
+    return re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-") or "custom"
+
+
+def new_file(folder, stem):
+    """folder/stem.md, or stem-2.md, stem-3.md... if it exists already: an earlier replay of the
+    same minute, or answers brought back from another workshop, are never overwritten. The file
+    is created empty at once, so that it is taken."""
+    for k in range(1, 1000):
+        path = folder / (f"{stem}.md" if k == 1 else f"{stem}-{k}.md")
+        try:
+            with open(path, "x", encoding="utf-8"):
+                return path
+        except FileExistsError:
+            continue
+    raise SystemExit(f"Too many answers files named {stem} in {folder}: move some away.")
+
+
+def ask(mode, question, agents=None):
     """Asks one question, returns (answer, context tokens, actions, cost, error, peeked)."""
     cmd = [WORKSHOP, mode, "-p", question, "--output-format", "stream-json", "--verbose",
            "--max-turns", "15"]
     if os.environ.get("WORKSHOP_MODEL"):
         cmd += ["--model", os.environ["WORKSHOP_MODEL"]]
+    env = dict(os.environ)
+    env.pop("WORKSHOP_AGENTS", None)  # only --agents chooses other instructions
+    if agents:
+        env["WORKSHOP_AGENTS"] = str(agents)
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
-                             stdin=subprocess.DEVNULL)
+                             stdin=subprocess.DEVNULL, env=env)
     except subprocess.TimeoutExpired:
         return "", 0, [], 0.0, "no answer after 5 minutes", False
     answer, context, actions, cost, error, peeked = None, 0, [], 0.0, None, False
@@ -96,24 +132,75 @@ def main():
         print(__doc__.strip())
         sys.exit(1)
     mode = MODES[sys.argv[1].lower()]
+    rest = sys.argv[2:]
+    agents = None
+    if "--agents" in rest:
+        i = rest.index("--agents")
+        if i + 1 >= len(rest) or rest[i + 1].isdigit() or rest[i + 1].startswith("-"):
+            print("--agents needs a file, for example: replay A --agents examples/AGENTS.liar.md")
+            sys.exit(1)
+        given = rest[i + 1]
+        del rest[i:i + 2]
+        agents = Path(given).expanduser()
+        if not agents.is_absolute() and not agents.is_file():
+            agents = KIT / given  # relative to the kit: examples/AGENTS.liar.md
+        if not agents.is_file():
+            print(f"Instructions file not found: {given}")
+            print("Give the path of a file, for example: examples/AGENTS.feurisson.md")
+            sys.exit(1)
+        agents = agents.resolve()
+        if agents == (KIT / "AGENTS.md").resolve():
+            agents = None  # the kit's own instructions: a plain replay, scored in scores.md
+        elif mode == "bare":
+            print("Mode bare has no instructions at all: --agents only works with modes A to F.")
+            sys.exit(1)
     if mode in ("E", "F") and not (KIT / "wiki" / "index.md").is_file():
         print("No wiki yet. First type: wiki-start")
         sys.exit(1)
-    numbers = {int(n) for n in sys.argv[2:] if n.isdigit()}
+    unknown = [a for a in rest if a.startswith("-")]
+    if unknown:
+        print(f"Unknown option: {' '.join(unknown)}. The only option is --agents <file>.")
+        sys.exit(1)
+    numbers = {int(n) for n in rest if n.isdigit()}
     questions = [(n, q) for n, q in read_questions() if not numbers or n in numbers]
     if not questions:
         print("No question found: fill in the Question column of test-questions.md.")
         sys.exit(1)
 
     (KIT / "answers").mkdir(exist_ok=True)
-    out = KIT / "answers" / f"{mode}-{datetime.now():%Hh%M}.md"
-    lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
-             f"Score each answer from 0 to 2 in the {mode.capitalize()} column of scores.md.", ""]
-    total, errors, in_a_row = 0.0, 0, 0
+    stem = f"{mode}-{persona_name(agents)}" if agents else mode
+    out = new_file(KIT / "answers", f"{stem}-{datetime.now():%Hh%M}")
+    shown_out = out.relative_to(KIT)
+    # A demo bot that lies on purpose: each of its answers must carry the label (checked below).
+    labelled = bool(agents) and "Demo bot:" in agents.read_text(encoding="utf-8", errors="replace")
+    if agents:
+        try:
+            shown = agents.relative_to(KIT.resolve())
+        except ValueError:
+            shown = agents  # outside the kit: the full path
+        lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
+                 f"Instructions: {shown}", "",
+                 f"These answers come from other instructions than AGENTS.md. Score them with: "
+                 f"score {shown_out} --blind (the scores go into scores-personas.md, not scores.md).", ""]
+    else:
+        lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
+                 f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
+                 f"{mode.capitalize()} column of scores.md).", ""]
+    try:
+        run(mode, agents, questions, out, shown_out, labelled, lines)
+    finally:
+        if out.stat().st_size == 0:
+            out.unlink()  # stopped before the first answer: no empty file left behind
+
+
+def run(mode, agents, questions, out, shown_out, labelled, lines):
+    """Asks the questions one by one and writes the answers file as it goes."""
+    total, errors, in_a_row, asked = 0.0, 0, 0, 0
     start = time.monotonic()
     for i, (n, q) in enumerate(questions, 1):
+        asked = i
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)
-        answer, context, actions, cost, error, peeked = ask(mode, q)
+        answer, context, actions, cost, error, peeked = ask(mode, q, agents)
         total += cost
         lines += [f"## {n}. {q}", ""]
         if error:
@@ -127,6 +214,11 @@ def main():
                 print("  Warning: the model looked at the test material.", flush=True)
                 lines += ["**Warning: the model looked at the test material (test-questions.md, scores.md, answers/ "
                           "or examples/). It may have copied the expected answer: score 0.**", ""]
+            if labelled and not HAS_LABEL.search(answer):
+                # The persona promises the label on every answer: never leave a deliberate error
+                # without it in a file that people read, copy and show.
+                print("  The model left out the demo bot label: replay added it.", flush=True)
+                lines += [DEMO_LABEL, "*(Label added by replay: the model left it out.)*", ""]
             lines += [answer, "", f"*Context: {context:,} tokens*"]
             if actions:
                 lines += ["*What the model did:* " + " · ".join(actions)]
@@ -136,7 +228,9 @@ def main():
             print("Three errors in a row: stopping. Check the key (workshop-login) and the network.")
             break
     minutes, seconds = divmod(round(time.monotonic() - start), 60)
-    print(f"Answers: {out.relative_to(KIT)}   (cost: ${total:.2f}, time: {minutes} min {seconds:02d} s)")
+    print(f"Answers: {shown_out}   (cost: ${total:.2f}, time: {minutes} min {seconds:02d} s)")
+    if errors < asked:  # at least one answer to score
+        print(f"Next: score {shown_out} --blind" if agents else f"Next: score {mode}")
     if errors:
         print(f"{errors} question(s) failed: they are marked ERROR in the file. Ask the facilitator.")
         sys.exit(1)
