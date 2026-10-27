@@ -9,7 +9,7 @@
     openwebui stop                   stops Open WebUI (your data is kept)
 
 Open WebUI is a chatbot tool you can install on your own server. It uses your key (workshop-login).
-In it, choose a model at the top left:
+In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
     the 5 excerpts closest to the question and gives only those to the model.
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
@@ -157,8 +157,8 @@ def docker(*args, capture=True):
 def check_docker():
     if not shutil.which("docker") or docker("info").returncode != 0:
         fail("Docker is not available here, and Open WebUI needs it.\n"
-             "In a Codespace, Docker starts with the Codespace: wait one minute and try again.\n"
-             "On the workshop server, Open WebUI is not available: ask the facilitator.")
+             "In a Codespace, Docker starts with the Codespace: wait one minute and try again."
+             + ("" if CLASS else "\nOn the workshop server, Open WebUI is not available: ask the facilitator."))
 
 
 def provider():
@@ -596,7 +596,7 @@ def cmd_chatbot(args):
     else:
         print("\nWarning: your AGENTS.md is still empty, so this chatbot has no instructions.\n"
               "Fill it in (block A), then type the same command again.")
-    print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" at the top left.')
+    print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" in the message box (bottom right).')
     print("To check the instructions, ask it: Who are you?")
     print("Ask it your test questions again, and compare with scores.md.")
 
@@ -700,11 +700,14 @@ def cmd_class_start():
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
     admin, _ = class_secrets()
-    print("\nSign-ups are " + ("OPEN: participants can join." if signup_is_open() else
-                               "closed. In a session: openwebui share open"))
+    print("\nSign-ups are " + ("OPEN: participants can join. Not in a session? Type: openwebui share close"
+                               if signup_is_open() else "closed. In a session: openwebui share open"))
     # Last, in a frame: after the download, this is what the facilitator must not miss. The password is
-    # shown only the first time (this terminal may later be on the projector): openwebui password.
-    show_account(admin, with_password=made_now)
+    # shown until one start has shown it (this terminal may later be on the projector): a first start
+    # that stopped halfway, after the password was made, still shows it next time.
+    shown = state_dir() / "password-shown"
+    show_account(admin, with_password=made_now or not shown.exists())
+    shown.touch()
 
 
 def show_account(admin, with_password):
@@ -755,7 +758,7 @@ def cmd_share_open():
         print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
     set_port(public=True)
     show_link()
-    print("Each participant signs up (any name and e-mail; a nickname is fine), then chats.")
+    print("Each participant signs up (a first name or a nickname, never their full name), then chats.")
     print("At the end of the session: openwebui share close")
 
 
@@ -799,7 +802,7 @@ def cmd_reset():
         fail("Nothing was deleted.")
     docker("rm", "-f", CONTAINER)
     docker("volume", "rm", VOLUME)
-    for name in ("admin.json", "signup"):
+    for name in ("admin.json", "signup", "password-shown"):
         (state_dir() / name).unlink(missing_ok=True)
     print("Deleted. Type openwebui start to begin again.")
 
@@ -846,4 +849,6 @@ if __name__ == "__main__":
         main(sys.argv[1:])
     except ApiError as e:
         fail(f"Open WebUI refused a request ({e}).\n"
-             "Type openwebui start again. If it happens again, ask the facilitator.")
+             "Type openwebui start again. If it happens again, "
+             + ("open an issue: https://github.com/Youth-AI-Lab/yal-openwebui-guide/issues" if CLASS
+                else "ask the facilitator."))

@@ -798,8 +798,8 @@ block B.
    ```
 
 2. **Open the address** it gives (`Ctrl` + click on it). If it does not open: **Ports** tab of the
-   bottom panel → `3000` → **Open in Browser**. At the top left, the model is already
-   **Wildfire RAG (workshop kit)**.
+   bottom panel → `3000` → **Open in Browser**. In the message box, the model at the bottom right is
+   already **Wildfire RAG (workshop kit)**.
 3. **Ask questions 3, 7 and 10** of `test-questions.md`, one per **New Chat**. Under each
    answer, click the **source** to see the excerpts the model received.
 4. **See what the search engine picks**, without the model, in the terminal:
@@ -1602,7 +1602,7 @@ Everything you built today fits in one file: your instructions and all your know
 
    ```
    Instructions: your AGENTS.md, 26 lines. It starts with: "You are Feurisson, a friendly hedgehog who helps young people prevent…"
-   Ready. In Open WebUI (https://…-3000.app.github.dev): New Chat, then choose "Feurisson chatbot" at the top left.
+   Ready. In Open WebUI (https://…-3000.app.github.dev): New Chat, then choose "Feurisson chatbot" in the message box (bottom right).
    ```
 
    The line **Instructions** shows that your `AGENTS.md` went in. If it says `Warning: your
