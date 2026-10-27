@@ -24,6 +24,8 @@ CLASS_HELP = """Open WebUI for your groups: you build chatbots, then open them t
     openwebui share open     in a session: participants can sign up and use your chatbots; link and QR code
     openwebui share close    after the session: no more sign-ups; helps you make the link private again
     openwebui share status   sign-ups open or closed, link public or private, number of accounts
+    openwebui export         keeps a copy of each chatbot: one .zip per chatbot in exports/
+    openwebui import FILE    rebuilds a chatbot from such a .zip (or from chatbot-export of the workshop kit)
     openwebui stop           stops Open WebUI (your data is kept)
     openwebui reset          deletes everything in Open WebUI (asks you to confirm)
     openwebui help           this list
@@ -33,12 +35,14 @@ The guide: https://github.com/Youth-AI-Lab/yal-openwebui-guide"""
 import hashlib
 import http.client
 import json
+import mimetypes
 import os
 import re
 import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 import urllib.error
@@ -402,12 +406,22 @@ class OpenWebUI:
         boundary = uuid.uuid4().hex
         body = (f"--{boundary}\r\n"
                 f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
-                "Content-Type: text/markdown\r\n\r\n").encode() \
+                f"Content-Type: {mimetypes.guess_type(name)[0] or 'text/markdown'}\r\n\r\n").encode() \
             + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
         # Processed now: when the answer comes, the text is cut into excerpts and indexed.
         return self.request("POST", "/files/", raw=body,
                             query={"process": "true", "process_in_background": "false"},
                             content_type=f"multipart/form-data; boundary={boundary}")
+
+    def download(self, file_id):
+        """The file as it was uploaded (a PDF stays a PDF)."""
+        req = urllib.request.Request(f"{URL}/api/v1/files/{file_id}/content",
+                                     headers={"Authorization": f"Bearer {self.token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=600) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            raise ApiError(e.code, f"GET /files/{file_id}/content: HTTP {e.code}") from None
 
     def model_exists(self, model_id):
         try:
@@ -789,6 +803,165 @@ def cmd_share_status():
     print("Accounts (you included):", count)
 
 
+EXPORT_HOW_TO = """# {name}: your chatbot, ready to keep and rebuild
+
+Exported from Open WebUI on {date} by `openwebui export` (Youth AI Lab guide:
+https://github.com/Youth-AI-Lab/yal-openwebui-guide).
+
+## What is inside
+
+- `instructions.md`: the System Prompt of the chatbot. This is the **Instructions** box.
+- `knowledge/`: {count} documents, as you uploaded them. This is the **Knowledge** box.
+- `openwebui.json`: the rest of its settings in Open WebUI (name, description, base model,
+  starter questions, capabilities such as Memory, image).
+
+The participants' accounts and conversations are not in this file.
+
+## Rebuild it
+
+- **Open WebUI, with the guide** (in a new Codespace, for example): drag this file into the file
+  list, then type `openwebui import {file}`.
+- **Claude Project** (claude.ai): create a project, paste `instructions.md` into the project
+  instructions, and add the files in `knowledge/` to the project knowledge.
+- **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
+  instructions, and upload the files in `knowledge/` as its knowledge.
+- **Another Open WebUI**: create a knowledge base with the files in `knowledge/`, then a model with
+  `instructions.md` as its System Prompt and this knowledge base attached.
+
+## Before you trust it
+
+Ask it your test questions again (guide, part 3): the tool changes, the test does not.
+"""
+
+
+def knowledge_items(api, bot):
+    """The documents of a chatbot: [(knowledge base or None, file)], from each knowledge base it
+    uses and from single files attached to it."""
+    found = []
+    for item in (bot.get("meta") or {}).get("knowledge") or []:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        try:
+            base = api.request("GET", f"/knowledge/{item['id']}")
+        except ApiError as e:
+            if e.status != 404:
+                raise
+            found.append((None, item))  # a single file, not a knowledge base
+            continue
+        found += [(base, f) for f in api.files_of(item["id"])]
+    return found
+
+
+def cmd_export():
+    check_docker()
+    api = OpenWebUI().login()
+    chatbots = [m for m in api.request("GET", "/models/all") if m.get("base_model_id")]
+    if not chatbots:
+        fail("No chatbot to export yet: create one in Workspace -> Models.")
+    folder = KIT / "exports"
+    folder.mkdir(exist_ok=True)
+    print(f"Exporting {len(chatbots)} chatbot(s) to {folder.name}/:")
+    for bot in chatbots:
+        meta = {k: v for k, v in (bot.get("meta") or {}).items() if k != "knowledge"}
+        params = dict(bot.get("params") or {})
+        bases, files, used = {}, [], set()
+        for base, f in knowledge_items(api, bot):
+            name = f.get("filename") or (f.get("meta") or {}).get("name") or f.get("name") or f["id"]
+            if name in used:  # two documents with the same name in two knowledge bases
+                name = f"{slug(base['name'] if base else 'file')}__{name}"
+            used.add(name)
+            files.append((name, api.download(f["id"])))
+            key = base["id"] if base else ""
+            entry = bases.setdefault(key, {"name": base["name"] if base else f"{bot['name']} documents",
+                                           "description": (base or {}).get("description", ""), "files": []})
+            entry["files"].append(name)
+        target = folder / f"{slug(bot['name'])}.zip"
+        info = {"format": "yal-openwebui-chatbot/1", "id": bot["id"], "name": bot["name"],
+                "base_model_id": bot["base_model_id"], "is_active": bot.get("is_active", True),
+                "meta": meta, "params": {k: v for k, v in params.items() if k != "system"},
+                "knowledge": list(bases.values())}
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("README.md", EXPORT_HOW_TO.format(
+                name=bot["name"], date=time.strftime("%Y-%m-%d"), count=len(files),
+                file=f"exports/{target.name}"))
+            archive.writestr("instructions.md", (params.get("system") or "").strip() + "\n")
+            archive.writestr("openwebui.json", json.dumps(info, indent=2, ensure_ascii=False) + "\n")
+            for name, data in files:
+                archive.writestr(f"knowledge/{name}", data)
+        print(f"  {bot['name']}: {folder.name}/{target.name} ({len(files)} documents)")
+    print(f"\nTo keep them on your computer: in the file list, folder {folder.name}/, right-click on a")
+    print("file, then Download. The participants' accounts and conversations are not in these files.")
+    print("To rebuild a chatbot later, in a new Codespace for example: openwebui import <file>")
+
+
+def cmd_import(path_text):
+    path = Path(path_text).expanduser()
+    if not path.exists():
+        path = KIT / path_text
+    if not path.is_file() or not zipfile.is_zipfile(path):
+        fail(f"{path_text}: no such .zip file. Drag the file into the file list first, then type:\n"
+             "openwebui import <its name>")
+    key, _, model = provider()
+    check_docker()
+    api = OpenWebUI().login()
+    with zipfile.ZipFile(path) as archive:
+        names = archive.namelist()
+        if "instructions.md" not in names:
+            fail("This .zip is not a chatbot made by openwebui export or chatbot-export.")
+        info = json.loads(archive.read("openwebui.json")) if "openwebui.json" in names else {}
+        system = archive.read("instructions.md").decode().strip()
+        title = ""
+        if "README.md" in names:
+            first = archive.read("README.md").decode().splitlines()[:1]
+            title = re.sub(r"^#\s*|\s*(:| -) your chatbot.*$", "", first[0]).strip() if first else ""
+        tmp = Path(tempfile.mkdtemp())
+        documents = {}
+        for member in names:
+            if member.startswith("knowledge/") and not member.endswith("/") and ".." not in member:
+                target = tmp / Path(member).name
+                target.write_bytes(archive.read(member))
+                documents[target.name] = target
+    try:
+        if info:
+            name = info["name"]
+            groups = info.get("knowledge") or []
+        else:  # a package of chatbot-export (workshop kit): one knowledge base, the kit's addendum
+            name = f"{title or path.stem} chatbot"
+            system += CHATBOT_ADDENDUM
+            groups = [{"name": f"{title or path.stem} knowledge", "description": "",
+                       "files": sorted(documents)}] if documents else []
+        refs, failed = [], []
+        for group in groups:
+            files = [(n, documents[n]) for n in group.get("files", []) if n in documents]
+            print(f'Knowledge base "{group["name"]}": {len(files)} documents…', flush=True)
+            base, bad = api.fill_collection(group["name"], group.get("description", ""), files)
+            failed += bad
+            refs.append({"id": base["id"], "name": base["name"],
+                         "description": base.get("description", ""), "type": "collection"})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    available = base_models(key, model)
+    base_model = info.get("base_model_id") if info.get("base_model_id") in available else model
+    if info.get("base_model_id") and base_model != info["base_model_id"]:
+        print(f'Its base model {info["base_model_id"]} is not offered here: it uses {base_model}.')
+    meta = dict(info.get("meta") or {})
+    if not info:
+        meta = {"description": f"Imported from {path.name}.",
+                "capabilities": {**NO_TOOLS, "builtin_tools": True}}
+    meta["knowledge"] = refs
+    params = dict(info.get("params") or {"function_calling": "native"})
+    params["system"] = system
+    model_id = info.get("id") or "chatbot-" + slug(name)
+    replaced = api.model_exists(model_id)
+    api.save_model({"id": model_id, "base_model_id": base_model, "name": name,
+                    "is_active": info.get("is_active", True), "meta": meta, "params": params})
+    if failed:
+        fail("Some documents could not be added (see above). Type the same command again.")
+    print(f'\n{"Replaced" if replaced else "Imported"}: "{name}", with {sum(len(g.get("files", [])) for g in groups)} '
+          "documents. Check it in Workspace -> Models, then test it (guide, part 3).")
+    print("In a session, type openwebui share open so that the participants see it.")
+
+
 def cmd_password():
     admin, _ = class_secrets()
     show_account(admin, with_password=True)
@@ -816,7 +989,12 @@ def cmd_stop():
 def class_command(argv):
     commands = {("start",): cmd_class_start, ("share", "open"): cmd_share_open,
                 ("share", "close"): cmd_share_close, ("share", "status"): cmd_share_status,
-                ("password",): cmd_password, ("reset",): cmd_reset, ("stop",): cmd_stop}
+                ("password",): cmd_password, ("reset",): cmd_reset, ("stop",): cmd_stop,
+                ("export",): cmd_export}
+    if argv[:1] == ["import"]:
+        if len(argv) != 2:
+            fail("Usage: openwebui import <file.zip>")
+        return cmd_import(argv[1])
     command = commands.get(tuple(argv))
     if not command:
         fail("Unknown command. See: openwebui help")

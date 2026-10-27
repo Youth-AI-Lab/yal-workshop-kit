@@ -94,6 +94,7 @@ code=0; openwebui start > /tmp/err 2>&1 || code=$?
 code=0; openwebui share open > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "Never make its port public" /tmp/err || { cat /tmp/err; echec "openwebui share hors mode classe : refus attendu"; }
 OPENWEBUI_MODE=class openwebui help | grep -q "share open" || echec "openwebui help (mode classe)"
+OPENWEBUI_MODE=class openwebui help | grep -q "openwebui import FILE" || echec "openwebui help (mode classe) : export et import"
 command -v qrencode > /dev/null || echec "qrencode absent (QR code de share open)"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
