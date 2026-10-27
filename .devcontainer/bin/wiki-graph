@@ -27,7 +27,7 @@ from urllib.parse import unquote
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 OUTPUT = "graph.md"
 # Files of wiki/ that are not topic pages.
-RESERVED = {"index.md", "log.md", "claude.md", OUTPUT}
+RESERVED = {"index.md", "log.md", "claude.md", "agents.md", OUTPUT}
 SOURCE_FOLDERS = ("corpus", "summaries")
 EXTENSION = "bierner.markdown-mermaid"
 VIEW_HINT = (f"To view it in VS Code: open wiki/{OUTPUT} and press Ctrl+Shift+V "

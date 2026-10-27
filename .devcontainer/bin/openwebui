@@ -65,12 +65,11 @@ VOLUME = CONTAINER + "-data"
 PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
 URL = f"http://127.0.0.1:{PORT}"
 
-# The same model as `workshop` (see workshop-login), through the OpenAI-compatible API of each provider.
+# The same model as `workshop` (see workshop-login), through the OpenAI-compatible API of Anthropic.
+# Anthropic only: an OpenRouter key (sk-or-) is for OpenCode (workshop-login --engine opencode).
 PROVIDERS = {
     "sk-ant-": ("https://api.anthropic.com/v1",
                 os.environ.get("WORKSHOP_ANTHROPIC_MODEL", "claude-sonnet-5-5")),
-    "sk-or-": ("https://openrouter.ai/api/v1",
-               os.environ.get("WORKSHOP_OPENROUTER_MODEL", "~anthropic/claude-sonnet-latest")),
 }
 
 # Class mode also offers a cheaper model, for simple chatbots (Anthropic keys).
@@ -172,7 +171,10 @@ def provider():
     for prefix, (base_url, model) in PROVIDERS.items():
         if key.startswith(prefix):
             return key, base_url, model
-    fail("The saved key is not an Anthropic or OpenRouter key. Type workshop-login again.")
+    if key.startswith("sk-or-"):
+        fail("The saved key is an OpenRouter key: Open WebUI here needs an Anthropic key (it starts with sk-ant-).\n"
+             "Type workshop-login again with an Anthropic key.")
+    fail("The saved key is not an Anthropic key (it starts with sk-ant-). Type workshop-login again.")
 
 
 def check_same_key(key):

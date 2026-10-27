@@ -24,6 +24,12 @@ etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
   || echec "le serveur MCP ne s'importe pas"
 
+etape "OpenCode à la version figée (second moteur)"
+attendu="$(cat "$KIT/.devcontainer/opencode-version")"
+opencode --version
+[[ "$(opencode --version)" == "opencode v$attendu" ]] || echec "OpenCode : version attendue $attendu"
+command -v workshop-opencode || echec "workshop-opencode absent"
+
 etape "Mod token-weather présent"
 [[ -d /opt/workshop/claude-code-playground/claude-code/mods/token-weather ]] || echec "mod absent"
 
@@ -35,6 +41,15 @@ grep -q workshop-login /tmp/err || echec "message attendu : workshop-login"
 etape "Une clé mal formée est refusée sans rien écrire"
 if workshop-login --key "not-a-key" 2>/dev/null; then echec "clé mal formée acceptée"; fi
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé mal formée enregistrée"
+
+etape "Une clé OpenRouter est refusée avec Claude Code (OpenRouter : OpenCode seulement)"
+code=0; workshop-login --key sk-or-v1-SMOKETEST0000000000 2>/tmp/err || code=$?
+[[ "$code" == 1 ]] || echec "clé OpenRouter avec Claude Code : code attendu 1, obtenu $code"
+grep -q -- "--engine opencode" /tmp/err || echec "clé OpenRouter : message vers OpenCode attendu"
+[[ ! -f "$HOME/.workshop-key" ]] || echec "clé OpenRouter enregistrée avec Claude Code"
+printf '{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}' > "$HOME/.claude/settings.json" 2>/dev/null || { mkdir -p "$HOME/.claude"; printf '{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}' > "$HOME/.claude/settings.json"; }
+if workshop bare -p hi 2>/tmp/err; then echec "workshop a démarré avec un ancien réglage OpenRouter"; fi
+rm -f "$HOME/.claude/settings.json"
 
 etape "corpus-add : une page web et un PDF s'importent, un PDF scanné est refusé (sur une copie du kit)"
 copie="$(mktemp -d)"; cp -r "$KIT/." "$copie"; rm -rf "$copie/.git"
@@ -55,6 +70,8 @@ WORKSHOP_HOME="$copie" wiki-start || echec "wiki-start a échoué"
 [[ -f "$copie/wiki/index.md" && -f "$copie/.claude/skills/ingest/SKILL.md" && -f "$copie/.claude/skills/lint/SKILL.md" ]] \
   || echec "wiki-start : wiki/ ou skills manquants"
 WORKSHOP_HOME="$copie" wiki-start | grep -q "already there" || echec "wiki-start rejoué : message attendu"
+[[ -f "$copie/wiki/AGENTS.md" ]] && grep -qx '@AGENTS.md' "$copie/wiki/CLAUDE.md" \
+  || echec "wiki : schéma wiki/AGENTS.md et import wiki/CLAUDE.md attendus (lus par les deux moteurs)"
 
 etape "wiki-explore : le graphe de graphify se lit sans modèle, sans installer de skill"
 [[ -f "$copie/wiki/graphify-out/graph.html" && -f "$copie/wiki/graphify-out/GRAPH_REPORT.md" ]] \
@@ -158,6 +175,29 @@ code=0; workshop-start > /dev/null 2>&1 || code=$?
 (cd "$copie" && WORKSHOP_HOME="$copie" workshop-save > /dev/null) || echec "workshop-save"
 [[ -f "$copie/my-work.zip" ]] || echec "workshop-save : my-work.zip absent"
 rm -f "$copie/my-work.zip"
+
+etape "OpenCode : configuration de chaque mode (répétition à blanc, sans appel au modèle)"
+oc() { WORKSHOP_ENGINE=opencode WORKSHOP_DRY_RUN=1 WORKSHOP_HOME="$copie" workshop "$1" -p hi; }
+for m in bare A B C D E F; do
+  oc "$m" > "/tmp/oc-$m.json" || echec "OpenCode, mode $m : la configuration n'est pas produite"
+done
+/opt/workshop/venv/bin/python - <<'PY' || echec "OpenCode : configuration d'un mode inattendue"
+import json
+def load(m): return json.load(open(f"/tmp/oc-{m}.json"))
+for m in "bare A B C D E F".split():
+    d = load(m); c = d["config"]; perms = c["agents"]["chatbot"]["permissions"]
+    allowed = {p["action"] for p in perms if p["effect"] == "allow"}
+    servers = set((c.get("mcp") or {}).get("servers") or {})
+    assert d["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1", m
+    assert "sk-" not in json.dumps(c), f"{m}: key in the config"
+    if m in ("bare", "A", "B"):
+        assert perms == [{"action": "*", "resource": "*", "effect": "deny"}], f"{m}: tools"
+    else:
+        assert {"read", "grep", "skill"} <= allowed, f"{m}: search tools"
+    assert ("fire-danger" in servers) == (m in "DEF"), f"{m}: MCP fire-danger"
+    assert ("graphify" in servers) == (m == "F"), f"{m}: MCP graphify"
+print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP, F graphify ; aucune clé dans la configuration")
+PY
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
 verifie() {

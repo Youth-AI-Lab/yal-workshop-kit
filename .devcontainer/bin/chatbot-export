@@ -68,7 +68,7 @@ def knowledge(kit):
     files = []
     for folder, prefix in (("summaries", "summaries"), ("wiki", "wiki"), ("corpus/text", "corpus-text")):
         for path in sorted((kit / folder).glob("*.md")):
-            if path.name in ("00-template.md", "CLAUDE.md", "graph.md"):
+            if path.name in ("00-template.md", "CLAUDE.md", "AGENTS.md", "graph.md"):
                 continue
             files.append((f"knowledge/{prefix}__{path.name}", path))
     return files

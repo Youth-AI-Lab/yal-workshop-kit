@@ -1,0 +1,507 @@
+#!/usr/bin/env python3
+"""Starts the workshop chatbot with OpenCode instead of Claude Code (same modes, same rules).
+
+`workshop` runs this file when the engine is opencode (workshop-login --engine opencode, or
+WORKSHOP_ENGINE=opencode). Each mode gives OpenCode the same context and the same tools as the
+Claude Code side of `workshop`: see the help of `workshop` for the modes.
+
+    workshop-opencode <mode>                    the chat in the terminal (OpenCode's own interface)
+    workshop-opencode <mode> [opencode flags]   the same, flags passed on (e.g. --continue)
+    workshop-opencode <mode> -p "question"      one question, the answer printed, then exit
+                                                (more flags after it go to `opencode run`:
+                                                --format json; Claude Code's --output-format
+                                                json|stream-json becomes --format json, --verbose is
+                                                ignored, --max-turns N sets the agent's steps;
+                                                in D, E, F it first waits for the MCP servers,
+                                                as Claude Code does, through a private server)
+    workshop-opencode <mode> serve --port N [--hostname 127.0.0.1]
+                                                a private server for `replay` (see below)
+
+Modes: bare, A, B, C, D, E, F (any case). Without a mode: D. Unknown mode: exit 1.
+
+Environment (the same names as `workshop`):
+    WORKSHOP_HOME          the kit (default ~/workshop)
+    WORKSHOP_BARE_DIR      the empty folder of mode bare (default ~/.workshop-bare)
+    WORKSHOP_RUN_DIR       run folders (default ~/.workshop-run): oc-<mode>-XXXXXX for each start
+                           (the config, the instructions files), opencode-data/<mode> for the
+                           sessions and approvals of the chat in that mode
+    WORKSHOP_AGENTS        modes A to F: follow this file instead of AGENTS.md
+    WORKSHOP_GRAPHIFY_MCP  graphify's MCP server (mode F)
+    WORKSHOP_DRY_RUN=1     print what would run (one JSON object, below) instead of running it
+    WORKSHOP_OPENCODE_MODEL     provider/model instead of the one saved by workshop-login (tests)
+    WORKSHOP_OPENCODE_BASEURL   send the model requests to this URL (tests: a fake endpoint)
+Read: ~/.workshop-key (the key, never copied: the config points to the file) and
+~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
+"model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window).
+Without that file: the provider comes from the key (sk-ant- Anthropic, sk-or- OpenRouter).
+
+WORKSHOP_DRY_RUN=1 prints one JSON object on stdout, then exits 0:
+    {"engine": "opencode", "mode": "C", "cwd": "<folder>", "run_dir": "<oc-C-XXXXXX>",
+     "command": ["opencode", "--standalone"], "stdin": null | "<question file>",
+     "env": {"OPENCODE_DISABLE_PROJECT_CONFIG": "1", ..., "XDG_DATA_HOME": "<folder>"},
+     "config": {... the content of OPENCODE_CONFIG_CONTENT ...}}
+The instructions files named in config.instructions are written for real (to read them).
+
+serve (used by replay; one server per replay):
+    arguments    serve --port N [--hostname H]   (H defaults to 127.0.0.1; nothing else accepted)
+    environment  OPENCODE_PASSWORD   required (exit 2 without it): clients send it as the
+                                     password of user "opencode" (HTTP basic)
+                 XDG_DATA_HOME       the server's database: give a FRESH folder and delete it at
+                                     the end (approvals saved in a chat never reach a replay).
+                                     Not set: a new folder inside the run folder.
+    prints       one line of JSON on stdout, before the server starts:
+                 {"url": "http://H:N", "directory": "<folder>", "mode": "D", "steps": 15,
+                  "run_dir": "<oc-D-XXXXXX>", "model": "anthropic/claude-sonnet-5-5"}
+                 then OpenCode's own server output (stdout and stderr): read the first line, then
+                 send the rest to a file or keep reading it (a full pipe would block the server).
+    clients      run with cwd=directory AND PWD=directory, the same OPENCODE_PASSWORD, and
+                 `--server URL`: opencode run --server URL --format json (question on stdin),
+                 opencode session export --server URL <id>, opencode api --server URL get /api/mcp.
+                 The MCP servers of D, E, F connect a little after the start: wait until none is
+                 "pending" in /api/mcp before the first question.
+    Without a key: the same message as workshop, exit 1. Stop the server with SIGTERM.
+"""
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+KIT = Path(os.environ.get("WORKSHOP_HOME") or Path.home() / "workshop")
+BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-bare")
+RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
+GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
+KEY_FILE = Path.home() / ".workshop-key"
+SETTINGS_FILE = Path.home() / ".workshop-opencode.json"
+
+MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
+STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text answer)
+
+# The texts below are the ones of `workshop` (keep them aligned), with OpenCode's tool names.
+NO_TOOLS = ("You have no tools in this conversation: you cannot open, search or read any file. Answer from what "
+            "you know and from these instructions, and never write tool calls.")
+KNOWLEDGE = ("The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries "
+             "in English, one per source: start there; their OKF header, up to the second ---, says who verified "
+             "them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in "
+             "their original language: go there for details or when the summaries are not enough; read and search "
+             "their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about "
+             "the topic, search them before answering, and say which document you used. Never open or search "
+             "test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not "
+             "sources. You are already in the kit folder: run your commands from here, without cd. To create or "
+             "change a file, use the edit and write tools, never shell commands (cat >, sed -i, printf >>): the "
+             "person sees exactly what changes before accepting.")
+WIKI = ("To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its "
+        "source. If the wiki is not enough, search the sources. ")
+GRAPH = ("The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, "
+         "get_neighbors, shortest_path): each node is a concept, an organisation, a rule or a page of the wiki, with "
+         "the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read "
+         "only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the "
+         "sources. ")
+# Read-only commands allowed without confirmation from C on (as in `workshop`).
+READ_ONLY = ["ls", "grep", "rg", "cat", "head", "wc", "find"]
+# Anthropic prices in $ per million tokens (Claude Sonnet 5.5: input 2, output 10, cache read 0.20,
+# cache write 5 min 2.50 = 1.25 x input), from Anthropic's price table (checked 2026-10-27).
+# OpenCode's built-in catalogue puts the cache read at 0.10: the cost shown would be too low.
+ANTHROPIC_COST = {"claude-sonnet-5-5": {"input": 2, "output": 10, "cache": {"read": 0.2, "write": 2.5}}}
+DEFAULT_MODEL = {"anthropic": "anthropic/claude-sonnet-5-5", "openrouter": "openrouter/anthropic/claude-sonnet-5.5"}
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def rule(action, resource, effect):
+    return {"action": action, "resource": resource, "effect": effect}
+
+
+def model_choice():
+    """(provider, provider/model, context) from workshop-login's file, else from the key."""
+    try:
+        saved = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    model = os.environ.get("WORKSHOP_OPENCODE_MODEL") or saved.get("model") or ""
+    provider = saved.get("provider") or (model.split("/", 1)[0] if "/" in model else "")
+    if not provider:
+        try:
+            with open(KEY_FILE, encoding="utf-8") as f:
+                provider = "openrouter" if f.read(6) == "sk-or-" else "anthropic"
+        except OSError:
+            provider = "anthropic"
+    if not model:
+        model = DEFAULT_MODEL.get(provider, "anthropic/claude-sonnet-5-5")
+    elif not model.startswith(provider + "/"):
+        model = f"{provider}/{model}"
+    try:
+        context = int(saved.get("context") or 200000)
+    except (TypeError, ValueError):
+        context = 200000
+    return provider, model, min(context, 200000)
+
+
+def strip_comments(text):
+    """HTML comments are notes for the people who fill the file, never sent (as with Claude Code)."""
+    return re.sub(r"<!--.*?-->", "", text, flags=re.S)
+
+
+def parse_args(argv):
+    """Returns (kind, question, extra): kind is tui, print or serve."""
+    if argv and argv[0] == "serve":
+        return "serve", None, argv[1:]
+    question, extra, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-p", "--print"):
+            if i + 1 >= len(argv):
+                fail(f"{a} needs a question: workshop <mode> -p \"your question\"")
+            question = argv[i + 1]
+            i += 2
+            continue
+        extra.append(a)
+        i += 1
+    return ("print" if question is not None else "tui"), question, extra
+
+
+def print_flags(extra):
+    """-p: Claude Code's flags that `workshop -p` users and scripts know. Returns (run flags, steps)."""
+    run_flags, steps, i = [], STEPS, 0
+    while i < len(extra):
+        a = extra[i]
+        if a == "--output-format" and i + 1 < len(extra):
+            if extra[i + 1] in ("json", "stream-json"):
+                run_flags += ["--format", "json"]
+            i += 2
+        elif a == "--max-turns" and i + 1 < len(extra):
+            if not extra[i + 1].isdigit():
+                fail(f"--max-turns needs a number, not {extra[i + 1]}")
+            steps = max(1, int(extra[i + 1]))
+            i += 2
+        elif a == "--verbose":
+            i += 1
+        else:
+            run_flags.append(a)
+            i += 1
+    return run_flags, steps
+
+
+def serve_flags(extra):
+    """serve --port N [--hostname H]: returns (host, port); checks OPENCODE_PASSWORD."""
+    host, port, i = "127.0.0.1", None, 0
+    while i < len(extra):
+        if extra[i] not in ("--port", "--hostname") or i + 1 >= len(extra):
+            fail(f"serve: unknown argument {extra[i]}. Usage: workshop-opencode <mode> serve --port N "
+                 "[--hostname 127.0.0.1]", 2)
+        if extra[i] == "--port":
+            port = extra[i + 1]
+        else:
+            host = extra[i + 1]
+        i += 2
+    if not port or not port.isdigit():
+        fail("serve: --port N is required (a free port).", 2)
+    if not os.environ.get("OPENCODE_PASSWORD"):
+        fail("serve: set OPENCODE_PASSWORD first (the password of this private server).", 2)
+    return host, port
+
+
+def agents_file(mode):
+    """The WORKSHOP_AGENTS file, or None for AGENTS.md (same rules and messages as `workshop`)."""
+    wanted = os.environ.get("WORKSHOP_AGENTS")
+    if not wanted:
+        return None
+    if mode == "bare":
+        print("Mode bare has no instructions at all: WORKSHOP_AGENTS is ignored.", file=sys.stderr)
+        return None
+    agents = Path(wanted)
+    # A relative path: from here, or else from the kit (examples/AGENTS.liar.md).
+    if not agents.is_absolute() and not agents.is_file() and (KIT / agents).is_file():
+        agents = KIT / agents
+    if not agents.is_file():
+        fail(f"Instructions file not found: {wanted}\n"
+             "Give the path of a file, for example: examples/AGENTS.feurisson.md")
+    return agents
+
+
+def check_wiki(mode):
+    if mode == "E" and not (KIT / "wiki" / "index.md").is_file():
+        fail("No wiki yet. First type: wiki-start")
+    if mode == "E" and not (KIT / "wiki" / "AGENTS.md").is_file():
+        # OpenCode reads the rules of the wiki from wiki/AGENTS.md only (never wiki/CLAUDE.md).
+        fail("This wiki has no wiki/AGENTS.md (it comes from an older kit). Ask the facilitator.")
+    if mode == "F" and not (KIT / "wiki" / "graphify-out" / "graph.json").is_file():
+        fail("No graph of the wiki yet. First type: wiki-start")
+
+
+def new_run_dir(mode):
+    """A new run folder at each start (two sessions never share one); those older than a day go."""
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    for old in RUN_DIR.glob("oc-*"):
+        try:
+            if old.is_dir() and now - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    return Path(tempfile.mkdtemp(prefix=f"oc-{mode}-", dir=RUN_DIR))
+
+
+def write_instructions(mode, agents, run):
+    """Writes the instructions files of the mode into the run folder; returns their paths, in order."""
+    def add(name, text):
+        (run / name).write_text(text, encoding="utf-8")
+        instructions.append(str(run / name))
+
+    instructions = []
+    if mode == "bare":
+        return instructions
+    source = agents or KIT / "AGENTS.md"
+    add("AGENTS.md", strip_comments(source.read_text(encoding="utf-8")) if source.is_file() else "")
+    if mode == "A":
+        add("no-tools.md", NO_TOOLS + "\n")
+    elif mode == "B":
+        # The same assembly as `workshop` B: the no-tools line, then every summary and the readable
+        # copy of every official document (never the originals: too big, or not text).
+        body = "\n".join([NO_TOOLS, "",
+                          "# Reference knowledge, loaded in full at startup:",
+                          "# summaries/ (short summaries, one per source; their header says who verified them) and",
+                          "# corpus/text/ (readable copies of the full official documents)"]) + "\n"
+        for f in sorted((KIT / "summaries").glob("*.md")) + sorted((KIT / "corpus" / "text").glob("*.md")):
+            if f.name in ("index.md", "README.md") or f.name.startswith("00-"):
+                continue
+            body += f"\n\n## Document: {f.relative_to(KIT)}\n\n" + f.read_text(encoding="utf-8")
+        add("knowledge-in-context.md", body)
+    else:
+        add("knowledge.md", {"E": WIKI, "F": GRAPH}.get(mode, "") + KNOWLEDGE + "\n")
+    return instructions
+
+
+def tools_of(mode):
+    """The chatbot's permissions and MCP servers. Returns (permissions, mcp servers)."""
+    # Base: nothing allowed. A tool denied here is not even sent to the model.
+    perms = [rule("*", "*", "deny")]
+    mcp = {}
+    if mode in ("C", "D", "E", "F"):
+        perms += [rule("read", "*", "allow"), rule("glob", "*", "allow"), rule("grep", "*", "allow"),
+                  rule("skill", "*", "allow"),
+                  # OpenCode's own skills: not part of the workshop.
+                  rule("skill", "opencode", "deny"), rule("skill", "report", "deny"),
+                  # Writing a file or another command: OpenCode asks first.
+                  rule("edit", "*", "ask"), rule("shell", "*", "ask")]
+        perms += [rule("shell", f"{c} *", "allow") for c in READ_ONLY]
+        # Outside the kit: never without asking (OpenCode's default is to allow).
+        perms += [rule("external_directory", "*", "ask")]
+    if mode in ("D", "E", "F"):
+        # The kit's MCP server, as described in .mcp.json for Claude Code.
+        try:
+            server = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["fire-danger"]
+        except (OSError, ValueError, KeyError):
+            fail(f"The MCP server of the kit is not described in {KIT / '.mcp.json'}. Ask the facilitator.")
+        command = [server["command"]] + [str(KIT / a) if not os.path.isabs(a) and (KIT / a).exists() else a
+                                         for a in server.get("args", [])]
+        # codemode off: the tools are offered to the model directly, not behind an "execute" tool.
+        mcp["fire-danger"] = {"type": "local", "command": command, "codemode": False}
+        perms += [rule("fire-danger_*", "*", "allow")]
+    if mode == "F":
+        mcp["graphify"] = {"type": "local", "codemode": False,
+                           "command": [GRAPHIFY_MCP, str(KIT / "wiki" / "graphify-out" / "graph.json")]}
+        perms += [rule("graphify_*", "*", "allow")]
+        # The same tools left out as in `workshop` F (about pull requests, not about the wiki).
+        perms += [rule(f"graphify_{t}", "*", "deny") for t in ("list_prs", "get_pr_impact", "triage_prs")]
+    return perms, mcp
+
+
+def build_config(mode, instructions, perms, mcp, steps):
+    """The content of OPENCODE_CONFIG_CONTENT."""
+    provider, model, context = model_choice()
+    model_id = model.split("/", 1)[1]
+    model_settings = {"limit": {"context": context}}  # the gauge shows a share of 200k, as with Claude Code
+    if provider == "anthropic" and model_id in ANTHROPIC_COST:
+        model_settings["cost"] = ANTHROPIC_COST[model_id]
+    provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
+    if os.environ.get("WORKSHOP_OPENCODE_BASEURL"):
+        provider_settings["baseURL"] = os.environ["WORKSHOP_OPENCODE_BASEURL"]
+    return {
+        "$schema": "https://opencode.ai/config.json",
+        "model": model,
+        "default_agent": "chatbot",
+        "update": "disable",
+        "snapshots": False,
+        # Only the chosen provider: no free models, no GitHub Copilot through the Codespace's token.
+        "policies": [rule("provider.use", "*", "deny"), rule("provider.use", provider, "allow")],
+        "instructions": instructions,
+        # Explicit: OPENCODE_DISABLE_PROJECT_CONFIG=1 also hides the kit's .claude/skills.
+        "skills": [str(KIT / ".claude" / "skills")] if mode in ("C", "D", "E", "F") else [],
+        "agents": {
+            "build": {"disabled": True}, "plan": {"disabled": True},
+            "general": {"disabled": True}, "explore": {"disabled": True},
+            "title": {"disabled": True},  # no extra request to a small model at each session
+            "chatbot": {"mode": "primary", "description": f"Workshop chatbot, mode {mode}", "steps": steps,
+                        "permissions": perms},
+        },
+        "mcp": {"servers": mcp},
+        "providers": {provider: {"settings": provider_settings, "models": {model_id: model_settings}}},
+    }
+
+
+def main():
+    argv = sys.argv[1:]
+    mode = "D"
+    if argv and not argv[0].startswith("-"):
+        mode = argv.pop(0)
+    if mode in ("help", "-h", "--help"):
+        print(__doc__.strip())
+        return
+    if mode.lower() not in MODES:
+        fail(f"Unknown mode: {mode}. Modes: bare, A, B, C, D, E, F (workshop help).")
+    typed, mode = mode, MODES[mode.lower()]
+    kind, question, extra = parse_args(argv)
+
+    # The same check and the same words as `workshop`.
+    if not KEY_FILE.is_file() or KEY_FILE.stat().st_size == 0:
+        fail("No API key yet. Type: workshop-login")
+    run_flags, steps = print_flags(extra) if kind == "print" else ([], STEPS)
+    if kind == "serve":
+        serve_host, serve_port = serve_flags(extra)
+    agents = agents_file(mode)
+    check_wiki(mode)
+
+    run = new_run_dir(mode)
+    perms, mcp = tools_of(mode)
+    config = build_config(mode, write_instructions(mode, agents, run), perms, mcp, steps)
+    model = config["model"]
+
+    cwd = BARE_DIR if mode == "bare" else KIT
+    if kind == "tui":
+        # One database per mode: an "Allow always" given in C never reaches D, E, F or replay.
+        data = RUN_DIR / "opencode-data" / mode
+    elif kind == "serve" and os.environ.get("XDG_DATA_HOME"):
+        data = Path(os.environ["XDG_DATA_HOME"])
+    else:
+        data = run / "data"  # a fresh one: nothing saved before applies to this run
+    env = dict(os.environ)
+    env.update({
+        "OPENCODE_CONFIG_CONTENT": json.dumps(config),
+        # Never the kit's own discovery: OpenCode would send AGENTS.md WITH its HTML comments, and
+        # read any opencode.json put in the kit.
+        "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
+        "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "OPENCODE_DISABLE_MODELS_FETCH": "1",
+        "OPENCODE_DISABLE_FREE_MODELS": "1",
+        "XDG_DATA_HOME": str(data),
+        "PWD": str(cwd),  # OpenCode takes its folder from $PWD, not from the process's folder
+        # OpenCode keeps temporary files in $TMPDIR/opencode: one folder per account, so that two
+        # accounts of the workshop server never share (or block) it.
+        "TMPDIR": str(RUN_DIR / "tmp"),
+    })
+    (RUN_DIR / "tmp").mkdir(parents=True, exist_ok=True)
+
+    # Always a private server: the shared background service keeps the environment of its first
+    # start and would ignore this config and this key.
+    stdin_file = None
+    server = None  # -p in D, E, F: a private server first, so that the MCP tools are there at once
+    if kind == "tui":
+        command = ["opencode", "--standalone"] + extra
+    elif kind == "print":
+        # The question goes on stdin: as an argument, OpenCode 2.1.4 sends it wrapped in quotes.
+        stdin_file = run / "question.txt"
+        stdin_file.write_text(question, encoding="utf-8")
+        if mcp:
+            # `opencode run --standalone` would send the first request before the MCP servers are
+            # connected (without their tools): Claude Code waits for them, so this waits too.
+            server = ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "<free port>"]
+            command = ["opencode", "run", "--server", "http://127.0.0.1:<free port>"] + run_flags
+        else:
+            command = ["opencode", "run", "--standalone"] + run_flags
+    else:
+        command = ["opencode", "serve", "--hostname", serve_host, "--port", serve_port]
+
+    if os.environ.get("WORKSHOP_DRY_RUN"):
+        shown = {k: env[k] for k in ("OPENCODE_DISABLE_PROJECT_CONFIG", "OPENCODE_DISABLE_AUTOUPDATE",
+                                     "OPENCODE_DISABLE_MODELS_FETCH", "OPENCODE_DISABLE_FREE_MODELS",
+                                     "XDG_DATA_HOME", "PWD")}
+        if kind == "tui":
+            banner(typed, agents, run, model)
+        print(json.dumps({"engine": "opencode", "mode": mode, "cwd": str(cwd), "run_dir": str(run),
+                          "server": server, "command": command,
+                          "stdin": str(stdin_file) if stdin_file else None,
+                          "env": shown, "config": config}, indent=2, ensure_ascii=False))
+        return
+
+    if not shutil.which("opencode", path=env.get("PATH")):
+        shutil.rmtree(run, ignore_errors=True)  # nobody else knows this folder: do not leave it behind
+        fail("OpenCode is not installed here (command opencode not found). Ask the facilitator.")
+    if mode == "bare":
+        BARE_DIR.mkdir(parents=True, exist_ok=True)
+    data.mkdir(parents=True, exist_ok=True)
+    os.chdir(cwd)
+    if kind == "tui":
+        banner(typed, agents, run, model)
+    elif kind == "serve":
+        print(json.dumps({"url": f"http://{serve_host}:{serve_port}", "directory": str(cwd), "mode": mode,
+                          "steps": steps, "run_dir": str(run), "model": model}), flush=True)
+    elif server:
+        sys.exit(ask_after_warm_up(env, run, run_flags, stdin_file))
+    else:
+        fd = os.open(stdin_file, os.O_RDONLY)
+        os.dup2(fd, 0)
+        os.close(fd)
+    os.execvpe("opencode", command, env)
+
+
+def ask_after_warm_up(env, run, run_flags, stdin_file):
+    """-p with MCP servers: a private server, wait until none of them is "pending" (30 s at most),
+    then the question through that server. Returns the exit code of `opencode run`."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    env = dict(env, OPENCODE_PASSWORD=secrets.token_urlsafe(24))
+    with open(run / "server.log", "w", encoding="utf-8") as log:
+        proc = subprocess.Popen(["opencode", "serve", "--hostname", "127.0.0.1", "--port", str(port)], env=env,
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and proc.poll() is None:
+            try:
+                out = subprocess.run(["opencode", "api", "--server", url, "get", "/api/mcp"], env=env,
+                                     capture_output=True, text=True, timeout=10)
+                states = [m["status"]["status"] for m in json.loads(out.stdout).get("data", [])]
+                if states and "pending" not in states:  # empty at first, while the kit loads
+                    break
+            except (ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+                pass
+            time.sleep(0.3)
+        if proc.poll() is not None:
+            fail(f"OpenCode did not start (details in {run / 'server.log'}).")
+        with open(stdin_file, encoding="utf-8") as question:
+            return subprocess.run(["opencode", "run", "--server", url] + run_flags, env=env,
+                                  stdin=question).returncode
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+def banner(mode, agents, run, model):
+    """The banner of `workshop`, plus the engine."""
+    print(f"Workshop — mode {mode}. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F",
+          file=sys.stderr)
+    print(f"Engine: OpenCode (model {model})", file=sys.stderr)
+    if agents is not None:
+        print(f"Instructions: {agents} (a copy; AGENTS.md is not used)", file=sys.stderr)
+        # The demo personalities of examples/ (liar, sophist, storyteller) carry this label.
+        if "Demo bot:" in (run / "AGENTS.md").read_text(encoding="utf-8"):
+            print("This demo bot makes deliberate errors.", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

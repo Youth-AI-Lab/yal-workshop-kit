@@ -1669,9 +1669,14 @@ and paste the key once with `Ctrl+Shift+V` (`Cmd+V` on a Mac): you should see th
 
 **`The key seems to have been pasted twice.`** - Type `workshop-login` again and paste the key only once.
 
-**`This does not look like a key (it should start with sk-ant- or sk-or-). Nothing saved.`** -
+**`This does not look like a key (it should start with sk-ant-, or sk-or- for OpenRouter with OpenCode). Nothing saved.`** -
 The text you pasted is not a whole key. Copy it again from the WhatsApp message, with nothing before or
 after it, and type `workshop-login` again.
+
+**`This is an OpenRouter key: Claude Code in the workshop needs an Anthropic key (sk-ant-…).`** -
+The workshop uses an Anthropic key (it starts with `sk-ant-`): ask the facilitator for the key of
+your pair. An OpenRouter key (`sk-or-`) works only with the other engine, OpenCode:
+`workshop-login --engine opencode`.
 
 **`Key saved, but Anthropic refuses it (HTTP 401). Check it with the facilitator.`** - The key
 was saved, but it does not work. Tell the facilitator.

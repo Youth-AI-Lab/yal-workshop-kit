@@ -13,19 +13,26 @@ Answers are written to answers/<mode>-<time>.md (with --agents: answers/<mode>-<
 for instance A-liar-14h05.md), each with the size of the context (the gauge) and what the model
 read or searched. Then score them from 0 to 2: score <mode> (with --agents: score answers/<file>
 --blind).
+With the OpenCode engine (workshop-login --engine opencode), the questions go to OpenCode.
 """
 
 import json
 import os
 import re
+import secrets
+import shutil
+import signal
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
+RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
 TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
@@ -67,8 +74,21 @@ def new_file(folder, stem):
     raise SystemExit(f"Too many answers files named {stem} in {folder}: move some away.")
 
 
-def ask(mode, question, agents=None):
+def engine():
+    """The engine of `workshop`: WORKSHOP_ENGINE, else the one saved by workshop-login, else claude."""
+    name = os.environ.get("WORKSHOP_ENGINE", "")
+    if not name:
+        try:
+            name = "".join((Path.home() / ".workshop-engine").read_text(encoding="utf-8").split())
+        except OSError:
+            name = ""
+    return name or "claude"
+
+
+def ask(mode, question, agents=None, server=None):
     """Asks one question, returns (answer, context tokens, actions, cost, error, peeked)."""
+    if server is not None:
+        return server.ask(question)  # OpenCode
     cmd = [WORKSHOP, mode, "-p", question, "--output-format", "stream-json", "--verbose",
            "--max-turns", "15"]
     if os.environ.get("WORKSHOP_MODEL"):
@@ -127,6 +147,256 @@ def describe(tool, args):
     return "used " + tool
 
 
+# ---------------------------------------------------------------- OpenCode
+
+def describe_opencode(tool, args):
+    """The same sentences as describe(), for OpenCode's tool names (MCP tools: <server>_<tool>)."""
+    path = str(args.get("path") or args.get("filePath") or "?")
+    if os.path.isabs(path):
+        path = os.path.relpath(path, KIT)
+    if tool == "read":
+        return "read " + path
+    if tool == "shell":
+        return "ran `" + str(args.get("command", "?")) + "`"
+    if tool == "grep":
+        return f"searched for `{args.get('pattern', '?')}`" + (f" in {path}" if args.get("path") else "")
+    if tool == "glob":
+        return f"listed the files `{args.get('pattern', '?')}`" + (f" in {path}" if args.get("path") else "")
+    if tool == "skill":
+        return "used the skill " + str(args.get("id") or args.get("name") or "?")
+    if tool in ("edit", "write"):
+        return f"used {tool} on {path}"
+    if "_" in tool:  # OpenCode's own tools have no "_" in their names
+        return "called the MCP tool " + tool.split("_", 1)[1]
+    return "used " + tool
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+class OpenCode:
+    """One private OpenCode server for the whole replay: `workshop <mode> serve` (the same config
+    as the chat of that mode), a random password, and a fresh database deleted at the end, so
+    that an "Allow always" given in a chat never applies here. Each question is a new session:
+    `opencode run --server` with the question on stdin, then `opencode session export` for the
+    size of the context, the cost and the tool calls (`run` does not report the last step)."""
+
+    def __init__(self, mode, agents):
+        self.mode, self.url, self.cwd, self.model, self.steps = mode, None, KIT, "?", 15
+        self.proc, self.run_dir = None, None
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        # Named oc-*: workshop-opencode removes those older than a day if replay was killed.
+        self.tmp = Path(tempfile.mkdtemp(prefix=f"oc-replay-{mode}-", dir=RUN_DIR))
+        self.env = dict(os.environ, WORKSHOP_ENGINE="opencode", OPENCODE_PASSWORD=secrets.token_urlsafe(24),
+                        XDG_DATA_HOME=str(self.tmp / "data"), OPENCODE_DISABLE_AUTOUPDATE="1",
+                        OPENCODE_DISABLE_MODELS_FETCH="1")
+        self.env.pop("WORKSHOP_AGENTS", None)  # only --agents chooses other instructions
+        if agents:
+            self.env["WORKSHOP_AGENTS"] = str(agents)
+        if os.environ.get("WORKSHOP_MODEL") and not os.environ.get("WORKSHOP_OPENCODE_MODEL"):
+            self.env["WORKSHOP_OPENCODE_MODEL"] = os.environ["WORKSHOP_MODEL"]
+
+    def start(self):
+        """Starts the server and waits until it answers and its MCP servers are connected (else
+        the first question would go out without their tools). Raises SystemExit with the reason."""
+        log = self.tmp / "server.log"
+        with open(log, "w", encoding="utf-8") as out:
+            # Its own process group: stop() ends the MCP servers it started, too.
+            self.proc = subprocess.Popen([WORKSHOP, self.mode, "serve", "--hostname", "127.0.0.1",
+                                          "--port", str(free_port())], env=self.env, stdin=subprocess.DEVNULL,
+                                         stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        deadline = time.monotonic() + 60
+        while self.url is None:  # its first line of JSON: url, folder, model, steps
+            if self.proc.poll() is not None or time.monotonic() > deadline:
+                self.fail(log)
+            for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    info = json.loads(line) if line.startswith("{") else {}
+                except json.JSONDecodeError:
+                    continue
+                if info.get("url"):
+                    self.url, self.cwd = info["url"], Path(info.get("directory") or KIT)
+                    self.model, self.steps = info.get("model") or "?", int(info.get("steps") or 15)
+                    self.run_dir = Path(info["run_dir"]) if info.get("run_dir") else None
+            time.sleep(0.2)
+        states = None
+        while time.monotonic() < deadline:
+            if self.proc.poll() is not None:
+                self.fail(log)
+            states = self.mcp_states()
+            # The list is empty while the kit's folder loads: D, E and F always have servers.
+            if states is not None and (states or self.mode not in ("D", "E", "F")) \
+                    and "pending" not in states.values():
+                break
+            time.sleep(0.3)
+        if states is None:
+            self.fail(log)
+        for name, state in sorted(states.items()):
+            if state != "connected":
+                print(f"Warning: the MCP server {name} is not ready ({state}): the answers will not have "
+                      "its tools.", flush=True)
+
+    def fail(self, log):
+        text = log.read_text(encoding="utf-8", errors="replace").strip() if log.is_file() else ""
+        lines = [l for l in text.splitlines() if not l.startswith("{")]
+        raise SystemExit("\n".join(lines[-5:]) or "OpenCode did not start. Ask the facilitator.")
+
+    def client_env(self):
+        return dict(self.env, PWD=str(self.cwd))  # OpenCode takes its folder from $PWD
+
+    def cli(self, *args, timeout=60, **kw):
+        return subprocess.run(["opencode", *args], cwd=self.cwd, env=self.client_env(), timeout=timeout,
+                              capture_output=True, text=True, **kw)
+
+    def mcp_states(self):
+        """{server: status} from the server, or None if it does not answer yet."""
+        try:
+            data = json.loads(self.cli("api", "--server", self.url, "get", "/api/mcp", timeout=10).stdout)
+            return {m["name"]: (m.get("status") or {}).get("status", "?") for m in data.get("data") or []}
+        except (ValueError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired):
+            return None
+
+    def ask(self, question):
+        """Returns (answer, context tokens, actions, cost, error, peeked), like ask()."""
+        (self.tmp / "question.txt").write_text(question, encoding="utf-8")
+        events = self.tmp / "run.jsonl"
+        # The question on stdin: as an argument, OpenCode 2.1.4 sends it wrapped in quotes.
+        with open(self.tmp / "question.txt", encoding="utf-8") as q, open(events, "w") as out, \
+                open(self.tmp / "run.err", "w") as err:
+            client = subprocess.Popen(["opencode", "run", "--server", self.url, "--format", "json"], stdin=q,
+                                      stdout=out, stderr=err, cwd=self.cwd, env=self.client_env())
+            try:
+                client.wait(300)
+            except subprocess.TimeoutExpired:
+                client.kill()
+                client.wait()
+                self.interrupt()  # the session would go on in the server without its client
+                return "", 0, [], 0.0, "no answer after 5 minutes", False
+        sid, error, texts = None, None, []
+        for d in read_events(events):
+            sid = sid or d.get("sessionID")
+            if d.get("type") == "error":
+                error = opencode_error(d.get("error") or {})
+            elif d.get("type") == "text":
+                texts.append((d.get("part") or {}).get("text", ""))
+        if sid is None:
+            last = ((self.tmp / "run.err").read_text(errors="replace").strip().splitlines() or [""])[-1]
+            return "", 0, [], 0.0, error or last or f"opencode exited with code {client.returncode}", False
+        try:
+            export = json.loads(self.cli("session", "export", "--server", self.url, sid).stdout)
+            answer, context, actions, cost, peeked, steps = parse_export(export)
+        except (ValueError, AttributeError, subprocess.TimeoutExpired):
+            answer, context, actions, cost, peeked, steps = "\n".join(texts).strip(), 0, [], 0.0, False, 0
+        if error is None and client.returncode != 0:
+            error = f"opencode exited with code {client.returncode}"
+        if error is None and steps >= self.steps:
+            # The last step allowed: OpenCode takes the tools away and makes the model answer
+            # (Claude Code stops with an error instead, at --max-turns 15).
+            print(f"  The model used all its {self.steps} steps: its answer was forced, without more tools.",
+                  flush=True)
+            actions.append(f"used all its {self.steps} steps, so OpenCode made it answer without tools")
+        return answer, context, actions, cost, error, peeked
+
+    def interrupt(self):
+        """Stops the sessions still running in the server (its own: this replay's questions), which
+        would otherwise go on without the client. `run` names its session only once the model answers."""
+        try:
+            active = json.loads(self.cli("api", "--server", self.url, "get", "/api/session/active",
+                                         timeout=10).stdout).get("data") or {}
+            for sid in active:
+                self.cli("api", "--server", self.url, "post", f"/api/session/{sid}/interrupt", timeout=10)
+        except (ValueError, AttributeError, subprocess.TimeoutExpired):
+            pass
+
+    def stop(self):
+        """Stops the server and the MCP servers it started, then deletes its folders."""
+        if self.proc is not None:
+            self.signal_group(signal.SIGTERM)
+            try:
+                self.proc.wait(10)
+            except subprocess.TimeoutExpired:
+                pass
+            for _ in range(20):  # its MCP servers end with it: a moment for them
+                if not self.signal_group(0):
+                    break
+                time.sleep(0.1)
+            self.signal_group(signal.SIGKILL)  # whatever is left
+            try:
+                self.proc.wait(5)
+            except subprocess.TimeoutExpired:
+                pass
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        # The run folder of workshop-opencode (its config and instructions): only that one.
+        if self.run_dir and self.run_dir.parent.resolve() == RUN_DIR.resolve() \
+                and self.run_dir.name.startswith(f"oc-{self.mode}-"):
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+
+    def signal_group(self, sig):
+        """Sends sig to the server's process group; False if nothing is left in it."""
+        try:
+            os.killpg(self.proc.pid, sig)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+
+def read_events(path):
+    """The JSON events of `opencode run --format json`, one per line."""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            d = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(d, dict):
+            yield d
+
+
+def opencode_error(e):
+    """An error event of `opencode run`, in a few words (401: the key)."""
+    data = e.get("data") if isinstance(e.get("data"), dict) else {}
+    status = data.get("statusCode") or e.get("status") or e.get("statusCode")
+    message = str(data.get("message") or e.get("message") or "").strip()
+    kind = str(e.get("type") or e.get("name") or "error")
+    if status == 401 or kind == "provider.auth":
+        return f"the key was refused (401{': ' + message if message else ''}). Check it: workshop-login"
+    return f"{kind}{f' {status}' if status else ''}: {message}".strip().rstrip(":")
+
+
+def parse_export(export):
+    """From `opencode session export`: (answer, context, actions, cost, peeked, steps). The context is
+    the largest request of the session (what was sent to the model at one step), as with Claude Code."""
+    answer, context, actions, peeked, steps = "", 0, [], False, 0
+    for m in export.get("messages") or []:
+        if m.get("type") != "assistant":
+            continue
+        steps += 1
+        t = m.get("tokens") or {}
+        cache = t.get("cache") or {}
+        context = max(context, (t.get("input") or 0) + (cache.get("read") or 0) + (cache.get("write") or 0))
+        texts = []
+        for c in m.get("content") or []:
+            if c.get("type") == "text":
+                texts.append(c.get("text", ""))
+            elif c.get("type") == "tool":
+                state = c.get("state") or {}
+                args = state.get("input") or {}
+                actions.append(describe_opencode(c.get("name") or "?", args if isinstance(args, dict) else {}))
+                # What the model asked for, and what came back (a grep on the whole kit names files).
+                seen = json.dumps([args, state.get("content"), state.get("output"), state.get("error")])
+                peeked = peeked or bool(TEST_MATERIAL.search(seen))
+        if "".join(texts).strip():
+            answer = "\n".join(texts).strip()  # the last step that wrote text
+    cost = (export.get("info") or {}).get("cost") or 0.0
+    return answer, context, actions, cost, peeked, steps
+
+
+def stop_on_signal(signum, frame):
+    raise SystemExit(128 + signum)  # so that the server is stopped (finally) on kill or hang-up
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1].lower() not in MODES:
         print(__doc__.strip())
@@ -166,7 +436,28 @@ def main():
     if not questions:
         print("No question found: fill in the Question column of test-questions.md.")
         sys.exit(1)
+    name = engine()
+    if name not in ("claude", "opencode"):
+        print(f"Unknown engine: {name} (claude or opencode). Type: workshop-login")
+        sys.exit(1)
 
+    server = None
+    if name == "opencode":
+        signal.signal(signal.SIGTERM, stop_on_signal)
+        signal.signal(signal.SIGHUP, stop_on_signal)
+        server = OpenCode(mode, agents)
+    try:
+        if server:
+            print("Starting OpenCode…", flush=True)
+            server.start()
+        write_answers(mode, agents, questions, server)
+    finally:
+        if server:
+            server.stop()
+
+
+def write_answers(mode, agents, questions, server=None):
+    """Creates the answers file, then fills it (run)."""
     (KIT / "answers").mkdir(exist_ok=True)
     stem = f"{mode}-{persona_name(agents)}" if agents else mode
     out = new_file(KIT / "answers", f"{stem}-{datetime.now():%Hh%M}")
@@ -186,21 +477,24 @@ def main():
         lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
                  f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
                  f"{mode.capitalize()} column of scores.md).", ""]
+    if server:
+        # Under the title, so that score and the people who read the file know the engine.
+        lines[2:2] = [f"Engine: OpenCode (model {server.model})", ""]
     try:
-        run(mode, agents, questions, out, shown_out, labelled, lines)
+        run(mode, agents, questions, out, shown_out, labelled, lines, server)
     finally:
         if out.stat().st_size == 0:
             out.unlink()  # stopped before the first answer: no empty file left behind
 
 
-def run(mode, agents, questions, out, shown_out, labelled, lines):
+def run(mode, agents, questions, out, shown_out, labelled, lines, server=None):
     """Asks the questions one by one and writes the answers file as it goes."""
     total, errors, in_a_row, asked = 0.0, 0, 0, 0
     start = time.monotonic()
     for i, (n, q) in enumerate(questions, 1):
         asked = i
         print(f"Question {n} ({i}/{len(questions)})…", flush=True)
-        answer, context, actions, cost, error, peeked = ask(mode, q, agents)
+        answer, context, actions, cost, error, peeked = ask(mode, q, agents, server)
         total += cost
         lines += [f"## {n}. {q}", ""]
         if error:
