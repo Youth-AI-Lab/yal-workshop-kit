@@ -39,11 +39,12 @@ same results.
    in VS Code, open the Extensions panel, search for "Dev Containers", install it.
 5. **git** (<https://git-scm.com/>), to download the kit.
 
-> 🚫 **Warning — Apple Silicon Macs (M1, M2, M3…).** The workshop image is built for Intel/AMD
-> computers (`amd64`) only, for now. On an Apple Silicon Mac, Docker Desktop runs it through
-> emulation, which is **much slower**. Until a native `arm64` image is published, prefer an
-> Intel Mac, a Windows or Linux computer, or a Codespace on such a Mac. (This is the one setup we
-> have not yet made fast on every machine.)
+> 🚫 **Warning — Apple Silicon Macs (M1, M2, M3…).** The **currently published** image is built
+> for Intel/AMD computers (`amd64`) only. On an Apple Silicon Mac, Docker Desktop runs it through
+> emulation, which is **much slower**. A **multi-architecture** image (native `arm64`) is being
+> prepared; once it is published and tested, Apple Silicon will run natively and you can remove
+> this warning. Until then, prefer an Intel Mac, a Windows or Linux computer, or a Codespace on
+> such a Mac. **TO BE COMPLETED** after the multi-architecture image is published.
 
 ---
 
@@ -149,6 +150,7 @@ Honest list, to complete as partners try it:
   Linux, 2026-10-19, but not the VS Code flow on each system);
 - **Open WebUI** (`openwebui`) with Docker Desktop and with Docker Engine, from the container
   (Part 5);
-- a **native `arm64`** image for Apple Silicon Macs (today the image is `amd64` only);
+- the **multi-architecture** image on an Apple Silicon Mac (the publish workflow now builds
+  `amd64` and `arm64`; the published image must be refreshed and the native `arm64` build checked);
 - the **exact disk and memory** a full run of the five blocks uses on a normal laptop;
 - a **full pass of the five blocks** on Linux, Windows and macOS (at least one partner per system).
