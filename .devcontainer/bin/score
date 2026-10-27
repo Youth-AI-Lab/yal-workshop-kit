@@ -415,11 +415,7 @@ def read_key():
     path = Path.home() / ".workshop-key"
     if not path.is_file():
         raise Stop("No key yet. Type: workshop-login")
-    key = path.read_text(encoding="utf-8").strip()
-    if not key.startswith("sk-ant-"):
-        raise Stop("The judge needs an Anthropic key (it starts with sk-ant-). Score by hand in "
-                   "scores.md, or ask the facilitator.")
-    return key
+    return path.read_text(encoding="utf-8").strip()
 
 
 def parse_verdict(text):
@@ -648,8 +644,9 @@ def targets(mode, persona, style):
 class Session:
     """The scoring of one answers file: what is asked, what is written, what it cost."""
 
-    def __init__(self, style, human, judge):
+    def __init__(self, style, human, judge, no_judge=None):
         self.style, self.human, self.judge = style, human, judge
+        self.no_judge = no_judge  # why there is no judge at all (an OpenRouter key), or None
         self.report, self.disagreements, self.counted = [], 0, set()
         self.calls = self.tokens_in = self.tokens_out = 0
         self.written = {"human": False, "judge": False}
@@ -663,9 +660,9 @@ class Session:
             self.tokens_out += verdict["out"]
 
     def hear_judge(self, n, job):
-        if job is None:  # a question that test-questions.md does not have (any more)
-            verdict = {"score": None, "why": "", "error": "test-questions.md has no expected answer "
-                       f"for question {n}", "in": 0, "out": 0, "calls": 0}
+        if job is None:  # no judge at all, or a question that test-questions.md does not have (any more)
+            verdict = {"score": None, "why": "", "error": self.no_judge or "test-questions.md has no "
+                       f"expected answer for question {n}", "in": 0, "out": 0, "calls": 0}
         else:
             verdict = job.result()
         self.pay(n, verdict)
@@ -693,7 +690,7 @@ class Session:
                 print("Disagreement: talk about it.")
                 self.disagreements += 1
         else:
-            if self.style == "recommended":
+            if self.style == "recommended" and not self.no_judge:
                 print("Asking the judge…", flush=True)
             verdict = self.hear_judge(n, job)
             if self.style == "auto":
@@ -769,6 +766,15 @@ def main():
     # No ERROR, no test material, and an expected answer to compare with.
     to_judge = [s for s in sections if not s[5] and not s[6] and s[0] in questions]
     key = read_key() if to_judge else None
+    no_judge = None
+    if key and not key.startswith("sk-ant-"):
+        # The judge is a Claude model called with an Anthropic key: an OpenRouter key cannot call it.
+        if style == "auto":
+            raise Stop("The judge needs an Anthropic key (it starts with sk-ant-). Score by hand in "
+                       "scores.md, or ask the facilitator.")
+        print("No judge with an OpenRouter key (it needs an Anthropic key, sk-ant-): you score alone.")
+        no_judge = "no judge with an OpenRouter key"
+        to_judge, key = [], None
     human, judge = targets(mode, persona, style)
 
     title = f"mode {mode}" + (f", persona {persona}" if persona else "")
@@ -785,7 +791,7 @@ def main():
     pool = ThreadPoolExecutor(max_workers=4)
     jobs = {s[0]: pool.submit(ask_judge, key, rules, mode, meaning, s[0], s[1], expected[s[0]],
                               s[2], s[4]) for s in to_judge}
-    session = Session(style, human, judge)
+    session = Session(style, human, judge, no_judge)
     try:
         for i, (n, q, answer, context, actions, error, peeked) in enumerate(sections, 1):
             if style != "auto" and not error:

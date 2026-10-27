@@ -6,6 +6,7 @@
 #   workshop-login --engine opencode   the chatbot runs in OpenCode instead of Claude Code (--engine claude: back)
 #   workshop-login --model MODEL       OpenCode only: another model than the default one
 #   workshop-login --models            lists the models OpenCode can use with the saved key
+#   workshop-login --models openrouter the models of one provider (anthropic or openrouter)
 #
 # Two engines: claude (Claude Code, the default) and opencode (OpenCode). Without --engine, the
 # engine saved by the last workshop-login is kept.
@@ -23,7 +24,7 @@ OPENROUTER_MODEL_ID="${WORKSHOP_OPENROUTER_MODEL:-anthropic/claude-sonnet-5.5}"
 KEY_FILE="$HOME/.workshop-key"
 ENGINE_FILE="$HOME/.workshop-engine"
 OPENCODE_FILE="$HOME/.workshop-opencode.json"
-USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL] [--key KEY]   (or: workshop-login --models)"
+USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL] [--key KEY]   (or: workshop-login --models [anthropic|openrouter])"
 
 # Class mode (Open WebUI guide, one teacher, no facilitator): the same steps, other words.
 if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
@@ -38,13 +39,15 @@ else
   OTHER='Tell the facilitator.'
 fi
 
-key=""; key_given=0; engine=""; model=""; list_models=0
+key=""; key_given=0; engine=""; model=""; list_models=0; models_provider=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key) key="${2:?--key needs a value}"; key_given=1; shift 2 ;;
     --engine) engine="${2:?--engine needs a value: claude or opencode}"; shift 2 ;;
     --model) model="${2:?--model needs a model name}"; shift 2 ;;
-    --models) list_models=1; shift ;;
+    --models)
+      list_models=1; shift
+      case "${1:-}" in anthropic|openrouter) models_provider="$1"; shift ;; esac ;;
     -h|--help) sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; echo "$USAGE" >&2; exit 1 ;;
   esac
@@ -80,7 +83,10 @@ need_opencode() {
 if [[ "$list_models" == 1 ]]; then
   need_opencode
   saved="$(cat "$KEY_FILE" 2>/dev/null || true)"
+  [[ -n "$models_provider" ]] && saved="$models_provider"
   case "$saved" in
+    anthropic) catalogue anthropic ;;
+    openrouter) catalogue openrouter ;;
     sk-ant-*) catalogue anthropic ;;
     sk-or-*) catalogue openrouter ;;
     *) catalogue anthropic openrouter ;;
@@ -172,7 +178,14 @@ fi
 if [[ "$engine" == opencode ]]; then
   if list="$(catalogue "$provider")" && [[ -n "$list" ]]; then
     if ! grep -qxF -- "$oc_model" <<<"$list"; then
-      echo "OpenCode does not know the model $oc_model. See the list: workshop-login --models" >&2
+      echo "OpenCode does not know the model $oc_model." >&2
+      # Close names in the catalogue of THIS key's provider (a dot and a dash count as the same:
+      # OpenRouter writes claude-sonnet-5.5 where Anthropic writes claude-sonnet-5-5).
+      wanted="${oc_model##*/}"; wanted="${wanted,,}"; wanted="${wanted//./-}"
+      close="$(awk -v w="$wanted" '{ l = tolower($0); gsub(/\./, "-", l); if (index(l, w)) print "  " $0 }' \
+               <<<"$list" | head -n 10)"
+      [[ -n "$close" ]] && { echo "Close names for $provider_name:" >&2; echo "$close" >&2; }
+      echo "See all the $provider_name models: workshop-login --models $provider" >&2
       echo "Nothing saved." >&2
       exit 1
     fi

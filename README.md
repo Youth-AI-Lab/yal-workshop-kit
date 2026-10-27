@@ -226,7 +226,7 @@ You should see (with the start and the last 4 characters of your key):
 
 ```
 Key received: sk-ant-…a1b2 (… characters). Testing it…
-Key OK (Anthropic, model claude-sonnet-5-5). You can start: workshop bare
+Key OK (Claude Code, Anthropic, model claude-sonnet-5-5). You can start: workshop bare
 ```
 
 If you see another message, look at [Troubleshooting](#troubleshooting).
@@ -1677,6 +1677,11 @@ after it, and type `workshop-login` again.
 The workshop uses an Anthropic key (it starts with `sk-ant-`): ask the facilitator for the key of
 your pair. An OpenRouter key (`sk-or-`) works only with the other engine, OpenCode:
 `workshop-login --engine opencode`.
+
+**`The saved key is an OpenRouter key: it works with OpenCode only (workshop-login --engine opencode).`** -
+Your key is saved, but `workshop` was started with Claude Code, which needs an Anthropic key
+(it starts with `sk-ant-`). Either go back to OpenCode with `workshop-login --engine opencode`,
+or type `workshop-login` and paste an Anthropic key.
 
 **`Key saved, but Anthropic refuses it (HTTP 401). Check it with the facilitator.`** - The key
 was saved, but it does not work. Tell the facilitator.

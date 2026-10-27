@@ -42,6 +42,12 @@ if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]]; then
     opencode) [[ -s "$HOME/.workshop-key" ]] && key=yes || key="" ;;
     *) echo "Unknown engine: $engine (claude or opencode). Type: workshop-login" >&2; exit 1 ;;
   esac
+  if [[ -z "$key" && "$engine" == claude ]] && head -c 6 "$HOME/.workshop-key" 2>/dev/null | grep -qx 'sk-or-'; then
+    # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it.
+    echo "The saved key is an OpenRouter key: it works with OpenCode only (workshop-login --engine opencode)." >&2
+    echo "For Claude Code, type workshop-login and paste an Anthropic key (it starts with sk-ant-)." >&2
+    exit 1
+  fi
   if [[ -z "$key" ]]; then
     echo "No API key yet. Type: workshop-login" >&2
     exit 1
@@ -120,7 +126,8 @@ args=(--strict-mcp-config --permission-mode manual --settings "$settings")
 [[ -d "$MOD_DIR" ]] && args+=(--plugin-dir "$MOD_DIR")
 
 # Read-only commands allowed without confirmation from C on (file search goes through Bash).
-read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(rg:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
+# No rg: "rg --pre <program>" runs a program, and a Bash(rg:*) rule would let it through.
+read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
            "Bash(find:*)")
 # The test material (expected answers, earlier answers, example prompt) is not a source: the
 # prompt says so, and replay flags any answer where the model saw it. No Read() deny rule: with

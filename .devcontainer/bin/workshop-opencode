@@ -32,7 +32,8 @@ Environment (the same names as `workshop`):
     WORKSHOP_OPENCODE_BASEURL   send the model requests to this URL (tests: a fake endpoint)
 Read: ~/.workshop-key (the key, never copied: the config points to the file) and
 ~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
-"model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window).
+"model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window;
+without it, 200k for Claude models and OpenCode's catalogue for the others).
 Without that file: the provider comes from the key (sk-ant- Anthropic, sk-or- OpenRouter).
 
 WORKSHOP_DRY_RUN=1 prints one JSON object on stdout, then exits 0:
@@ -66,6 +67,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -93,9 +95,10 @@ KNOWLEDGE = ("The reference knowledge is in two folders, each with an index.md c
              "their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about "
              "the topic, search them before answering, and say which document you used. Never open or search "
              "test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not "
-             "sources. You are already in the kit folder: run your commands from here, without cd. To create or "
-             "change a file, use the edit and write tools, never shell commands (cat >, sed -i, printf >>): the "
-             "person sees exactly what changes before accepting.")
+             "sources. You are already in the kit folder: search and read with the grep, glob and read tools, not "
+             "with shell commands (each shell command waits for the person's approval). To create or change a "
+             "file, use the edit and write tools, never shell commands (cat >, sed -i, printf >>): the person sees "
+             "exactly what changes before accepting.")
 WIKI = ("To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its "
         "source. If the wiki is not enough, search the sources. ")
 GRAPH = ("The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, "
@@ -103,8 +106,6 @@ GRAPH = ("The wiki (wiki/) is also available as a knowledge graph, through the g
          "the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read "
          "only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the "
          "sources. ")
-# Read-only commands allowed without confirmation from C on (as in `workshop`).
-READ_ONLY = ["ls", "grep", "rg", "cat", "head", "wc", "find"]
 # Anthropic prices in $ per million tokens (Claude Sonnet 5.5: input 2, output 10, cache read 0.20,
 # cache write 5 min 2.50 = 1.25 x input), from Anthropic's price table (checked 2026-10-27).
 # OpenCode's built-in catalogue puts the cache read at 0.10: the cost shown would be too low.
@@ -139,11 +140,15 @@ def model_choice():
         model = DEFAULT_MODEL.get(provider, "anthropic/claude-sonnet-5-5")
     elif not model.startswith(provider + "/"):
         model = f"{provider}/{model}"
+    # The window is only ever lowered to 200k (the gauge must move in B, as with Claude Code), never
+    # raised: many OpenRouter models have less, and OpenCode would then overflow without warning.
     try:
-        context = int(saved.get("context") or 200000)
+        context = int(saved.get("context") or 0) or None
     except (TypeError, ValueError):
-        context = 200000
-    return provider, model, min(context, 200000)
+        context = None
+    if context is None and model.split("/", 1)[1].startswith(("claude", "anthropic/", "~anthropic/")):
+        context = 200000  # every Claude model has at least 200k (Sonnet 5.5: 1M)
+    return provider, model, min(context, 200000) if context else None
 
 
 def strip_comments(text):
@@ -291,11 +296,17 @@ def tools_of(mode):
                   rule("skill", "*", "allow"),
                   # OpenCode's own skills: not part of the workshop.
                   rule("skill", "opencode", "deny"), rule("skill", "report", "deny"),
-                  # Writing a file or another command: OpenCode asks first.
+                  # Writing a file or ANY shell command: OpenCode asks first (and refuses in -p and replay).
+                  # No shell command is allowed without asking, unlike `workshop`'s Bash(cat:*) and the like:
+                  # OpenCode 2.1.4 matches "cat *" against the whole line, so it would also let through
+                  # "cat a > test-questions.md", "find -delete", "find -exec" and "cat ~/.workshop-key"
+                  # (external_directory does not apply to shell commands). grep, glob and read search the kit.
                   rule("edit", "*", "ask"), rule("shell", "*", "ask")]
-        perms += [rule("shell", f"{c} *", "allow") for c in READ_ONLY]
         # Outside the kit: never without asking (OpenCode's default is to allow).
         perms += [rule("external_directory", "*", "ask")]
+        # The pair's key: the read tool can never open it. (grep is matched on its pattern, not on its
+        # path: if a person approves a folder outside the kit, grep could still find it. Never approve one.)
+        perms += [rule("read", "*workshop-key*", "deny")]
     if mode in ("D", "E", "F"):
         # The kit's MCP server, as described in .mcp.json for Claude Code.
         try:
@@ -320,7 +331,9 @@ def build_config(mode, instructions, perms, mcp, steps):
     """The content of OPENCODE_CONFIG_CONTENT."""
     provider, model, context = model_choice()
     model_id = model.split("/", 1)[1]
-    model_settings = {"limit": {"context": context}}  # the gauge shows a share of 200k, as with Claude Code
+    model_settings = {}
+    if context:
+        model_settings["limit"] = {"context": context}  # the gauge shows a share of 200k, as with Claude Code
     if provider == "anthropic" and model_id in ANTHROPIC_COST:
         model_settings["cost"] = ANTHROPIC_COST[model_id]
     provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
@@ -345,7 +358,8 @@ def build_config(mode, instructions, perms, mcp, steps):
                         "permissions": perms},
         },
         "mcp": {"servers": mcp},
-        "providers": {provider: {"settings": provider_settings, "models": {model_id: model_settings}}},
+        "providers": {provider: dict({"settings": provider_settings},
+                                     **({"models": {model_id: model_settings}} if model_settings else {}))},
     }
 
 
@@ -462,9 +476,16 @@ def ask_after_warm_up(env, run, run_flags, stdin_file):
         port = s.getsockname()[1]
     url = f"http://127.0.0.1:{port}"
     env = dict(env, OPENCODE_PASSWORD=secrets.token_urlsafe(24))
+    # SIGTERM or SIGHUP (timeout, kill, a script): exit through `finally`, which stops the server, its
+    # MCP servers and the client (Python's default would leave them all running).
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda s, f: sys.exit(128 + s))
+    client = None
     with open(run / "server.log", "w", encoding="utf-8") as log:
+        # A group of its own: the server and the MCP servers it starts are stopped together.
         proc = subprocess.Popen(["opencode", "serve", "--hostname", "127.0.0.1", "--port", str(port)], env=env,
-                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                start_new_session=True)
     try:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline and proc.poll() is None:
@@ -480,16 +501,38 @@ def ask_after_warm_up(env, run, run_flags, stdin_file):
         if proc.poll() is not None:
             fail(f"OpenCode did not start (details in {run / 'server.log'}).")
         with open(stdin_file, encoding="utf-8") as question:
-            return subprocess.run(["opencode", "run", "--server", url] + run_flags, env=env,
-                                  stdin=question).returncode
+            client = subprocess.Popen(["opencode", "run", "--server", url] + run_flags, env=env, stdin=question)
+            return client.wait()
     except KeyboardInterrupt:
         return 130
     finally:
-        proc.terminate()
+        if client is not None and client.poll() is None:
+            client.terminate()
+            try:
+                client.wait(5)
+            except subprocess.TimeoutExpired:
+                client.kill()
+        stop_group(proc)
+
+
+def stop_group(proc):
+    """Stops a process started with start_new_session=True and everything it started."""
+    for sig, wait in ((signal.SIGTERM, 10), (signal.SIGKILL, 5)):
         try:
-            proc.wait(10)
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            proc.wait(wait)
+            # The server is gone; whatever it left in its group (an MCP server) goes too.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            return
         except subprocess.TimeoutExpired:
-            proc.kill()
+            pass
+
 
 def banner(mode, agents, run, model):
     """The banner of `workshop`, plus the engine."""

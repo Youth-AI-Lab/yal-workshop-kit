@@ -194,6 +194,10 @@ for m in "bare A B C D E F".split():
         assert perms == [{"action": "*", "resource": "*", "effect": "deny"}], f"{m}: tools"
     else:
         assert {"read", "grep", "skill"} <= allowed, f"{m}: search tools"
+        # No shell command without asking: "cat *" would also let through "cat x > file" and
+        # "cat ~/.workshop-key" (OpenCode matches the whole line). And never the key file.
+        assert not [p for p in perms if p["action"] == "shell" and p["effect"] == "allow"], f"{m}: shell allowed"
+        assert {"action": "read", "resource": "*workshop-key*", "effect": "deny"} in perms, f"{m}: key readable"
     assert ("fire-danger" in servers) == (m in "DEF"), f"{m}: MCP fire-danger"
     assert ("graphify" in servers) == (m == "F"), f"{m}: MCP graphify"
 print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP, F graphify ; aucune clé dans la configuration")
