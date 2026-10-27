@@ -148,6 +148,9 @@ reads, searches and does.
 > ℹ️ **Note.** **This is intentional.** Claude Code is not the tool you will use with young people. It is a
 > glass box: the same mechanisms as in a Claude Project or a Gemini Gem, but you can see inside. At the end of the workshop, Sébastien will show you how to build your own chatbot from what you made today.
 
+> ℹ️ **For the facilitator.** No Codespace possible (blocked network, used-up quota, or you want a
+> local model)? You can run the same kit on your own computer, in a container: see [LOCAL.md](LOCAL.md).
+
 ### Reference documents
 
 All of these are in your Codespace, in the file list on the left:
