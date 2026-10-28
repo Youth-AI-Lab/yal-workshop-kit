@@ -20,6 +20,18 @@ claude --version
 etape "Commandes de l'atelier"
 for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
 
+etape "Message d'accueil des terminaux : neutre par défaut, ou celui du dépôt (WORKSHOP_WELCOME)"
+h=$(mktemp -d)
+sortie=$(env -u WORKSHOP_WELCOME HOME="$h" bash -ic true 2>/dev/null)
+[[ "$sortie" == *"Welcome! First, save your API key: workshop-login"* ]] || echec "accueil par défaut absent : $sortie"
+[[ "$sortie" != *pair* ]] || echec "l'accueil parle encore de binôme"
+touch "$h/.workshop-key"
+[[ -z "$(env -u WORKSHOP_WELCOME HOME="$h" bash -ic true 2>/dev/null)" ]] || echec "accueil affiché alors que la clé est enregistrée"
+sortie=$(WORKSHOP_WELCOME="Welcome! Start the chatbot of this guide with: chatbot" HOME="$h" bash -ic true 2>/dev/null)
+[[ "$sortie" == "Welcome! Start the chatbot of this guide with: chatbot" ]] || echec "WORKSHOP_WELCOME ignoré : $sortie"
+[[ -z "$(WORKSHOP_WELCOME= HOME="$h" bash -ic true 2>/dev/null)" ]] || echec "WORKSHOP_WELCOME vide n'efface pas l'accueil"
+rm -rf "$h"
+
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
   || echec "le serveur MCP ne s'importe pas"

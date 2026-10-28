@@ -61,7 +61,10 @@ RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/workshop-opencode /usr/loca
     /usr/local/bin/chatbot-export /usr/local/bin/openwebui \
     /usr/local/bin/score /usr/local/bin/workshop-save /usr/local/bin/workshop-start
 
-# Rappel dans chaque nouveau terminal tant que la clé n'est pas enregistrée (binôme de l'atelier,
-# ou enseignant du guide Open WebUI en mode classe).
-RUN echo '[[ -f "$HOME/.workshop-key" ]] || if [[ "$OPENWEBUI_MODE" == class ]]; then echo "Welcome! First, save your API key: workshop-login"; else echo "Welcome! First, save the API key of your pair: workshop-login"; fi' \
-      >> /etc/bash.bashrc
+# Message d'accueil de chaque nouveau terminal. Un dépôt peut le remplacer par la variable
+# WORKSHOP_WELCOME (remoteEnv de son devcontainer.json ; vide : aucun message) : le guide OpenCode,
+# qui n'utilise pas workshop-login, le fait. Sinon, rappel neutre (sans « binôme ») tant que la clé
+# n'est pas enregistrée : atelier, guide Open WebUI.
+# La même ligne pour zsh (déjà dans l'image de base, avec oh-my-zsh), si quelqu'un le choisit.
+RUN echo 'if [[ -n "${WORKSHOP_WELCOME+x}" ]]; then [[ -z "$WORKSHOP_WELCOME" ]] || echo "$WORKSHOP_WELCOME"; elif [[ ! -f "$HOME/.workshop-key" ]]; then echo "Welcome! First, save your API key: workshop-login"; fi' \
+      | tee -a /etc/bash.bashrc >> /etc/zsh/zshrc
