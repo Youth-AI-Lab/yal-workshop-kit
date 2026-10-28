@@ -12,7 +12,17 @@
   // Open WebUI). Intégré à l'image publiée : ses réglages (privileged, démarrage du démon)
   // voyagent dans les métadonnées de l'image, la configuration distribuée n'a rien à ajouter.
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // zsh et oh-my-zsh pour l'utilisateur vscode, comme dans les TP R2.02 (déjà dans l'image de
+    // base : la feature le garantit). Pas de mise à jour des paquets : l'image reste reproductible.
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": false,
+      "username": "vscode",
+      "uid": "1000",
+      "gid": "1000"
+    }
   },
   "remoteUser": "vscode",
   "remoteEnv": {
@@ -27,7 +37,15 @@
     "8765": { "label": "Wiki graph", "onAutoForward": "openBrowser" },
     "3000": { "label": "Open WebUI", "onAutoForward": "silent" }
   },
+  // Ces réglages voyagent eux aussi dans les métadonnées de l'image : le kit et les guides ont zsh
+  // dans chaque nouveau terminal sans rien ajouter à leur configuration.
   "customizations": {
-    "vscode": { "extensions": ["mathematic.vscode-pdf", "bierner.markdown-mermaid"] }
+    "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": { "zsh": { "path": "zsh" } },
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      },
+      "extensions": ["mathematic.vscode-pdf", "bierner.markdown-mermaid"]
+    }
   }
 }

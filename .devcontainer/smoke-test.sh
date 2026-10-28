@@ -20,6 +20,14 @@ claude --version
 etape "Commandes de l'atelier"
 for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
 
+etape "zsh et oh-my-zsh pour vscode (shell par défaut des terminaux, réglage dans les métadonnées de l'image)"
+command -v zsh || echec "zsh absent"
+[[ -d "$HOME/.oh-my-zsh" && -f "$HOME/.zshrc" ]] || echec "oh-my-zsh absent pour $(id -un)"
+h=$(mktemp -d); touch "$h/.zshrc"
+sortie=$(env -u WORKSHOP_WELCOME HOME="$h" ZDOTDIR="$h" zsh -ic true 2>/dev/null)
+[[ "$sortie" == *"Welcome! First, save your API key: workshop-login"* ]] || echec "accueil absent sous zsh : $sortie"
+rm -rf "$h"
+
 etape "Message d'accueil des terminaux : neutre par défaut, ou celui du dépôt (WORKSHOP_WELCOME)"
 h=$(mktemp -d)
 sortie=$(env -u WORKSHOP_WELCOME HOME="$h" bash -ic true 2>/dev/null)
