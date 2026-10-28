@@ -437,7 +437,12 @@ def parse_verdict(text):
         except ValueError:
             continue
         if score in (0, 1, 2):
-            why = " ".join(str(obj.get("why") or "").split()) or "(no reason given)"
+            why = " ".join(str(obj.get("why") or "").split())
+            # The judge sometimes leaves markup in its sentence ("…invented.</br>", "…unsourced.}").
+            why = re.sub(r"</?[a-zA-Z]{1,6}\s*/?>", "", why).strip().rstrip("}").strip()
+            if why.endswith("]") and why.count("]") > why.count("["):  # an orphan bracket only
+                why = why[:-1].strip()
+            why = why or "(no reason given)"
             if len(why) > 220:
                 why = why[:220].rsplit(" ", 1)[0] + " …"
             return {"score": str(int(score)), "why": why}
