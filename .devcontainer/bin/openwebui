@@ -8,6 +8,8 @@
                                      packs your chatbot (chatbot-export) and adds it to Open WebUI
     openwebui stop                   stops Open WebUI (your data is kept)
 
+To ask the test questions to "Wildfire RAG" and score it like the other modes: replay RAG, then score RAG.
+
 Open WebUI is a chatbot tool you can install on your own server. It uses your key (workshop-login).
 In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
@@ -532,6 +534,7 @@ def cmd_start():
     print(f"Open it: {address()}")
     print(f"(or: Ports tab of the bottom panel -> {PORT} -> Open in Browser)")
     print("To see what the RAG finds for a question: openwebui query \"<question>\"")
+    print("To ask it the test questions and score it: replay RAG, then score RAG")
 
 
 def cmd_query(text):

@@ -134,6 +134,25 @@ OPENWEBUI_MODE=class openwebui help | grep -q "share open" || echec "openwebui h
 OPENWEBUI_MODE=class openwebui help | grep -q "openwebui import FILE" || echec "openwebui help (mode classe) : export et import"
 command -v qrencode > /dev/null || echec "qrencode absent (QR code de share open)"
 
+etape "replay RAG sans Open WebUI : un message clair, aucun fichier de réponses"
+avant=$(ls "$KIT/answers" 2>/dev/null | wc -l)
+code=0; WORKSHOP_OPENWEBUI_PORT=3999 replay RAG 2 >/tmp/out 2>&1 || code=$?
+[[ "$code" == 1 ]] || echec "replay RAG sans Open WebUI : code attendu 1, obtenu $code"
+grep -q "openwebui start" /tmp/out || echec "replay RAG sans Open WebUI : il doit dire de taper openwebui start"
+[[ "$(ls "$KIT/answers" 2>/dev/null | wc -l)" == "$avant" ]] || echec "replay RAG a laissé un fichier de réponses"
+code=0; replay RAG --agents examples/AGENTS.liar.md 2 >/tmp/out 2>&1 || code=$?
+[[ "$code" == 1 ]] && grep -q "own instructions" /tmp/out || echec "replay RAG --agents doit être refusé"
+
+etape "replay avec OpenCode : le serveur privé se prépare (sans appel)"
+/opt/workshop/venv/bin/python -I -c "
+import importlib.machinery as m, shutil, os
+r = m.SourceFileLoader('replay', '$(command -v replay)').load_module()
+o = r.OpenCode('C', None)
+assert 'tmp' in vars(o) and 'env' in vars(o), 'OpenCode de replay incomplet'
+assert o.env.get('WORKSHOP_ENGINE') == 'opencode' and o.engine_line().startswith('Engine: OpenCode')
+shutil.rmtree(o.tmp)
+print('OpenCode de replay : OK')" || echec "replay ne prépare plus son serveur OpenCode"
+
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
 code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
 [[ "$code" == 2 ]] || echec "code attendu 2 (clé refusée), obtenu $code"

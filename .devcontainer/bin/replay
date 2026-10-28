@@ -7,6 +7,9 @@
                       questions 2 and 6, in mode A, with other instructions than AGENTS.md
                       (a demo personality of examples/, or a draft of yours): AGENTS.md is
                       not changed; modes A to F only
+    replay RAG        all questions to the RAG chatbot of Open WebUI ("Wildfire RAG",
+                      after openwebui start): before each answer, Open WebUI gives the model
+                      the 5 excerpts of the documents closest to the question
 
 Each question is asked in a fresh session (nothing carries over from one question to the next).
 Answers are written to answers/<mode>-<time>.md (with --agents: answers/<mode>-<name>-<time>.md,
@@ -16,6 +19,7 @@ read or searched. Then score them from 0 to 2: score <mode> (with --agents: scor
 With the OpenCode engine (workshop-login --engine opencode), the questions go to OpenCode.
 """
 
+import http.client
 import json
 import os
 import re
@@ -27,13 +31,15 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
-MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
+MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F", "rag": "RAG"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
 TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
 # The label every answer of a deceptive demo bot must start with (examples/AGENTS.liar.md...).
@@ -198,6 +204,9 @@ class OpenCode:
             self.env["WORKSHOP_AGENTS"] = str(agents)
         if os.environ.get("WORKSHOP_MODEL") and not os.environ.get("WORKSHOP_OPENCODE_MODEL"):
             self.env["WORKSHOP_OPENCODE_MODEL"] = os.environ["WORKSHOP_MODEL"]
+
+    def engine_line(self):
+        return f"Engine: OpenCode (model {self.model})"
 
     def start(self):
         """Starts the server and waits until it answers and its MCP servers are connected (else
@@ -393,6 +402,88 @@ def parse_export(export):
     return answer, context, actions, cost, peeked, steps
 
 
+class OpenWebUIRag:
+    """The RAG chatbot of Open WebUI ("Wildfire RAG (workshop kit)", made by openwebui start), through
+    its chat API: one new conversation per question. Before each answer, Open WebUI picks the
+    excerpts of the workshop knowledge closest to the question (vector search) and gives them to
+    the model. The answer cites them as [1], [2]...: one number per file, in the order of the
+    excerpts (measured with Open WebUI v0.11.4), so the file of each number is written below it."""
+
+    MODEL_ID, MODEL_NAME = "wildfire-rag", "Wildfire RAG (workshop kit)"
+
+    def __init__(self):
+        self.url = f"http://127.0.0.1:{int(os.environ.get('WORKSHOP_OPENWEBUI_PORT', '3000'))}"
+        self.token = ""
+
+    def engine_line(self):
+        return (f'Engine: Open WebUI, chatbot "{self.MODEL_NAME}" (the same model as workshop, given the '
+                "excerpts of summaries/ and corpus/text/ closest to each question)")
+
+    def request(self, method, path, body=None, timeout=30):
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        req = urllib.request.Request(self.url + path, method=method, headers=headers,
+                                     data=None if body is None else json.dumps(body).encode())
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 127.0.0.1: no proxy
+        with opener.open(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode() or "null")
+
+    def start(self):
+        if os.environ.get("OPENWEBUI_MODE") == "class":
+            raise SystemExit("replay RAG is for the workshop kit (openwebui without accounts), not the class mode.")
+        not_running = "Open WebUI is not running, or not ready yet. Type: openwebui start"
+        try:
+            # Without accounts (openwebui start of the kit), an empty sign-in gives the token.
+            self.token = self.request("POST", "/api/v1/auths/signin", {"email": "", "password": ""})["token"]
+            models = self.request("GET", "/api/models")
+            ids = {m.get("id") for m in models.get("data", []) if isinstance(m, dict)}
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 401, 403):
+                raise SystemExit("The Open WebUI on this port asks for an account (the class mode of the Open WebUI "
+                                 "guide?): replay RAG works with the one of the kit, made by openwebui start.") from None
+            raise SystemExit(not_running) from None
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException):
+            raise SystemExit(not_running) from None
+        if self.MODEL_ID not in ids:
+            raise SystemExit(f'Open WebUI has no chatbot "{self.MODEL_NAME}" yet. Type: openwebui start')
+
+    def ask(self, question):
+        """Same tuple as ask(): (answer, context tokens, excerpts, cost, error, peeked)."""
+        try:
+            r = self.request("POST", "/api/chat/completions", {
+                "model": self.MODEL_ID, "messages": [{"role": "user", "content": question}], "stream": False},
+                timeout=300)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")[:200]
+            return "", 0, [], 0.0, f"Open WebUI answered HTTP {e.code}: {detail}", False
+        except (OSError, ValueError, http.client.HTTPException) as e:
+            return "", 0, [], 0.0, f"no answer from Open WebUI ({e})", False
+        try:
+            answer = (r["choices"][0]["message"].get("content") or "").strip()
+        except (KeyError, IndexError, TypeError):
+            return "", 0, [], 0.0, f"unexpected answer from Open WebUI: {str(r)[:200]}", False
+        if not answer:
+            return "", 0, [], 0.0, ("Open WebUI gave an empty answer (check the key: workshop-login, then "
+                                    "openwebui start, which gives the key to Open WebUI)"), False
+        context = int(((r.get("usage") or {}).get("prompt_tokens")) or 0)
+        numbers = {}  # one number per file, in the order of the excerpts
+        for source in r.get("sources") or []:
+            for meta in source.get("metadata") or []:
+                name = meta.get("source") or meta.get("name") or "?"
+                numbers.setdefault(name, len(numbers) + 1)
+        # On the line "What the model did", which score reads and shows to the judge: the answer's
+        # [1], [2]... only make sense with the files they stand for.
+        shown = [f"[{n}] " + name.replace("summaries__", "summaries/").replace("corpus-text__", "corpus/text/")
+                 for name, n in numbers.items()]
+        if shown:
+            shown.insert(0, "Open WebUI gave it excerpts of these files, numbered as in the answer")
+        return answer, context, shown, 0.0, None, False
+
+    def stop(self):
+        pass
+
+
 def stop_on_signal(signum, frame):
     raise SystemExit(128 + signum)  # so that the server is stopped (finally) on kill or hang-up
 
@@ -424,6 +515,10 @@ def main():
         elif mode == "bare":
             print("Mode bare has no instructions at all: --agents only works with modes A to F.")
             sys.exit(1)
+        elif mode == "RAG":
+            print("The RAG chatbot has its own instructions (made by openwebui start): --agents only works "
+                  "with modes A to F.")
+            sys.exit(1)
     if mode in ("E", "F") and not (KIT / "wiki" / "index.md").is_file():
         print("No wiki yet. First type: wiki-start")
         sys.exit(1)
@@ -436,19 +531,21 @@ def main():
     if not questions:
         print("No question found: fill in the Question column of test-questions.md.")
         sys.exit(1)
-    name = engine()
-    if name not in ("claude", "opencode"):
-        print(f"Unknown engine: {name} (claude or opencode). Type: workshop-login")
-        sys.exit(1)
-
     server = None
-    if name == "opencode":
-        signal.signal(signal.SIGTERM, stop_on_signal)
-        signal.signal(signal.SIGHUP, stop_on_signal)
-        server = OpenCode(mode, agents)
+    if mode == "RAG":
+        server = OpenWebUIRag()  # Open WebUI, whatever the engine of workshop
+    else:
+        name = engine()
+        if name not in ("claude", "opencode"):
+            print(f"Unknown engine: {name} (claude or opencode). Type: workshop-login")
+            sys.exit(1)
+        if name == "opencode":
+            signal.signal(signal.SIGTERM, stop_on_signal)
+            signal.signal(signal.SIGHUP, stop_on_signal)
+            server = OpenCode(mode, agents)
     try:
         if server:
-            print("Starting OpenCode…", flush=True)
+            print("Checking Open WebUI…" if mode == "RAG" else "Starting OpenCode…", flush=True)
             server.start()
         write_answers(mode, agents, questions, server)
     finally:
@@ -475,11 +572,13 @@ def write_answers(mode, agents, questions, server=None):
                  f"score {shown_out} --blind (the scores go into scores-personas.md, not scores.md).", ""]
     else:
         lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
-                 f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
-                 f"{mode.capitalize()} column of scores.md).", ""]
+                 (f"Score each answer from 0 to 2 with: score RAG (it adds a RAG column to scores.md, "
+                  f"after B, the first time)." if mode == "RAG" else
+                  f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
+                  f"{mode.capitalize()} column of scores.md)."), ""]
     if server:
         # Under the title, so that score and the people who read the file know the engine.
-        lines[2:2] = [f"Engine: OpenCode (model {server.model})", ""]
+        lines[2:2] = [server.engine_line(), ""]
     try:
         run(mode, agents, questions, out, shown_out, labelled, lines, server)
     finally:
@@ -519,10 +618,12 @@ def run(mode, agents, questions, out, shown_out, labelled, lines, server=None):
             lines += [""]
         out.write_text("\n".join(lines), encoding="utf-8")  # written as we go
         if in_a_row == 3:
-            print("Three errors in a row: stopping. Check the key (workshop-login) and the network.")
+            print("Three errors in a row: stopping. Check the key (workshop-login" +
+                  (", then openwebui start" if mode == "RAG" else "") + ") and the network.")
             break
     minutes, seconds = divmod(round(time.monotonic() - start), 60)
-    print(f"Answers: {shown_out}   (cost: ${total:.2f}, time: {minutes} min {seconds:02d} s)")
+    cost = "not shown by Open WebUI" if mode == "RAG" else f"${total:.2f}"
+    print(f"Answers: {shown_out}   (cost: {cost}, time: {minutes} min {seconds:02d} s)")
     if errors < asked:  # at least one answer to score
         print(f"Next: score {shown_out} --blind" if agents else f"Next: score {mode}")
     if errors:

@@ -7,8 +7,9 @@
     score A --auto             the judge scores alone, nothing is asked (for the facilitator)
     score answers/A-liar-10h32.md --blind      one answers file (for example a persona's)
 
-Modes: bare, A, B, C, D, E, F. The judge is a smaller model than the chatbot's. It compares each
-answer with the expected answer of test-questions.md, with the same rules as you.
+Modes: bare, A, B, C, D, E, F, RAG (the RAG chatbot of Open WebUI, after replay RAG).
+The judge is a smaller model than the chatbot's. It compares each answer with the expected answer
+of test-questions.md, with the same rules as you.
 
 Your scores go into scores.md, in the column of the mode (for a persona: scores-personas.md,
 column Liar for mode A, Liar C for mode C).
@@ -291,12 +292,15 @@ def column(rows, name):
     return None
 
 
-def add_column(rows, name):
+def add_column(rows, name, after=None):
+    """Adds an empty column at the end, or right after the column `after` if the table has it."""
     width = max(6, len(name) + 2)
-    rows[0].append(name.center(width))
-    rows[1].append("-" * width)
-    for row in rows[2:]:
-        row.append(" " * width)
+    at = column(rows, after) if after else None
+    at = len(rows[0]) if at is None else at + 1
+    for k, row in enumerate(rows):
+        while len(row) < at:
+            row.append(" " * 6)
+        row.insert(at, name.center(width) if k == 0 else ("-" * width if k == 1 else " " * width))
 
 
 def set_cell(rows, r, c, value):
@@ -350,10 +354,10 @@ class Target:
     def has_column(self):
         return column(self._load()[2], self.name) is not None
 
-    def ensure_column(self):
+    def ensure_column(self, after=None):
         lines, bounds, rows = self._load()
         if column(rows, self.name) is None:
-            add_column(rows, self.name)
+            add_column(rows, self.name, after)
             self._save(lines, bounds, rows)
 
     def get(self, n):
@@ -600,7 +604,7 @@ def answers_file(target):
         return find_answers(MODES[target.lower()])
     path = next((p for p in (Path(target), KIT / target) if p.is_file()), None)
     if path is None:
-        raise Stop(f"Unknown mode or file: {target}. Modes: bare, A, B, C, D, E, F "
+        raise Stop(f"Unknown mode or file: {target}. Modes: bare, A, B, C, D, E, F, RAG "
                    f"(or an answers file of answers/).")
     return path
 
@@ -626,18 +630,23 @@ def targets(mode, persona, style):
         judge = Target(personas_md, name, "## Judge scores")
         human.ensure_column()
         judge.ensure_column()
-    elif column(rows, mode) is None:
-        if mode != "F":
-            raise Stop(f"scores.md has no column {mode}. Ask the facilitator. Nothing was written.")
+    elif column(rows, mode) is None and mode == "F":
         print("Mode F has no column in scores.md: the scores are shown, nothing is written.")
         return None, None
+    elif column(rows, mode) is None and mode != "RAG":
+        raise Stop(f"scores.md has no column {mode}. Ask the facilitator. Nothing was written.")
     else:
+        # The RAG chatbot of Open WebUI (replay RAG): its column is added after B the first time,
+        # in scores.md as in the judge's file, so that it sits between "all in the context" and C.
+        after = "B" if mode == "RAG" else None
         human = Target(scores_md, mode)
+        if style != "auto":  # --auto writes only the judge's scores: scores.md stays as it is
+            human.ensure_column(after)
         judge_md = KIT / "scores-judge.md"
         if not judge_md.is_file():
             create_judge_file(rows, judge_md)
         judge = Target(judge_md, mode)
-        judge.ensure_column()
+        judge.ensure_column(after)
     return (None if style == "auto" else human), judge
 
 
