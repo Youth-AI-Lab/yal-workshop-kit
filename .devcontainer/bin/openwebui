@@ -119,8 +119,10 @@ def fail(message, code=1):
 # --- Class mode: the facilitator's secrets and the sign-up state -------------------------------------
 
 def state_dir():
-    """Next to the repository when possible: it stays when the Codespace is rebuilt."""
-    for base in (KIT.parent, Path.home()):
+    """Next to the repository when possible: it stays when the Codespace is rebuilt. In a dev
+    container on one's own computer, /workspaces belongs to root: then in the repository itself
+    (ignored by git), which stays too; the home folder of the container is lost at a rebuild."""
+    for base in (KIT.parent, KIT, Path.home()):
         folder = base / ".openwebui-class"
         try:
             folder.mkdir(mode=0o700, exist_ok=True)

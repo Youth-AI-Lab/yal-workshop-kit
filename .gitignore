@@ -6,3 +6,5 @@ scores-judge.md
 scores-personas.md
 # Files written by chatbot-export and workshop-save
 /*.zip
+# Open WebUI administrator account, kept here only in a dev container on your own computer
+.openwebui-class/

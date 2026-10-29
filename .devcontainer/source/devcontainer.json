@@ -12,7 +12,10 @@
   // Open WebUI). Intégré à l'image publiée : ses réglages (privileged, démarrage du démon)
   // voyagent dans les métadonnées de l'image, la configuration distribuée n'a rien à ajouter.
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // Version 4: the docker-init script chooses iptables when the container starts (legacy only if
+    // the host has loaded ip_tables, nft otherwise), so the Docker inside works on recent kernels
+    // that do not load the legacy tables (Ubuntu 26.04, kernel 7.0) without changing the host.
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
     // zsh et oh-my-zsh pour l'utilisateur vscode, comme dans les TP R2.02 (déjà dans l'image de
     // base : la feature le garantit). Pas de mise à jour des paquets : l'image reste reproductible.
     "ghcr.io/devcontainers/features/common-utils:2": {
