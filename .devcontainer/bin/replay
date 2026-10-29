@@ -407,7 +407,8 @@ class OpenWebUIRag:
     its chat API: one new conversation per question. Before each answer, Open WebUI picks the
     excerpts of the workshop knowledge closest to the question (vector search) and gives them to
     the model. The answer cites them as [1], [2]...: one number per file, in the order of the
-    excerpts (measured with Open WebUI v0.11.4), so the file of each number is written below it."""
+    excerpts (measured with Open WebUI v0.11.4 and v0.12.4), so the file of each number is written
+    below it."""
 
     MODEL_ID, MODEL_NAME = "wildfire-rag", "Wildfire RAG (workshop kit)"
 

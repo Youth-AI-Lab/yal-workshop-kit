@@ -56,7 +56,7 @@ from pathlib import Path
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 KEY_FILE = Path.home() / ".workshop-key"
-IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.11.4")
+IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.12.4")
 # "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to a group.
 CLASS = os.environ.get("OPENWEBUI_MODE", "workshop") == "class"
 # Not the names of the facilitator's demo (facilitator/openwebui/compose.yaml): never touch it.
@@ -198,6 +198,41 @@ def address():
     return f"https://{name}-{PORT}.{domain}" if name and domain else f"http://localhost:{PORT}"
 
 
+def image_version(image):
+    """(0, 12, 4) for "...open-webui:v0.12.4"; None when the tag is not a version."""
+    match = re.search(r":v?(\d+)\.(\d+)\.(\d+)$", image or "")
+    return tuple(int(n) for n in match.groups()) if match else None
+
+
+def newer_data_in_log():
+    """True when the log says the data was migrated by a newer Open WebUI (it never starts then)."""
+    log = docker("logs", "--tail", "300", CONTAINER)
+    return "Can't locate revision" in (log.stdout or "") + (log.stderr or "")
+
+
+def fail_newer_data(newer_image="", running=False):
+    """Stops with the ways out, the one that keeps the data first. newer_image: the image of the
+    container already there (it is left as it is); empty when only its log tells."""
+    found = f" ({newer_image})" if newer_image else ""
+    if newer_image:
+        keep = f"in this terminal, type export WORKSHOP_OPENWEBUI_IMAGE={newer_image}, then openwebui start"
+    elif os.environ.get("WORKSHOP_OPENWEBUI_IMAGE"):
+        keep = ("in this terminal, type unset WORKSHOP_OPENWEBUI_IMAGE (or set it to the newer image "
+                "that made this data), then openwebui start")
+    else:
+        keep = ("in this terminal, type export WORKSHOP_OPENWEBUI_IMAGE=<the newer image that made this data>, "
+                "then openwebui start")
+    if not CLASS:
+        empty = f"openwebui stop, then docker volume rm {VOLUME}, then openwebui start"
+    else:
+        empty = "openwebui reset (it deletes its chatbots, accounts and conversations), then openwebui start"
+        if running:  # the newer container still answers: its chatbots can be saved first
+            empty = "openwebui export (it saves the chatbots), then " + empty
+    fail(f"This Open WebUI data was made by a newer version{found}; it cannot go back to {IMAGE}.\n"
+         f"To keep this data, use the newer version again: {keep}.\n"
+         f"Last resort, to start again from empty data: {empty}.")
+
+
 def start_container():
     key, base_url, model = provider()
     if docker("image", "inspect", IMAGE).returncode != 0:
@@ -251,7 +286,9 @@ def start_container():
             # Every address in use: the same list also filters the live connection of the chat.
             "CORS_ALLOW_ORIGIN": ";".join(dict.fromkeys(
                 [here, f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"])),
-            # Participants cannot change a chatbot's prompt or settings, nor chat with several models.
+            # Participants cannot change a chatbot's system prompt (enforced), nor chat with several models.
+            # PARAMS and CONTROLS only hide the panels since Open WebUI 0.12.4: a chatbot with
+            # Model controls (Workspace -> Models) lets every participant pick them.
             "USER_PERMISSIONS_CHAT_SYSTEM_PROMPT": "false",
             "USER_PERMISSIONS_CHAT_PARAMS": "false",
             "USER_PERMISSIONS_CHAT_MULTIPLE_MODELS": "false",
@@ -285,11 +322,15 @@ def start_container():
     # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
     config = hashlib.sha256(json.dumps([IMAGE, env, PORT], sort_keys=True).encode()).hexdigest()[:16]
     state = docker("inspect", "--format",
-                   '{{json .Config.Env}}|{{index .Config.Labels "yal.kit.config"}}|{{.State.Running}}',
-                   CONTAINER)
+                   '{{json .Config.Env}}|{{index .Config.Labels "yal.kit.config"}}|{{.State.Running}}'
+                   '|{{.Config.Image}}', CONTAINER)
     reuse = False
     if state.returncode == 0:
-        env_json, label, running = state.stdout.strip().rsplit("|", 2)
+        env_json, label, running, old_image = state.stdout.strip().rsplit("|", 3)
+        # Its data was migrated by that image: an older one cannot read it (no way back).
+        old, new = image_version(old_image), image_version(IMAGE)
+        if old and new and old > new:
+            fail_newer_data(old_image, running == "true")
         old_env = {k: v for k, v in (i.split("=", 1) for i in json.loads(env_json) if "=" in i)}
         # The keys are compared here, never printed.
         reuse = label == config and old_env.get("OPENAI_API_KEY") == key
@@ -314,17 +355,25 @@ def start_container():
         if result.returncode != 0:
             fail(f"Open WebUI could not start: {result.stderr.strip()}")
         print("Open WebUI is starting (from 30 seconds to 3 minutes)…", flush=True)
-    start, next_report = time.monotonic(), 30
+    start, next_report, next_log = time.monotonic(), 30, 10
     while time.monotonic() - start < 360:
         try:
             with urllib.request.urlopen(f"{URL}/health", timeout=3):
                 print(f"  Open WebUI answers ({time.monotonic() - start:.0f} s).", flush=True)
                 return model
         except (urllib.error.URLError, http.client.HTTPException, OSError):
-            if time.monotonic() - start >= next_report:
+            elapsed = time.monotonic() - start
+            # Data from a newer version, after openwebui stop (no old container to compare with).
+            if elapsed >= next_log:
+                next_log += 10
+                if newer_data_in_log():
+                    fail_newer_data()
+            if elapsed >= next_report:
                 print(f"  still starting… {next_report} s", flush=True)
                 next_report += 30
             time.sleep(2)
+    if newer_data_in_log():
+        fail_newer_data()
     fail(f"Open WebUI did not start in time. Its log: docker logs {CONTAINER}\n"
          "Wait one minute, then type: openwebui start")
 
@@ -806,6 +855,21 @@ def cmd_share_status():
     print("Sign-ups:", "open" if signup_is_open() else "closed")
     print("Port", PORT, ":", {True: "public", False: "private", None: "unknown"}[public])
     print("Accounts (you included):", count)
+    if signup_is_open():
+        # What share open set on each base model. "Reset" on a base model in Admin Panel -> Settings
+        # -> Models deletes it: then the chatbots built on it stop working for participants.
+        key, _, model = provider()
+        saved = {m["id"]: m for m in api.request("GET", "/models/all")}
+        for base in base_models(key, model):
+            row = saved.get(base)
+            shared = row and any(g.get("principal_type") == "user" and g.get("principal_id") == "*"
+                                 and g.get("permission") == "read" for g in row.get("access_grants") or [])
+            if not shared:
+                print(f"Warning: {base}: participants cannot use the chatbots built on it.\n"
+                      "  Type openwebui share open again.")
+            elif not (row.get("meta") or {}).get("hidden"):
+                print(f"Warning: {base}: participants see this plain model next to your chatbots.\n"
+                      "  Type openwebui share open again.")
 
 
 EXPORT_HOW_TO = """# {name}: your chatbot, ready to keep and rebuild
@@ -857,6 +921,18 @@ def knowledge_items(api, bot):
     return found
 
 
+def drop_file_refs(meta):
+    """Removes from a chatbot's settings the files that stay in this Open WebUI (voice avatar,
+    background image): another Open WebUI refuses a chatbot that names them. Returns what was removed."""
+    dropped = []
+    if meta.pop("voice_avatar", None):
+        dropped.append("voice avatar")
+    # Only a file of the same Open WebUI is accepted (0.12.4), not even "": none can carry over.
+    if meta.get("background_image_url") is not None and meta.pop("background_image_url"):
+        dropped.append("background image")
+    return dropped
+
+
 def cmd_export():
     check_docker()
     api = OpenWebUI().login()
@@ -868,6 +944,7 @@ def cmd_export():
     print(f"Exporting {len(chatbots)} chatbot(s) to {folder.name}/:")
     for bot in chatbots:
         meta = {k: v for k, v in (bot.get("meta") or {}).items() if k != "knowledge"}
+        left_out = drop_file_refs(meta)
         params = dict(bot.get("params") or {})
         bases, files, used = {}, [], set()
         for base, f in knowledge_items(api, bot):
@@ -894,6 +971,9 @@ def cmd_export():
             for name, data in files:
                 archive.writestr(f"knowledge/{name}", data)
         print(f"  {bot['name']}: {folder.name}/{target.name} ({len(files)} documents)")
+        if left_out:
+            print(f"    Not in the file: its {' and '.join(left_out)} (after an import, add "
+                  f"{'them' if len(left_out) > 1 else 'it'} again in Workspace -> Models).")
     print(f"\nTo keep them on your computer: in the file list, folder {folder.name}/, right-click on a")
     print("file, then Download. The participants' accounts and conversations are not in these files.")
     print("To rebuild a chatbot later, in a new Codespace for example: openwebui import <file>")
@@ -953,6 +1033,10 @@ def cmd_import(path_text):
     if not info:
         meta = {"description": f"Imported from {path.name}.",
                 "capabilities": {**NO_TOOLS, "builtin_tools": True}}
+    left_out = drop_file_refs(meta)  # an export made by an older version of this command may name them
+    if left_out:
+        print(f"Its {' and '.join(left_out)} {'stay' if len(left_out) > 1 else 'stays'} in the old Open WebUI: "
+              f"add {'them' if len(left_out) > 1 else 'it'} again in Workspace -> Models.")
     meta["knowledge"] = refs
     params = dict(info.get("params") or {"function_calling": "native"})
     params["system"] = system
