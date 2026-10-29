@@ -135,11 +135,13 @@ OPENWEBUI_MODE=class openwebui help | grep -q "openwebui import FILE" || echec "
 command -v qrencode > /dev/null || echec "qrencode absent (QR code de share open)"
 
 etape "replay RAG sans Open WebUI : un message clair, aucun fichier de réponses"
-avant=$(ls "$KIT/answers" 2>/dev/null | wc -l)
+# answers/ peut ne pas exister encore : sous pipefail, l'échec de ls arrêterait le script.
+compte_reponses() { { ls "$KIT/answers" 2>/dev/null || true; } | wc -l; }
+avant=$(compte_reponses)
 code=0; WORKSHOP_OPENWEBUI_PORT=3999 replay RAG 2 >/tmp/out 2>&1 || code=$?
 [[ "$code" == 1 ]] || echec "replay RAG sans Open WebUI : code attendu 1, obtenu $code"
 grep -q "openwebui start" /tmp/out || echec "replay RAG sans Open WebUI : il doit dire de taper openwebui start"
-[[ "$(ls "$KIT/answers" 2>/dev/null | wc -l)" == "$avant" ]] || echec "replay RAG a laissé un fichier de réponses"
+[[ "$(compte_reponses)" == "$avant" ]] || echec "replay RAG a laissé un fichier de réponses"
 code=0; replay RAG --agents examples/AGENTS.liar.md 2 >/tmp/out 2>&1 || code=$?
 [[ "$code" == 1 ]] && grep -q "own instructions" /tmp/out || echec "replay RAG --agents doit être refusé"
 
