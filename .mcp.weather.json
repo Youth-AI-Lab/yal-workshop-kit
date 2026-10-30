@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "open-meteo": {
+      "command": "/opt/workshop/node/bin/node",
+      "args": ["/opt/workshop/open-meteo-mcp/dist/index.js"],
+      "env": { "DOTENV_CONFIG_PATH": "/dev/null", "DOTENV_CONFIG_QUIET": "true" }
+    }
+  }
+}

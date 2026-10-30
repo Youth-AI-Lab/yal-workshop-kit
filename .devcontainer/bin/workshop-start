@@ -13,7 +13,8 @@ What it does, in this order:
   3. it adds what this workshop needs from the earlier ones, yours if you have it, the kit's
      example if not: your AGENTS.md (from workshop 2), the Benevento document (from
      workshop 4), the wiki (workshop 5);
-  4. it tells you the first command to type.
+  4. for workshop 2, it starts Open WebUI in the background (openwebui start && openwebui sizes);
+  5. it tells you the first command to type.
 You can run it again: it never adds anything twice.
 
 Exit code: 0 ready; 1 something to fix (see the lines with !, or the message); 2 mistake in
@@ -22,6 +23,7 @@ the command (no number, wrong number, unknown option).
 
 import argparse
 import datetime
+import fcntl
 import importlib.machinery
 import importlib.util
 import json
@@ -39,6 +41,7 @@ KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "worksh
 HERE = pathlib.Path(__file__).resolve().parent
 MARKER = ".workshop/last-start.json"   # fingerprint of the work right after the last workshop-start
 MAX_RESTORE = 400 * 1024 * 1024        # a save is a few MB; refuse anything absurd
+OPENWEBUI_LOG = ".workshop/openwebui-start.log"   # workshop 2: Open WebUI started in the background
 FIRST_COMMAND = {1: "replay bare", 2: "workshop B", 3: "workshop C", 4: "workshop D", 5: "workshop E"}
 EXAMPLE_AGENTS = "examples/AGENTS.feurisson.md"
 SECTION = "# Added during the session"   # heading used by corpus-add and the summarize skill
@@ -353,9 +356,70 @@ def prepare(n, save):
         else:
             problems.append(f"Could not unpack the wiki (wiki-start):\n    {out}")
 
-    # Workshop 2 (RAG): Open WebUI is not started here: its first start takes minutes and needs the
-    # Docker of the Codespace. main() tells the pair to type openwebui start && openwebui sizes.
+    # Workshop 2 (RAG): Open WebUI takes minutes the first time; main() starts it in the background
+    # (start_openwebui), after everything else is ready.
     return done, problems
+
+
+def start_openwebui():
+    """Workshop 2: openwebui start && openwebui sizes in the background, written to OPENWEBUI_LOG, so
+    the pair can work meanwhile. Never twice at once (the lock of openwebui). Returns the lines to print."""
+    by_hand = "  openwebui start && openwebui sizes"
+    if not (pathlib.Path.home() / ".workshop-key").is_file():   # only its presence: never read here
+        return ["Open WebUI is not started: there is no key yet. Type workshop-login, then:", by_hand]
+    if not shutil.which("docker"):
+        return ["Open WebUI needs Docker, which is not available here: ask the facilitator."]
+    # Only in a Codespace or a dev container, where Docker and port 3000 belong to this workshop.
+    # On a computer itself, port 3000 may already be used (the facilitator's demo): never start there.
+    if not (os.environ.get("CODESPACES") == "true" or os.environ.get("REMOTE_CONTAINERS") == "true"
+            or pathlib.Path("/.dockerenv").exists()):
+        return ["Open WebUI is not started here (not a Codespace or a dev container). To start it:", by_hand]
+    # The lock of the openwebui command (the same file): taken while Open WebUI is being prepared,
+    # by this background run or by a command typed in another terminal.
+    lock = pathlib.Path(tempfile.gettempdir()) / (os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER", "yal-kit-openwebui")
+                                                  + ".lock")
+    try:
+        with lock.open("a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return [f"Open WebUI is already being prepared. To follow it: tail -f {OPENWEBUI_LOG}"]
+    except OSError:
+        pass
+    try:
+        ow = tool("openwebui")
+    except Refused as e:
+        return [str(e)]
+    # The key, checked by openwebui itself (an OpenRouter key does not work there): a clear
+    # message now rather than in the log.
+    code, out = run([ow, "check-key"], timeout=30)
+    if code != 0:
+        return ["Open WebUI is not started:"] + [f"  {line}" for line in out.splitlines()]
+    ow = shlex.quote(ow)
+    # Docker starts with the Codespace: wait for it (up to 1 minute) instead of failing at once.
+    script = (f"for i in $(seq 30); do docker info > /dev/null 2>&1 && break; sleep 2; done; "
+              f"{ow} start && {ow} sizes && echo 'READY: Open WebUI is ready, with the two sizes.' "
+              f"|| echo 'STOPPED: read the message above, then type: openwebui start && openwebui sizes'")
+    command = ["sh", "-c", script]
+    if shutil.which("flock"):
+        command = ["flock", "-n", str(lock)] + command
+        script_env = {"WORKSHOP_OPENWEBUI_LOCK": "held"}
+    else:
+        script_env = {}
+    log = KIT / OPENWEBUI_LOG
+    log.parent.mkdir(exist_ok=True)
+    try:
+        with log.open("w", encoding="utf-8") as out:
+            out.write(f"workshop-start 2, {datetime.datetime.now():%Y-%m-%d %H:%M}: openwebui start && openwebui sizes\n")
+            out.flush()
+            subprocess.Popen(command, cwd=KIT, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                             start_new_session=True,
+                             env=dict(os.environ, WORKSHOP_HOME=str(KIT), PYTHONUNBUFFERED="1", **script_env))
+    except OSError as e:
+        return [f"Could not start Open WebUI in the background ({e}). Type it in a second terminal:", by_hand]
+    return ["Open WebUI is starting in the background, then a second knowledge base (about 4 to 5 minutes",
+            "the first time, 1 minute after). You can start the workshop meanwhile.",
+            f"  To follow it: tail -f {OPENWEBUI_LOG}   (Ctrl+C stops following, not Open WebUI)",
+            "  It is ready when the last line says READY."]
 
 
 def repo_workshop():
@@ -448,8 +512,7 @@ def main():
     write_marker(save, n)
     print(f"\nAlmost ready for workshop {n}: see the lines with ! above." if problems else f"\nReady for workshop {n}.")
     if n == 2:
-        print("This workshop uses Open WebUI, with knowledge bases of three sizes. Start it now in a "
-              "second terminal (about 4 to 5 minutes the first time):\n  openwebui start && openwebui sizes")
+        print("\n".join(start_openwebui()))
     if n == 5:
         print("The wiki is in wiki/: start with wiki/index.md.")
     page = open_page(n)

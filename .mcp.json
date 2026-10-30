@@ -3,6 +3,10 @@
     "fire-danger": {
       "command": "/opt/workshop/venv/bin/python",
       "args": ["mcp/fire_danger_server.py"]
+    },
+    "time": {
+      "command": "/opt/workshop/mcp-time/bin/mcp-server-time",
+      "args": ["--local-timezone", "Europe/Paris"]
     }
   }
 }

@@ -4,10 +4,10 @@
     openwebui start                  starts Open WebUI and loads the workshop knowledge
                                      (the first time, it downloads Open WebUI: about 4.6 GB)
     openwebui query "<question>"     shows the 5 excerpts the RAG would give the model
-    openwebui sizes                  adds two more knowledge bases, cut into excerpts of 500 and
-                                     2000 characters, and the models "Wildfire RAG 500 / 1000 / 2000"
-    openwebui query --size 500 --top-k 3 "<question>"
-                                     the same, in the base of one size (500, 1000 or 2000), with
+    openwebui sizes                  adds a second knowledge base, cut into excerpts of 2000
+                                     characters, and the models "Wildfire RAG 1000" and "2000"
+    openwebui query --size 2000 --top-k 3 "<question>"
+                                     the same, in the base of one size (1000 or 2000), with
                                      another number of excerpts (top-k); nothing to restart
     openwebui top-k N                the number of excerpts the "Wildfire RAG" models get in the chat,
                                      from the next question (default 5; openwebui start puts it back)
@@ -21,8 +21,8 @@ Open WebUI is a chatbot tool you can install on your own server. It uses your ke
 In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
     the 5 excerpts closest to the question and gives only those to the model.
-  - "Wildfire RAG 500", "1000", "2000" (after openwebui sizes): the same, with shorter or longer
-    excerpts (1000 is the same base as "Wildfire RAG (workshop kit)").
+  - "Wildfire RAG 1000" and "Wildfire RAG 2000" (after openwebui sizes): the same, with excerpts
+    of 1000 or 2000 characters (1000 is the same base as "Wildfire RAG (workshop kit)").
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
 
 (With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the group mode.)
@@ -43,6 +43,7 @@ CLASS_HELP = """Open WebUI for your groups: you build chatbots, then open them t
 
 The guide: https://github.com/Youth-AI-Lab/yal-openwebui-guide"""
 
+import fcntl
 import hashlib
 import http.client
 import json
@@ -74,6 +75,10 @@ CONTAINER = os.environ.get("WORKSHOP_OPENWEBUI_CONTAINER",
                            "yal-openwebui-class" if CLASS else "yal-kit-openwebui")
 VOLUME = CONTAINER + "-data"
 PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
+# One preparation at a time (start, sizes, chatbot): the size of the excerpts is one global setting
+# of Open WebUI, so two at once would cut files at the wrong size. workshop-start 2 takes the same
+# lock (flock) for its background "start && sizes", and tells these commands so.
+LOCK = Path(tempfile.gettempdir()) / f"{CONTAINER}.lock"
 URL = f"http://127.0.0.1:{PORT}"
 
 # The same model as `workshop` (see workshop-login), through the OpenAI-compatible API of Anthropic.
@@ -92,11 +97,12 @@ KNOWLEDGE_DESCRIPTION = ("The knowledge of the workshop kit: summaries/ (short E
                          "corpus/text/ (readable copies of the official documents). Same files as mode B.")
 RAG_ID = "wildfire-rag"
 RAG_NAME = "Wildfire RAG (workshop kit)"
-# Workshop 2: the same files cut into excerpts of three sizes, in characters (Open WebUI's default
+# Workshop 2: the same files cut into excerpts of two sizes, in characters (Open WebUI's default
 # text splitter counts characters). The overlap is a tenth of the size. 1000/100 is Open WebUI's
-# default: the base of "openwebui start", shared with the size 1000.
+# default: the base of "openwebui start", shared with the size 1000. Two sizes only: with three,
+# pairs concluded "bigger is better"; the contrast to show is 1000 at top-k 10 against 2000.
 DEFAULT_CHUNK = (1000, 100)
-SIZES = {500: 50, 1000: 100, 2000: 200}
+SIZES = {1000: 100, 2000: 200}
 TOP_K = 5
 # The rules of examples/AGENTS.feurisson.md, adapted: here the model only sees excerpts.
 RAG_PROMPT = """You are a chatbot specialised in wildfire prevention.
@@ -603,7 +609,21 @@ def hide_base_model(api, model):
 
 # --- Commands -----------------------------------------------------------------------------------
 
+def hold_lock():
+    """Takes the lock until this command ends, or stops with a message if it is taken."""
+    if os.environ.get("WORKSHOP_OPENWEBUI_LOCK") == "held":   # inside workshop-start 2's flock
+        return
+    global _lock
+    _lock = open(LOCK, "a")
+    try:
+        fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fail("Open WebUI is already being prepared, in another terminal or in the background "
+             "(workshop-start 2).\nWait for it to end (tail -f .workshop/openwebui-start.log), then try again.")
+
+
 def cmd_start():
+    hold_lock()
     check_docker()
     model = start_container()
     api = OpenWebUI().login()
@@ -632,8 +652,9 @@ def cmd_start():
 
 
 def cmd_sizes():
-    """Workshop 2: the knowledge base of openwebui start (excerpts of 1000 characters), plus two
-    more of 500 and 2000, and one "Wildfire RAG" model per size."""
+    """Workshop 2: the knowledge base of openwebui start (excerpts of 1000 characters), plus one
+    more of 2000, and one "Wildfire RAG" model per size."""
+    hold_lock()
     check_docker()
     key, _, model = provider()
     check_same_key(key)
@@ -661,11 +682,11 @@ def cmd_sizes():
         set_chunks(api, *DEFAULT_CHUNK)
     for size, knowledge in bases.items():
         api.save_model(rag_model(model, size, knowledge))
-    print("\nThree models, the same documents cut into excerpts of three sizes:")
+    print("\nTwo models, the same documents cut into excerpts of two sizes:")
     for size in SIZES:
         print(f'  "Wildfire RAG {size}"')
-    print("Compare what each base finds:  openwebui query --size 500 \"<question>\"")
-    print("Change the number of excerpts: openwebui query --size 2000 --top-k 3 \"<question>\"")
+    print("Compare what each base finds:  openwebui query --size 2000 \"<question>\"")
+    print("Change the number of excerpts: openwebui query --size 1000 --top-k 10 \"<question>\"")
 
 
 def cmd_top_k(value):
@@ -685,7 +706,7 @@ def cmd_top_k(value):
 def parse_query(args):
     """openwebui query [--size N] [--top-k N] "<question>" """
     size, top_k, words = DEFAULT_CHUNK[0], TOP_K, []
-    usage = 'Usage: openwebui query [--size 500|1000|2000] [--top-k N] "<question>"'
+    usage = 'Usage: openwebui query [--size 1000|2000] [--top-k N] "<question>"'
     i = 0
     while i < len(args):
         if args[i] in ("--size", "--top-k") and i + 1 < len(args):
@@ -742,6 +763,7 @@ def cmd_chatbot(args):
         name = args[1].strip()
     elif args:
         fail('Usage: openwebui chatbot --name "<the name of your chatbot>"')
+    hold_lock()
     key, _, model = provider()
     check_docker()
     check_same_key(key)
@@ -1239,6 +1261,9 @@ def main(argv):
         cmd_chatbot(argv[1:])
     elif command == "stop" and len(argv) == 1:
         cmd_stop()
+    elif command == "check-key" and len(argv) == 1:
+        provider()   # used by workshop-start 2 before it starts Open WebUI: a clear message at once
+        print("Key OK for Open WebUI.")
     else:
         fail("Unknown command. See: openwebui help")
 

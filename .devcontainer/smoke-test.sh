@@ -43,6 +43,45 @@ rm -rf "$h"
 etape "Serveur MCP importable avec l'environnement de l'image"
 (cd "$KIT/mcp" && /opt/workshop/venv/bin/python -c "import fire_danger_server as s; print(s.territories().splitlines()[0])") \
   || echec "le serveur MCP ne s'importe pas"
+# Repli d'hiver : aucun niveau tant que le fichier n'est pas daté du jour et « live » ; jour enregistré
+# (recorded_example) seulement avec FIRE_DANGER_RECORDED=1 ; pas d'indice EFFIS dans les données.
+(cd "$KIT/mcp" && /opt/workshop/venv/bin/python - <<'PY') || echec "serveur MCP : repli d'hiver"
+import asyncio, json
+import fire_danger_server as s
+r = json.loads(s.fire_danger("Antwerp"))
+entry = r["Antwerp — Flanders, Belgium"]
+assert entry["level"] is None and "why_no_level" in entry, entry
+assert not any("TO BE COMPLETED" in json.dumps(v) for v in entry.values()), entry
+assert [t.name for t in asyncio.run(s.mcp.list_tools())] == ["territories", "fire_danger"]
+# Daté du jour et « live », mais niveau encore « TO BE COMPLETED » : toujours pas de niveau.
+data = json.load(open("fire-danger.json", encoding="utf-8"))
+data["date"] = s.today()
+data["territories"]["Antwerp — Flanders, Belgium"]["status"] = "live"
+s.load = lambda path: data
+entry = json.loads(s.fire_danger("Antwerp"))["Antwerp — Flanders, Belgium"]
+assert entry["level"] is None and entry["status"] == "live", entry
+data["territories"]["Antwerp — Flanders, Belgium"]["level"] = "groen"
+assert json.loads(s.fire_danger("Antwerp"))["Antwerp — Flanders, Belgium"]["level"] == "groen"
+assert "EFFIS" not in open("fire-danger.json", encoding="utf-8").read()
+print("fire_danger : pas de niveau sans date du jour ni statut live ; recorded_example coupé")
+PY
+# Serveur Time (atelier 4) : installé dans son environnement, deux outils, sans réseau.
+/opt/workshop/venv/bin/python - <<'PY' || echec "serveur MCP time"
+import asyncio
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client, StdioServerParameters
+async def main():
+    params = StdioServerParameters(command="/opt/workshop/mcp-time/bin/mcp-server-time",
+                                   args=["--local-timezone", "Europe/Paris"])
+    async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
+        await s.initialize()
+        names = sorted(t.name for t in (await s.list_tools()).tools)
+        assert names == ["convert_time", "get_current_time"], names
+        print("time :", names)
+asyncio.run(main())
+PY
+(cd "$KIT/mcp" && FIRE_DANGER_RECORDED=1 /opt/workshop/venv/bin/python -c "import asyncio, fire_danger_server as s; \
+assert 'recorded_example' in [t.name for t in asyncio.run(s.mcp.list_tools())]") || echec "FIRE_DANGER_RECORDED=1 : recorded_example absent"
 
 etape "OpenCode à la version figée (second moteur)"
 attendu="$(cat "$KIT/.devcontainer/opencode-version")"
@@ -127,12 +166,12 @@ docker info > /dev/null || echec "Docker ne répond pas (fonctionnalité docker-
 openwebui help | grep -q "openwebui start" || echec "openwebui help"
 code=0; openwebui start > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sans clé : message attendu workshop-login"; }
-# Atelier 2 : bases de trois tailles et query --size/--top-k (refus clairs sans clé et sur une taille inconnue).
+# Atelier 2 : bases de deux tailles et query --size/--top-k (refus clairs sans clé et sur une taille inconnue).
 openwebui help | grep -q "openwebui sizes" || echec "openwebui help : sizes"
 code=0; openwebui sizes > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sizes sans clé : message attendu workshop-login"; }
 code=0; openwebui query --size 700 "x" > /tmp/err 2>&1 || code=$?
-[[ $code -ne 0 ]] && grep -q "The sizes are 500, 1000, 2000" /tmp/err || { cat /tmp/err; echec "openwebui query --size inconnue : refus attendu"; }
+[[ $code -ne 0 ]] && grep -q "The sizes are 1000, 2000" /tmp/err || { cat /tmp/err; echec "openwebui query --size inconnue : refus attendu"; }
 code=0; openwebui top-k abc > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "Usage: openwebui top-k N" /tmp/err || { cat /tmp/err; echec "openwebui top-k invalide : refus attendu"; }
 # Le partage demande des comptes : refusé dans l'instance de l'atelier (sans comptes).
@@ -221,6 +260,11 @@ code=0; WORKSHOP_HOME="$copie" score A > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "replay A" /tmp/err || { cat /tmp/err; echec "score sans réponses : message attendu replay A"; }
 code=0; workshop-start > /dev/null 2>&1 || code=$?
 [[ $code == 2 ]] || echec "workshop-start sans numéro : code 2 attendu, obtenu $code"
+# Atelier 2 : sans clé, workshop-start 2 ne lance pas Open WebUI en arrière-plan (copie neuve, HOME vide).
+copie2="$(mktemp -d)"; cp -r "$KIT/." "$copie2"; rm -rf "$copie2/.git"
+sortie="$(cd "$copie2" && HOME="$(mktemp -d)" WORKSHOP_HOME="$copie2" workshop-start 2)" || { echo "$sortie"; echec "workshop-start 2"; }
+grep -q "there is no key yet" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 2 sans clé : message attendu workshop-login"; }
+[[ ! -e "$copie2/.workshop/openwebui-start.log" ]] || echec "workshop-start 2 sans clé : Open WebUI lancé quand même"
 (cd "$copie" && WORKSHOP_HOME="$copie" workshop-save > /dev/null) || echec "workshop-save"
 [[ -f "$copie/my-work.zip" ]] || echec "workshop-save : my-work.zip absent"
 rm -f "$copie/my-work.zip"
@@ -248,8 +292,22 @@ for m in "bare A B C D E F".split():
         assert not [p for p in perms if p["action"] == "shell" and p["effect"] == "allow"], f"{m}: shell allowed"
         assert {"action": "read", "resource": "*workshop-key*", "effect": "deny"} in perms, f"{m}: key readable"
     assert ("fire-danger" in servers) == (m in "DEF"), f"{m}: MCP fire-danger"
+    assert ("time" in servers) == (m in "DEF"), f"{m}: MCP time"
+    if m in "DEF":
+        assert {"action": "time_*", "resource": "*", "effect": "allow"} in perms, f"{m}: time tools"
     assert ("graphify" in servers) == (m == "F"), f"{m}: MCP graphify"
-print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP, F graphify ; aucune clé dans la configuration")
+print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP (fire-danger, time), F graphify ; aucune clé dans la configuration")
+PY
+WORKSHOP_WEATHER=1 oc D > /tmp/oc-weather.json || echec "OpenCode, WORKSHOP_WEATHER=1 : configuration non produite"
+/opt/workshop/venv/bin/python - <<'PY' || echec "OpenCode, WORKSHOP_WEATHER=1 : configuration inattendue"
+import json
+c = json.load(open("/tmp/oc-weather.json"))["config"]
+server = c["mcp"]["servers"]["open-meteo"]
+assert server["environment"]["DOTENV_CONFIG_PATH"] == "/dev/null", server
+perms = c["agents"]["chatbot"]["permissions"]
+meteo = sorted(p["action"] for p in perms if p["action"].startswith("open-meteo") and p["effect"] == "allow")
+assert meteo == ["open-meteo_geocoding", "open-meteo_weather_forecast"], meteo
+print("OpenCode, météo : deux outils autorisés, .env ignoré")
 PY
 
 etape "Démarrage réel : outils, skills et serveur MCP annoncés par Claude Code"
@@ -258,7 +316,7 @@ verifie() {
   local sortie
   sortie="$(timeout 120 workshop "$1" -p hi --output-format stream-json --verbose < /dev/null 2>/dev/null || true)"
   printf '%s\n' "$sortie" | /opt/workshop/venv/bin/python -c '
-import json, sys
+import json, os, sys
 mode, outils_attendus = sys.argv[1], int(sys.argv[2])
 for ligne in sys.stdin:
     try: d = json.loads(ligne)
@@ -270,9 +328,10 @@ for ligne in sys.stdin:
     ok = len(d["tools"]) == outils_attendus
     curation = ["source-note", "summarize", "validate-summary"]
     if mode == "C": ok = ok and mcp == [] and skills == curation
-    if mode == "D": ok = ok and mcp == ["fire-danger"] and skills == curation
-    if mode == "E": ok = ok and mcp == ["fire-danger"] and skills == sorted(curation + ["ingest", "lint"])
-    if mode == "F": ok = ok and sorted(mcp) == ["fire-danger", "graphify"] and skills == sorted(curation + ["ingest", "lint"]) \
+    meteo = ["open-meteo"] if os.environ.get("WORKSHOP_WEATHER") == "1" else []
+    if mode == "D": ok = ok and sorted(mcp) == sorted(["fire-danger", "time"] + meteo) and skills == curation
+    if mode == "E": ok = ok and sorted(mcp) == ["fire-danger", "time"] and skills == sorted(curation + ["ingest", "lint"])
+    if mode == "F": ok = ok and sorted(mcp) == ["fire-danger", "graphify", "time"] and skills == sorted(curation + ["ingest", "lint"]) \
         and not any("_prs" in t or "pr_impact" in t for t in d["tools"])
     sys.exit(0 if ok else 1)
 sys.exit("pas d événement init")' "$1" "$2"
@@ -280,9 +339,23 @@ sys.exit("pas d événement init")' "$1" "$2"
 verifie bare 0 || echec "mode bare"
 verifie A 0 || echec "mode A"
 verifie C 5 || echec "mode C"
-verifie D 7 || echec "mode D"
-WORKSHOP_HOME="$copie" verifie E 7 || echec "mode E"
-WORKSHOP_HOME="$copie" verifie F 14 || echec "mode F"
+verifie D 9 || echec "mode D"
+WORKSHOP_HOME="$copie" verifie E 9 || echec "mode E"
+WORKSHOP_HOME="$copie" verifie F 16 || echec "mode F"
+# Atelier 4, extension météo : deux outils d'Open-Meteo seulement (les 15 autres ne sont pas montrés).
+WORKSHOP_WEATHER=1 verifie D 11 || echec "WORKSHOP_WEATHER=1 workshop D : 11 outils attendus"
+sortie="$(WORKSHOP_WEATHER=1 timeout 120 workshop D -p hi --output-format stream-json --verbose < /dev/null 2>/dev/null || true)"
+printf '%s\n' "$sortie" | /opt/workshop/venv/bin/python -c '
+import json, sys
+for ligne in sys.stdin:
+    try: d = json.loads(ligne)
+    except ValueError: continue
+    if d.get("subtype") != "init": continue
+    meteo = sorted(t for t in d["tools"] if t.startswith("mcp__open-meteo__"))
+    connectes = [s["name"] for s in d["mcp_servers"] if s["status"] == "connected"]
+    print("météo :", meteo)
+    sys.exit(0 if meteo == ["mcp__open-meteo__geocoding", "mcp__open-meteo__weather_forecast"] and "open-meteo" in connectes else 1)
+sys.exit("pas d événement init")' || echec "WORKSHOP_WEATHER=1 : outils d'Open-Meteo inattendus"
 rm -rf "$copie"
 
 rm -f "$HOME/.workshop-key" "$HOME/.claude/settings.json"

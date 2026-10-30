@@ -25,7 +25,9 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F", "rag": "RAG"}
@@ -117,9 +119,21 @@ def read_test_file():
     return questions, "\n".join(rules) or RULES, meanings
 
 
-def with_live_data(question, expected):
+def answers_day(path):
+    """The day the answers were given, from replay's header ("# Answers — mode D — 2026-10-30 10:15"),
+    or None."""
+    try:
+        first = path.read_text(encoding="utf-8").split("\n", 1)[0]
+    except OSError:
+        return None
+    m = re.search(r"(\d{4}-\d\d-\d\d) \d\d:\d\d\s*$", first)
+    return m.group(1) if m else None
+
+
+def with_live_data(question, expected, day=None):
     """For a question about the level of the day (its expected answer names mcp/fire-danger.json):
-    the expected answer plus what the MCP tool gives today, read from that file."""
+    the expected answer plus what the MCP tool gave on the day of the answers (day, YYYY-MM-DD;
+    today if unknown), read from that file."""
     if "fire-danger.json" not in expected:
         return expected
     path = KIT / "mcp" / "fire-danger.json"
@@ -132,12 +146,25 @@ def with_live_data(question, expected):
     named = {k: v for k, v in territories.items()
              if re.split(r"\s+[—-]\s+", k)[0].lower() in question.lower()} or territories
     date = data.get("date") or "no date"
-    if not re.match(r"^\d{4}-\d\d-\d\d$", date):
-        date += ": the date is not filled in"
+    # The same rule as the tool (mcp/fire_danger_server.py): no level unless the file is dated the
+    # day of the answers, in Central European time like the tool.
+    day = day or datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
+    if date != day:
+        when = "the date is not filled in" if not re.match(r"^\d{4}-\d\d-\d\d$", date) else f"not {day}"
+        return (f"{expected} [What the MCP tool fire_danger gave on {day}, from mcp/fire-danger.json (date "
+                f"{date}: {when}): no level, because the file was not dated that day, so the right answer "
+                f"says the tool has no level today (and does not invent one).]")
     facts = []
     for name, entry in named.items():
+        # The same rule as the tool (mcp/fire_danger_server.py): a level only when status is "live".
+        status = str(entry.get("status") or "")
         level = str(entry.get("level") or "")
-        if not level or level.upper().startswith("TO BE COMPLETED"):
+        says = str(entry.get("source_says") or "")
+        if status in ("season-over", "no-level-shown"):
+            quote = f' (the source says: "{says}")' if says and not says.upper().startswith("TO BE COMPLETED") else ""
+            facts.append(f"{name}: no official level today, status {status}{quote}, so the right answer "
+                         f"says there is no level today and gives none")
+        elif status != "live" or not level or level.upper().startswith("TO BE COMPLETED"):
             facts.append(f"{name}: today's level is not filled in, so the right answer says the "
                          f"tool has no level today (and does not invent one)")
         else:
@@ -804,7 +831,8 @@ def main():
     meaning = meanings.get(mode.lower(), "")
     no_expected = "(no expected answer in test-questions.md)"
     # Q8 (the level of the day): the expected answer gets what the MCP tool gives today.
-    expected = {n: with_live_data(q, e) for n, (q, e) in questions.items()}
+    day = answers_day(path)
+    expected = {n: with_live_data(q, e, day) for n, (q, e) in questions.items()}
     pool = ThreadPoolExecutor(max_workers=4)
     jobs = {s[0]: pool.submit(ask_judge, key, rules, mode, meaning, s[0], s[1], expected[s[0]],
                               s[2], s[4]) for s in to_judge}

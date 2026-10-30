@@ -5,7 +5,7 @@
 #   workshop A      + system prompt (AGENTS.md)
 #   workshop B      + everything in the context from the start: summaries/ and corpus/
 #   workshop C      system prompt + file search + skills (nothing preloaded)
-#   workshop D      C + a live tool through MCP (today's fire danger level)
+#   workshop D      C + live tools through MCP (today's fire danger level; the time)
 #   workshop E      D + the wiki (wiki/), read first: the complete chatbot (after wiki-start)
 #   workshop F      E + the wiki as a knowledge graph (graphify), queried through MCP tools
 #
@@ -18,6 +18,9 @@
 #
 # Engine: Claude Code, or OpenCode after `workshop-login --engine opencode` (the same modes).
 # For one command only: WORKSHOP_ENGINE=opencode workshop C
+#
+# Workshop 4, to go further (modes D, E, F): WORKSHOP_WEATHER=1 workshop D adds a weather tool
+# (Open-Meteo); FIRE_DANGER_RECORDED=1 workshop D adds a past day of fire danger (never today).
 set -euo pipefail
 
 KIT="${WORKSHOP_HOME:-$HOME/workshop}"
@@ -116,7 +119,7 @@ case "$mode" in
     ;;
 esac
 
-# All modes: only the kit's MCP server can be loaded, and only in D and E. Permission mode
+# All modes: only the kit's MCP servers (.mcp.json) can be loaded, and only in D, E and F. Permission mode
 # "manual" (not the default "auto"): Claude Code asks you before it writes a file. The auto and
 # bypass modes are switched off, so a permission prompt cannot offer "switch to auto mode".
 settings='{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}}'
@@ -177,9 +180,10 @@ case "$mode" in
            --append-system-prompt "$knowledge")
     ;;
   D|d)
-    # C + the MCP server of the kit: a deterministic tool that reads live data.
+    # C + the MCP servers of the kit: deterministic tools that read live data (fire-danger, ours)
+    # and give the time (time, the official reference server, installed in the image).
     cd "$KIT"
-    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger"
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger" "mcp__time"
            --mcp-config "$KIT/.mcp.json" --append-system-prompt "$knowledge")
     ;;
   E|e)
@@ -189,7 +193,7 @@ case "$mode" in
       echo "No wiki yet. First type: wiki-start" >&2
       exit 1
     fi
-    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger"
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger" "mcp__time"
            --mcp-config "$KIT/.mcp.json"
            --append-system-prompt "To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its source. If the wiki is not enough, search the sources. $knowledge")
     ;;
@@ -208,13 +212,13 @@ config = json.load(open(sys.argv[1], encoding="utf-8"))
 config["mcpServers"]["graphify"] = {"command": sys.argv[2], "args": [sys.argv[3]]}
 print(json.dumps(config, indent=2))
 PY
-    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger" "mcp__graphify"
+    args+=(--tools "Read,Bash,Edit,Write,Skill" --allowedTools "${read_only[@]}" "mcp__fire-danger" "mcp__time" "mcp__graphify"
            --disallowedTools "mcp__graphify__list_prs" "mcp__graphify__get_pr_impact" "mcp__graphify__triage_prs"
            --mcp-config "$RUN_DIR/mcp-f.json"
            --append-system-prompt "The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, get_neighbors, shortest_path): each node is a concept, an organisation, a rule or a page of the wiki, with the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the sources. $knowledge")
     ;;
   -h|--help|help)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
   *)
@@ -222,6 +226,29 @@ PY
     exit 1
     ;;
 esac
+
+# Workshop 4, extension: WORKSHOP_WEATHER=1 adds the Open-Meteo server (.mcp.weather.json, installed
+# in the image), reduced to two tools: the 15 others are not even shown to the model (their
+# descriptions alone are about 100,000 characters). The same list as in workshop-opencode.
+if [[ "${WORKSHOP_WEATHER:-}" == 1 ]]; then
+  case "$mode" in
+    D|d|E|e|F|f)
+      hidden=()
+      for t in weather_archive air_quality marine_weather elevation flood_forecast dwd_icon_forecast gfs_forecast \
+               meteofrance_forecast ecmwf_forecast jma_forecast metno_forecast gem_forecast seasonal_forecast \
+               climate_projection ensemble_forecast; do
+        hidden+=("mcp__open-meteo__$t")
+      done
+      args+=(--mcp-config "$KIT/.mcp.weather.json"
+             --allowedTools "mcp__open-meteo__weather_forecast" "mcp__open-meteo__geocoding"
+             --disallowedTools "${hidden[@]}")
+      ;;
+    *)
+      echo "WORKSHOP_WEATHER=1 works with modes D, E and F only." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 # Banner, except when a question is asked directly (-p): the output must stay clean.
 if [[ " $* " != *" -p "* && " $* " != *" --print "* ]]; then

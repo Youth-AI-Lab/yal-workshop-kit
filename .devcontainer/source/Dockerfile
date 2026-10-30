@@ -49,6 +49,43 @@ RUN python3 -m venv /opt/workshop/venv \
     && rm -rf /opt/workshop/claude-code-playground/.git \
     && chmod -R a+rX /opt/workshop
 
+# Serveur MCP Time (atelier 4) : serveur de référence officiel (modelcontextprotocol/servers), sans
+# réseau, dans son propre environnement pour ne pas déplacer la version de mcp du serveur du kit.
+# Toutes les dépendances sont figées et vérifiées par leur empreinte (mcp-time.txt, produit par
+# `uv pip compile --universal --generate-hashes` à partir de mcp-server-time==2026.10.28).
+COPY .devcontainer/source/mcp-time.txt /tmp/mcp-time.txt
+RUN python3 -m venv /opt/workshop/mcp-time \
+    && /opt/workshop/mcp-time/bin/pip install --no-cache-dir -q --no-deps --require-hashes -r /tmp/mcp-time.txt \
+    && /opt/workshop/mcp-time/bin/pip check \
+    && rm /tmp/mcp-time.txt \
+    && chmod -R a+rX /opt/workshop/mcp-time
+
+# Serveur MCP Open-Meteo (atelier 4, extension : WORKSHOP_WEATHER=1 workshop D) : serveur
+# communautaire (github.com/cmer81/open-meteo-mcp, MIT), construit depuis son tag v2.5.5 (commit
+# vérifié) avec son package-lock.json (npm ci : chaque paquet vérifié par son empreinte), sans les
+# scripts d'installation des dépendances. Node 24 LTS, archive officielle vérifiée par sa somme
+# SHA-256 écrite ici ; on ne garde que le binaire node (npm, corepack et les en-têtes ne servent
+# qu'à la construction). Le modèle ne voit que 2 des 17 outils (workshop, workshop-opencode).
+RUN set -eu; NODE=v24.22.2; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) a=x64; sum=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75 ;; \
+      arm64) a=arm64; sum=eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8 ;; \
+      *) exit 1 ;; esac; \
+    curl -fsSL "https://nodejs.org/dist/$NODE/node-$NODE-linux-$a.tar.xz" -o /tmp/node.tar.xz; \
+    echo "$sum  /tmp/node.tar.xz" | sha256sum -c -; \
+    mkdir /tmp/node && tar -xJf /tmp/node.tar.xz -C /tmp/node --strip-components=1; \
+    install -D -m 755 /tmp/node/bin/node /opt/workshop/node/bin/node; \
+    git clone -q --branch v2.5.5 --depth 1 https://github.com/cmer81/open-meteo-mcp /opt/workshop/open-meteo-mcp; \
+    cd /opt/workshop/open-meteo-mcp; \
+    [ "$(git rev-parse HEAD)" = 7e8a8217f29e5180763f93a253123c9e59e4ad8b ]; \
+    PATH="/tmp/node/bin:$PATH"; export npm_config_cache=/tmp/npm-cache; \
+    npm ci --ignore-scripts --no-audit --no-fund --loglevel=error; \
+    ./node_modules/.bin/tsc; \
+    npm prune --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error; \
+    rm -rf .git src tests evals scripts /tmp/node /tmp/node.tar.xz /tmp/npm-cache /root/.npm; \
+    [ "$(/opt/workshop/node/bin/node -p 'require("./package.json").version')" = 2.5.5 ]; \
+    chmod -R a+rX /opt/workshop/node /opt/workshop/open-meteo-mcp
+
 # graphify (bloc F) ne doit jamais installer ni rafraîchir sa skill dans ~/.claude : elle
 # s'ajouterait à tous les modes.
 ENV GRAPHIFY_NO_AUTO_REFRESH=1

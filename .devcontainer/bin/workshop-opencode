@@ -79,6 +79,8 @@ KIT = Path(os.environ.get("WORKSHOP_HOME") or Path.home() / "workshop")
 BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-bare")
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
+KIT_SERVERS = ("fire-danger", "time")          # the kit's MCP servers, allowed without asking (D, E, F)
+WEATHER_TOOLS = ("weather_forecast", "geocoding")   # WORKSHOP_WEATHER=1: the only Open-Meteo tools shown
 KEY_FILE = Path.home() / ".workshop-key"
 SETTINGS_FILE = Path.home() / ".workshop-opencode.json"
 
@@ -310,16 +312,37 @@ def tools_of(mode):
         # path: if a person approves a folder outside the kit, grep could still find it. Never approve one.)
         perms += [rule("read", "*workshop-key*", "deny")]
     if mode in ("D", "E", "F"):
-        # The kit's MCP server, as described in .mcp.json for Claude Code.
+        # The kit's MCP servers, as described in .mcp.json for Claude Code (fire-danger and time), so
+        # both engines get the same tools.
         try:
-            server = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["fire-danger"]
-        except (OSError, ValueError, KeyError):
+            servers = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]
+            servers["fire-danger"]["command"]
+        except (OSError, ValueError, KeyError, TypeError):
             fail(f"The MCP server of the kit is not described in {KIT / '.mcp.json'}. Ask the facilitator.")
-        command = [server["command"]] + [str(KIT / a) if not os.path.isabs(a) and (KIT / a).exists() else a
-                                         for a in server.get("args", [])]
-        # codemode off: the tools are offered to the model directly, not behind an "execute" tool.
-        mcp["fire-danger"] = {"type": "local", "command": command, "codemode": False}
-        perms += [rule("fire-danger_*", "*", "allow")]
+        if os.environ.get("WORKSHOP_WEATHER") == "1":
+            # Workshop 4, extension: the Open-Meteo server, reduced to two tools as in `workshop`.
+            try:
+                servers.update(json.loads((KIT / ".mcp.weather.json").read_text(encoding="utf-8"))["mcpServers"])
+            except (OSError, ValueError, KeyError, TypeError):
+                fail(f"The weather server is not described in {KIT / '.mcp.weather.json'}. Ask the facilitator.")
+        for name, server in servers.items():
+            if not isinstance(server, dict) or not server.get("command"):
+                fail(f"The MCP server {name!r} of {KIT / '.mcp.json'} has no command: only local servers work here.")
+            command = [server["command"]] + [str(KIT / a) if not os.path.isabs(a) and (KIT / a).exists() else a
+                                             for a in server.get("args", [])]
+            # codemode off: the tools are offered to the model directly, not behind an "execute" tool.
+            mcp[name] = {"type": "local", "command": command, "codemode": False}
+            if server.get("env"):
+                mcp[name]["environment"] = server["env"]
+            if name in KIT_SERVERS:
+                # The same tools as `workshop` allows without asking (mcp__fire-danger, mcp__time).
+                perms += [rule(f"{name}_*", "*", "allow")]
+            elif name == "open-meteo":
+                # Only these two are sent to the model; the 15 others stay denied (not even shown).
+                perms += [rule(f"open-meteo_{t}", "*", "allow") for t in WEATHER_TOOLS]
+            else:
+                # A server someone added to .mcp.json: each call is asked, as with Claude Code.
+                perms += [rule(f"{name}_*", "*", "ask")]
     if mode == "F":
         mcp["graphify"] = {"type": "local", "codemode": False,
                            "command": [GRAPHIFY_MCP, str(KIT / "wiki" / "graphify-out" / "graph.json")]}
