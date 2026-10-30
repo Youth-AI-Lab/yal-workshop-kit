@@ -197,8 +197,8 @@ The workshops show one way to build a chatbot. Other guides of the project show 
   OpenCode, and five ways to pay for the model.
 - [Local AI guide](https://github.com/Youth-AI-Lab/yal-local-ai-guide): a chatbot that runs on a
   computer of your organisation, so that the data does not leave it.
-- [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide): this kit and the
-  guides on your own computer, without a Codespace.
+- [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide): the workshops and
+  the guides on your own computer, without a Codespace.
 - [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide): an assistant that remembers
   you and helps you prepare your sessions. It is for you, never for use with young people.
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).

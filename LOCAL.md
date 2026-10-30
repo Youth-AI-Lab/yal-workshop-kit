@@ -11,6 +11,6 @@ same image, the same commands (`workshop`, `replay`, `openwebui`…), the same r
 you want to keep your work without the 30-day deletion.
 
 **How:** follow the guide
-**[The workshop kit and the guides on your own computer](https://github.com/Youth-AI-Lab/yal-devcontainer-guide)**:
+**[The workshops and the guides on your own computer](https://github.com/Youth-AI-Lab/yal-devcontainer-guide)**:
 Docker and VS Code on Linux, macOS or Windows, then this kit opened in its container. Once it is
 open, everything is as in a Codespace: `workshop-login`, then the [README](README.md).
