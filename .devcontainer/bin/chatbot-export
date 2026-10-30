@@ -8,7 +8,7 @@ The file holds what goes into the two boxes of every chatbot tool:
   - Instructions: your AGENTS.md (workshop 1), without the comments;
   - Knowledge: your summaries (workshops 2 and 3), your wiki pages (workshop 5) and the readable
     copies of the official documents (corpus/text/).
-To download it: right-click on the file in the file list, then "Download".
+To download it: right-click on the file in the file list, then "Download...".
 """
 
 import argparse
@@ -40,9 +40,18 @@ Exported from the Youth AI Lab workshop on {date}.
 - **Claude Project** (claude.ai): create a project, paste `instructions.md` into the project
   instructions, and add the files in `knowledge/` to the project knowledge.
 - **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
-  instructions, and upload the files in `knowledge/` as its knowledge.
-- **Open WebUI** (your own server): create a knowledge base with the files in `knowledge/`,
-  then a model with `instructions.md` as its system prompt and this knowledge attached.
+  instructions, and upload the files in `knowledge/` as its knowledge. On personal accounts, Google
+  makes Gems read-only on 2026-11-17 and removes them on 2026-12-17.
+- **Open WebUI** (your own server): `openwebui import` takes this file as it is, see
+  https://github.com/Youth-AI-Lab/yal-openwebui-guide#step-2---import-a-chatbot. By hand: create a
+  knowledge base with the files in `knowledge/`, then a model with `instructions.md` as its system
+  prompt and this knowledge attached.
+
+## Before young people use it
+
+claude.ai is for adults only (18+): young people cannot have their own account. Read the rules of
+the tool you choose, and https://github.com/Youth-AI-Lab/yal-openwebui-guide#the-participants-data
+before anyone types in a chatbot of yours.
 
 ## Before you trust it
 
@@ -107,7 +116,7 @@ def main():
         print("Warning: AGENTS.md has no text under its headings yet (workshop 1): the instructions are empty.")
     if not counts["wiki"]:
         print("Note: no wiki pages (they come with workshop 5: wiki-start).")
-    print(f'To download it: right-click on {out.name} in the file list, then "Download".')
+    print(f'To download it: right-click on {out.name} in the file list, then "Download...".')
 
 
 if __name__ == "__main__":

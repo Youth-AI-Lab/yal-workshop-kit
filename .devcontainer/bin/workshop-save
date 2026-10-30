@@ -5,7 +5,7 @@
     workshop-save --name "Team Fox"    writes team-fox.zip
 
 Each workshop starts in a new Codespace. Before you close this one, save your work, download
-the file (right-click on it in the file list, then "Download"), and next time type:
+the file (right-click on it in the file list, then "Download..."), and next time type:
     workshop-start <number of the workshop> --from my-work.zip
 
 What goes in the file: only what you made or changed. Your AGENTS.md, your other instructions
@@ -372,7 +372,7 @@ def main():
                   f"  If you forgot to bring it back with workshop-start, type:\n"
                   f"    workshop-start <number of the workshop> --from {kept}\n"
                   f"  then workshop-save again.")
-    print(f'To keep it: right-click on {out.name} in the file list, then "Download".')
+    print(f'To keep it: right-click on {out.name} in the file list, then "Download...".')
     print(f"Next workshop, in a new Codespace: drag {out.name} into the file list, then type:")
     print(f"  workshop-start <number of the workshop> --from {out.name}")
 

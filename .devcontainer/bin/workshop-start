@@ -42,7 +42,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 MARKER = ".workshop/last-start.json"   # fingerprint of the work right after the last workshop-start
 MAX_RESTORE = 400 * 1024 * 1024        # a save is a few MB; refuse anything absurd
 OPENWEBUI_LOG = ".workshop/openwebui-start.log"   # workshop 2: Open WebUI started in the background
-FIRST_COMMAND = {1: "replay bare", 2: "workshop B", 3: "workshop C", 4: "workshop D", 5: "workshop E"}
+FIRST_COMMAND = {1: "replay bare", 2: "workshop B", 3: "workshop C", 4: "workshop D", 5: "open wiki/index.md"}
 EXAMPLE_AGENTS = "examples/AGENTS.feurisson.md"
 SECTION = "# Added during the session"   # heading used by corpus-add and the summarize skill
 HOW_TO = ("Type the number of today's workshop (1 to 5), for example: workshop-start 2\n"
@@ -513,14 +513,13 @@ def main():
     print(f"\nAlmost ready for workshop {n}: see the lines with ! above." if problems else f"\nReady for workshop {n}.")
     if n == 2:
         print("\n".join(start_openwebui()))
-    if n == 5:
-        print("The wiki is in wiki/: start with wiki/index.md.")
     page = open_page(n)
     if page:
         print(f"Today's page: {page.relative_to(KIT)} (Ctrl+Shift+V to read it as a page)")
     elif repo_workshop():
         print(f"! This repository is for workshop {repo_workshop()}. Workshop {n} has its own "
-              "repository, with its own Codespace link: see the README of the kit.")
+              "repository, with its own Codespace link: "
+              "https://github.com/Youth-AI-Lab/yal-workshop-kit#the-series")
     print(f"First command: {FIRST_COMMAND[n]}")
     if problems:
         sys.exit(1)

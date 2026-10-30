@@ -185,8 +185,7 @@ def docker(*args, capture=True):
 def check_docker():
     if not shutil.which("docker") or docker("info").returncode != 0:
         fail("Docker is not available here, and Open WebUI needs it.\n"
-             "In a Codespace, Docker starts with the Codespace: wait one minute and try again."
-             + ("" if CLASS else "\nOn the workshop server, Open WebUI is not available: ask the facilitator."))
+             "In a Codespace, Docker starts with the Codespace: wait one minute and try again.")
 
 
 def provider():
@@ -661,8 +660,9 @@ def cmd_start():
     model = start_container()
     api = OpenWebUI().login()
     files = knowledge_files()
-    print(f"Checking the workshop knowledge: {len(files)} files (same as mode B). "
-          "The first time, loading them takes 1 to 2 minutes.", flush=True)
+    if files:
+        print(f"Checking the workshop knowledge: {len(files)} files (same as mode B). "
+              "The first time, loading them takes 1 to 2 minutes.", flush=True)
     start = time.monotonic()
     # The default size and number of excerpts, even if openwebui sizes or top-k changed them: the
     # RAG demo and replay RAG are always measured the same way.
@@ -671,8 +671,9 @@ def cmd_start():
     knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
     if failed:
         fail("Some files could not be loaded (see above). Type openwebui start again.")
-    api = check_search(api, [knowledge])
-    print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
+    if files:   # workshop 1 has no knowledge yet: an empty base finds nothing, and that is normal
+        api = check_search(api, [knowledge])
+        print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
     api.save_model(rag_model(model, None, knowledge))
     hide_base_model(api, model)
     # No "What's new" window at the first visit: it would hide the chat.
@@ -1160,7 +1161,7 @@ def cmd_export():
             print(f"    Not in the file: its {' and '.join(left_out)} (after an import, add "
                   f"{'them' if len(left_out) > 1 else 'it'} again in Workspace -> Models).")
     print(f"\nTo keep them on your computer: in the file list, folder {folder.name}/, right-click on a")
-    print("file, then Download. The participants' accounts and conversations are not in these files.")
+    print("file, then Download... The participants' accounts and conversations are not in these files.")
     print("To rebuild a chatbot later, in a new Codespace for example: openwebui import <file>")
 
 
