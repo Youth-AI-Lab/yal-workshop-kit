@@ -194,6 +194,7 @@ If you got `Key OK`, a first conversation and `Ready for workshop …`, **everyt
 | `Ctrl+Shift+V` | in an open `.md` file | shows it as a readable page: titles, tables, lists (`Cmd+Shift+V` on a Mac) |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | terminal | copy / paste in the terminal, also inside a conversation (`Cmd+C` / `Cmd+V` on a Mac) |
 | `Ctrl+C` twice | in a conversation | leaves the conversation (all modes) |
+| `Ctrl+O` | in a conversation | unfolds the steps of an answer: files read, searches, tools (from workshop 3); `Ctrl+O` again to come back |
 
 The commands of the later workshops (`corpus-add`, `wiki-start`, `wiki-graph`, `wiki-explore`,
 `chatbot-export`, `/context`, `/mcp`) are explained in their pages. The **mode** letters are not
