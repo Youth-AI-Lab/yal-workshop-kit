@@ -28,7 +28,8 @@ The page of each workshop is its `README.md`.
 You work in a **GitHub Codespace**: a text editor (VS Code) running in your browser, on a
 computer of GitHub. Everything is already installed. You need **one free GitHub account per
 pair**. The facilitator gives each pair an **API key**: a long password that lets your
-Codespace use Anthropic's model. Each key has a spending limit and only works for a short time.
+Codespace use Anthropic's model. The facilitator caps what the keys can spend, and each key only
+works for a short time.
 
 The chatbot runs in **Claude Code**, a program that lets a model work in a folder of files. We
 use it because it **shows everything**: what the model reads, searches and does.
@@ -42,8 +43,8 @@ use it because it **shows everything**: what the model reads, searches and does.
 > [OpenCode guide](https://github.com/Youth-AI-Lab/yal-opencode-guide), and
 > [Part 2 - What OpenCode does, compared with Claude Code](https://github.com/Youth-AI-Lab/yal-opencode-guide#part-2---what-opencode-does-compared-with-claude-code).
 
-> ℹ️ **No Codespace?** (blocked network, used-up quota) The same kit opens on your own computer,
-> with Docker and VS Code: see the
+> ℹ️ **No Codespace?** (blocked network, used-up quota) The same repository opens on your own
+> computer, with Docker and VS Code: see the
 > [dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide). For a model that
 > runs on a computer of your organisation: the
 > [local AI guide](https://github.com/Youth-AI-Lab/yal-local-ai-guide).
@@ -135,7 +136,7 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
    You should see this line, then the screen of Claude Code:
 
    ```
-   Workshop — mode bare. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E
+   Workshop — mode bare. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F
    ```
 
 2. **The first time**, a few screens come one after the other. None of them is a problem:
@@ -155,10 +156,12 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
    - it reminds you that **Claude can make mistakes**: press **Enter**;
    - it says **"Welcome to Claude Code for VS Code"**: press **Enter** to continue.
 
-   It asks once more to trust a folder the first time you start mode A (the kit folder):
-   choose `Yes, I trust this folder` again. If Claude Code closed, type the same command again.
+   It asks once more to trust a folder the first time you start a mode other than `bare`: these
+   modes work in the folder of the workshop. Choose `Yes, I trust this folder` again. If Claude
+   Code closed, type the same command again.
 3. **Look above the input box**: a line like `Clear 0% of context 0 / 200k` shows how full the
-   **context window** is (200k = 200,000 tokens). This is **the gauge**. Keep an eye on it.
+   **context window** is (200k = 200,000 tokens; a token is a piece of a word). This is **the
+   gauge**. Keep an eye on it.
 4. **Type a first message**, for example `Hello`, and press Enter. Read the answer, and look at
    the gauge again:
 
@@ -200,7 +203,7 @@ If you got `Key OK`, a first conversation and `Ready for workshop …`, **everyt
 |---|---|---|
 | `workshop-login` | terminal | saves the key of your pair and tests it |
 | `workshop-start <n>` | terminal | gets the Codespace ready for workshop n, and opens its page |
-| `workshop <mode>` | terminal | starts a conversation with the chatbot in one **mode**: `bare`, `A`, `B`, `C`, `D` or `E` |
+| `workshop <mode>` | terminal | starts a conversation with the chatbot in one **mode**: `bare`, `A`, `B`, `C`, `D`, `E` or `F` |
 | `replay <mode>` | terminal | asks all your test questions in this mode, one new conversation per question, and writes the answers in `answers/` |
 | `replay <mode> 8 11` | terminal | the same, only for questions 8 and 11 |
 | `replay A --agents examples/AGENTS.liar.md` | terminal | the same, with other instructions than `AGENTS.md` (workshop 1) |
@@ -235,13 +238,14 @@ Each word is explained again the first time a workshop uses it.
 
 | Word | What it means here |
 |---|---|
+| **Kit** | The repository with everything the five workshops use, in one place: [yal-workshop-kit](https://github.com/Youth-AI-Lab/yal-workshop-kit). Each workshop has its own repository, with only what it needs. |
 | **Model** | The program that writes the answers. Here: Claude Sonnet, the same for every pair. |
 | **Context** (or **context window**) | Everything the model reads before it answers. It has a maximum size: here, 200,000 tokens. |
 | **Token** | The unit used to measure text for a model: a piece of a word. On average, 4 characters of English text. |
 | **System prompt** | Instructions the model reads at the start of every conversation: who it is, its rules. |
 | **Judge** | Another model, smaller, that scores an answer with the same rules as you. It can be wrong too. |
 | **Corpus** | The collection of official documents the chatbot can use. |
-| **Summary** | A short text in English about one document, written by the model and checked by a person. |
+| **Summary** | A short text in English about one document, written by the model, then checked against the document (by a person for those marked human-reviewed). |
 | **RAG** | *Retrieval-Augmented Generation*: a search engine picks pieces of documents, and only these pieces go to the model. |
 | **Skill** | A procedure written in plain English (a file `SKILL.md`): the model opens it only when your request matches its description, then follows its steps. |
 | **MCP** | *Model Context Protocol*: a standard way to give a tool to a model (here, a tool that reads live data). |
@@ -309,8 +313,9 @@ your other terminal. If time is short, the facilitator may ask you to replay onl
 questions, for example `replay A 7 9`.
 
 **`Docker is not available here, and Open WebUI needs it.`** - In a Codespace, Docker starts a
-few seconds after the Codespace: wait one minute and type `openwebui start` again. On the
-workshop server (not a Codespace), Open WebUI is not available: ask the facilitator.
+few seconds after the Codespace: wait one minute and type `openwebui start` again. On your own
+computer, see the
+[dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide#openwebui-says-that-docker-is-not-available).
 
 **`Open WebUI is not running, or not ready yet.`**, or the Open WebUI page does not answer. - It
 stops with the Codespace. Type `openwebui start` again: your knowledge and your chatbots are kept.

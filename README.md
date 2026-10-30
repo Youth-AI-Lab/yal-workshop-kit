@@ -43,7 +43,7 @@ and any document it was given. The model knows nothing else about your situation
 | # | Workshop | Question of the day | What your pair leaves with |
 |---|---|---|---|
 | 1 | [Instructions and knowledge](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your question 12, columns Bare and A |
-| 2 | [When knowledge overflows: everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
+| 2 | [Everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
 | 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
 | 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
@@ -95,8 +95,9 @@ at **what it read**, and compare with the source.
 ### How this connects to WikiYouthBot
 
 In the WikiYouthBot activity, the chatbot is built in a tool with **two boxes**: *Instructions*
-and *Knowledge*. You can already do it today with **Open WebUI**, a chat tool that your
-organisation runs for a group: follow the [Open WebUI guide](https://github.com/Youth-AI-Lab/yal-openwebui-guide). The series shows what
+and *Knowledge*. You can already do it today with **Open WebUI**, a free chat tool that you start
+yourself: in your Codespace with `openwebui start`, or for a group with the
+[Open WebUI guide](https://github.com/Youth-AI-Lab/yal-openwebui-guide). The series shows what
 happens behind these two boxes.
 
 | WikiYouthBot step | What the group does | Box | In the series |
@@ -115,7 +116,7 @@ You cannot see from the outside how a box is used. **That is why the test questi
 | Folder | What it holds | Who writes it |
 |---|---|---|
 | `corpus/` | **20 official documents** (web pages, PDF, Word), exactly as they were retrieved, never modified. A readable copy of each one is in `corpus/text/`. Start with `corpus/index.md`. Their publishers are credited in `corpus/SOURCES.md`. | The authorities |
-| `summaries/` | **One short summary in English per document.** Start with `summaries/index.md`: it says which ones a person has checked ("human-reviewed"). | The model; then a person checks it |
+| `summaries/` | **Short summaries in English**: 17 summaries for 15 of the 20 documents (some documents have two, some have none). Start with `summaries/index.md`: it says which ones a person has checked ("human-reviewed"). | The model; then a person checks it |
 | `inbox/` | A document that is **not in the corpus yet**. You add it in workshop 3. | - |
 | `wiki/` | Appears in workshop 5: pages by topic, each fact with a footnote to its source. | The model |
 
@@ -152,7 +153,11 @@ So "I don't know" gets **2** when the answer exists nowhere (question 7), and **
 exists somewhere the chatbot cannot reach yet (in a document or through a tool).
 
 There are 12 questions: 11 ready to use, and **question 12, which you write** about your
-territory in workshop 1. The total of a column is out of **24**.
+territory in workshop 1. The total of a column is out of **24** (22 while question 12 is empty).
+
+Compare two totals only when both columns have all their questions scored. From workshop 3 on,
+you score only some questions: compare these rows, not the totals. `replay` still asks all the
+questions: read the other answers too, a change can make one of them worse.
 
 > ⚠️ **Important.** **If an answer says "Warning: the model looked at the test material", score it 0.** The model
 > opened `test-questions.md`, `answers/` or `examples/`: it may have copied the expected answer.
@@ -169,7 +174,7 @@ Each workshop starts in a **new Codespace**: a Codespace that you do not use is 
 days, and the free quota of GitHub is limited. Your work travels in a `.zip` file.
 
 1. **At the end of a workshop**, type `workshop-save`, then right-click on `my-work.zip` in the
-   file list, then **"Download"**.
+   file list, then **"Download..."**.
 2. **At the next workshop**, open a new Codespace from the repository of that workshop
    ([SETUP.md](SETUP.md), steps 1 to 5), drag `my-work.zip` into the file list, then type, with
    the number of the workshop:
@@ -181,6 +186,12 @@ days, and the free quota of GitHub is limited. Your work travels in a `.zip` fil
    It saves first what is already there, puts your files back, and adds what the earlier
    workshops made, the kit's example if you have none (for example Feurisson as `AGENTS.md`).
 
+> ⚠️ **Important.** **Bring the newest save.** If you downloaded `my-work.zip` more than once,
+> your browser may have named the newest one `my-work (1).zip`, and `my-work.zip` is then an
+> older save. Drag the newest one, and type its exact name between quotes, for example
+> `workshop-start 3 --from "my-work (1).zip"`. Check the date in the line
+> `Restored from … (saved on …)`.
+
 > ℹ️ **Note.** **Free quota**: GitHub Free gives 120 core-hours a month, which is **60 hours** on
 > the 2-core machine of the kit, and 15 GB-months of storage. Delete your Codespaces at
 > **https://github.com/codespaces** once your work is downloaded.
@@ -191,16 +202,16 @@ days, and the free quota of GitHub is limited. Your work travels in a `.zip` fil
 
 The workshops show one way to build a chatbot. Other guides of the project show others:
 
-- [Open WebUI guide](https://github.com/Youth-AI-Lab/yal-openwebui-guide): one chatbot per topic,
-  activity or project, shared with a group during a session.
-- [OpenCode guide](https://github.com/Youth-AI-Lab/yal-opencode-guide): a chatbot of your own with
-  OpenCode, and five ways to pay for the model.
-- [Local AI guide](https://github.com/Youth-AI-Lab/yal-local-ai-guide): a chatbot that runs on a
-  computer of your organisation, so that the data does not leave it.
-- [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide): the workshops and
-  the guides on your own computer, without a Codespace.
-- [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide): an assistant that remembers
-  you and helps you prepare your sessions. It is for you, never for use with young people.
+| You want to... | Guide | Best after | For whom |
+|---|---|---|---|
+| Build one chatbot per topic, activity or project, and share it with a group during a session | [Open WebUI guide](https://github.com/Youth-AI-Lab/yal-openwebui-guide) | workshop 2 (instructions and knowledge) | you, then the young people of your group |
+| Keep the questions of your group on a computer of your organisation | [Local AI guide](https://github.com/Youth-AI-Lab/yal-local-ai-guide) | workshop 2, with the Open WebUI guide | your organisation; parts 1 to 3 and the start of part 6 need someone confident with a terminal |
+| Build a chatbot of your own with OpenCode, and choose how you pay for the model | [OpenCode guide](https://github.com/Youth-AI-Lab/yal-opencode-guide) | workshop 4 (instructions, documents, skills and a tool) | you, the adult: never for use with young people |
+| Get help to prepare your sessions, from an assistant that remembers you | [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide) | workshop 4 (memory, skills and a tool) | you, the adult: never for use with young people |
+| Run the workshops and the guides on your own computer, without a Codespace | [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide) | any workshop, before you start it | you, or the colleague who helps you with your computer |
+
+And the two standards the series uses:
+
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).
 - [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) (Google
   Cloud, file `okf/SPEC.md`): the format of the headers of our documents, summaries and wiki

@@ -11,12 +11,15 @@ template `summaries/00-template.md`. You never change `corpus/`: it holds the fu
 ## Steps
 
 1. Ask for the **source** if it is not given: full reference and date. Without a source, you
-   still write the document, but you put `Source: TO BE COMPLETED` on the second line and you
-   tell the user.
+   still write the document, but you put `TO BE COMPLETED` in place of the source in its header
+   (`resource:` and the `sources:` entry), and you tell the user.
 2. Rephrase in short sentences, one fact per sentence. Add no fact the user did not give.
    Do not complete it with your own knowledge.
 3. Choose a file name: `NN-short-topic.md`, NN between 10 and 89 (0x and 9x are reserved).
-4. Write the file, then show it to the user for proofreading.
+4. Write the file with `status: draft` and no `verified` entry. Add its line to
+   `summaries/index.md`, under a `# Added during the session` heading (create it if needed):
+   `* [<title>](NN-short-topic.md) - <description> (draft, not verified)`. Then show it to the
+   user for proofreading.
 5. If the document contradicts an existing summary of `summaries/` or a text of `corpus/`, say so explicitly and offer
    to update or delete the old one. Do not decide alone.
 

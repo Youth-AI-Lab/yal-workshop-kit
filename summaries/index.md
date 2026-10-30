@@ -1,9 +1,14 @@
-# Verified summaries, one per source
+# Summaries of the official documents
 
-Short summaries in English, one per official document of `../corpus/`. Each one starts with an
-OKF header: its source, who wrote it, and who verified it (`verified`: a `human:` entry means a
-person checked it against the source). Rules: one fact per sentence, every figure traceable to
-the source, no figure without a source. New summary: copy `00-template.md`.
+Short summaries in English of the official documents of `../corpus/`: 17 summaries for 15 of the
+20 documents (documents 20 and 30 have two each; documents 12, 33, 42, 43 and 73 have none). Each
+one starts with an OKF header: its source, who wrote it, and who verified it (`verified`: a
+`human:` entry means a person checked it against the source). At the end of each line below:
+"human-reviewed" means a person checked it; "machine-confirmed" means only programs and AI models
+checked it (their quotes checked against the source by a program, then a cross-review by three
+AI models), not a person yet; "draft, not verified" means nobody checked it yet. Rules: one
+fact per sentence, every figure traceable to the source, no figure without a source. New summary:
+copy `00-template.md`.
 
 # European Union
 

@@ -2,7 +2,8 @@
 
 Score each answer in `answers/` from **0 to 2** (the rules are in `test-questions.md`, "How to
 score"). Type the number in the empty space of the right column, save (`Ctrl+S`), and add up
-each column in the last row.
+each column in the last row. Compare two totals only when both columns have all their questions
+scored: from workshop 3 on, you score only some questions, so compare their rows.
 
 |  # | Question (short)                  | Bare |  A   |  B   |  C   |  D   |  E   |
 |----|-----------------------------------|------|------|------|------|------|------|

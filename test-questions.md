@@ -46,7 +46,9 @@ example a question about your territory:
 
 **To write a score**: open `scores.md` (not this file). It has one short line per question and
 one column per mode: Bare, A, B, C, D, E. Type the number between two `|`, then save (`Ctrl+S`).
-Add up each column in the row **Total /24**.
+Add up each column in the row **Total /24** (22 while question 12 is empty). Compare two totals
+only when both columns have all their questions scored: from workshop 3 on, you score only some
+questions, so compare their rows.
 
 ## The questions
 
@@ -92,6 +94,7 @@ until you write it. `replay` skips it while its question cell is empty.
 
 > ⚠️ **Important.** Do not change question 12 once you have scored it: write a new question
 > only if you also clear its row in `scores.md`.
+
 Each answer in `answers/` shows the size of the context used: the same score at a lower cost is
 a result.
 
