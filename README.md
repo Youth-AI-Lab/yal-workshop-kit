@@ -50,7 +50,8 @@ and any document it was given. The model knows nothing else about your situation
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
-[From one workshop to the next](#from-one-workshop-to-the-next)).
+[From one workshop to the next](#from-one-workshop-to-the-next)). The slides, their PDF and the facilitator's
+sheets are on [the site of the series](https://youth-ai-lab.github.io/yal-workshop/).
 
 What enters the context, workshop by workshop:
 
