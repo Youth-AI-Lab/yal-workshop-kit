@@ -65,7 +65,7 @@ Do these steps **at the start of each workshop**, in a new Codespace. They take 
 4. **Wait about 2 minutes** while the Codespace is built.
 
 You should see VS Code in your browser: the **list of files** on the left (`AGENTS.md`,
-`README.md`, `corpus`, `summaries`…), and a **terminal** at the bottom of the screen. The
+`README.md`, `SETUP.md`…), and a **terminal** at the bottom of the screen. The
 terminal is where you type commands. If you don't see it, open the menu (☰) at the top left,
 then **"Terminal"**, then **"New Terminal"**.
 
