@@ -46,7 +46,7 @@ and any document it was given. The model knows nothing else about your situation
 | 2 | [When knowledge overflows: everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
 | 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
-| 5 | Organise what it knows (being written) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
+| 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
