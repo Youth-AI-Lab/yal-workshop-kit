@@ -1,9 +1,9 @@
 # Chatbot instructions
 
 <!-- WHAT THIS FILE IS
-     This file is the system prompt of your chatbot (level 1, block A of README.md). The model
+     This file is the system prompt of your chatbot (level 1, workshop 1 of README.md). The model
      reads it in full at the start of every conversation, before your first message. It plays
-     the role of the "Instructions" box of a Claude Project or a Gemini Gem in WikiYouthBot,
+     the role of the "Instructions" box of the chatbot in WikiYouthBot (in Open WebUI, for example),
      with the same sections.
      Claude Code only reads CLAUDE.md: CLAUDE.md imports this file (its line @AGENTS.md).
 
@@ -28,7 +28,7 @@
      Say also what it does with a question about another territory. -->
 
 ## Rules
-<!-- What it must ALWAYS do, or NEVER do. Don't skip this section: the next blocks are scored
+<!-- What it must ALWAYS do, or NEVER do. Don't skip this section: the next workshops are scored
      on it. Answer at least these questions:
      - What does it answer when it does not know? (e.g. "I don't know", and never invent)
      - What does it do when two sources disagree? (e.g. point out the contradiction)

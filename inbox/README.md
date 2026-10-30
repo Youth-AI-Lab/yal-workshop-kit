@@ -1,11 +1,11 @@
 # Inbox - documents not yet in the corpus
 
-> ℹ️ **Note.** This folder is used in **block C** of the workshop (see `README.md`, block C, part 3).
+> ℹ️ **Note.** This folder is used in **workshop 3** of the series (see its page in `workshops/`).
 
 ## What this folder is for
 
 The chatbot does **not know** the documents of this folder yet. They are not in `corpus/`, so
-the chatbot cannot read them, search them, or quote them. In block C, **you let one in
+the chatbot cannot read them, search them, or quote them. In workshop 3, **you let one in
 yourselves**:
 
 1. you add it to `corpus/`, with the command `corpus-add`;
@@ -57,7 +57,7 @@ happened:
 
 ## Step 2 - Summarise, check and validate
 
-Go on with **block C, part 3, step 2** of `README.md`: in `workshop C`, ask
+Go on with the next step of the page of **workshop 3**, in `workshops/`: in `workshop C`, ask
 `summarize corpus/80-benevento-aib-2026.pdf` (with your number).
 
 ## To go further: a document of your own territory

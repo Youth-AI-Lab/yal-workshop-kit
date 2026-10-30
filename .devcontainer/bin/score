@@ -423,8 +423,11 @@ def read_key():
 
 
 def parse_verdict(text):
-    """{"score": 0|1|2, "why": "..."} found anywhere in the reply, or None."""
+    """{"score": 0|1|2, "why": "..."} found anywhere in the reply, or None.
+    The last one wins: the judge sometimes corrects itself in the same reply
+    ({"score": 0, "why": "... per rules this is 1, not 0."} then {"score": 1, ...})."""
     decoder = json.JSONDecoder()
+    verdict = None
     for m in re.finditer(r"\{", text):
         try:
             obj, _ = decoder.raw_decode(text[m.start():])
@@ -445,8 +448,8 @@ def parse_verdict(text):
             why = why or "(no reason given)"
             if len(why) > 220:
                 why = why[:220].rsplit(" ", 1)[0] + " …"
-            return {"score": str(int(score)), "why": why}
-    return None
+            verdict = {"score": str(int(score)), "why": why}
+    return verdict
 
 
 def for_judge(answer):

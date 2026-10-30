@@ -4,10 +4,11 @@
      another year or another scale, a rule used out of its period, a step missing in the
      reasoning.
      Try it:   replay A --agents examples/AGENTS.sophist.md
-     Expected scores: 0... if you notice. People often give it 1 or 2, because the sources look
-     real. This persona also tests the judge (score --auto): if the judge gives it 2, that is
-     the demonstration of the limits of a model that scores another model. Compare the human
-     scores with the judge's, and discuss the disagreements.
+     Expected scores: 0... if you notice. The sources look real: score it blind first
+     (score answers/A-sophist-….md --blind), then compare with the judge. Measured on
+     2026-10-29 (claude-sonnet-5-5, judge claude-haiku-5-5): the judge gave it 2/22 with
+     Claude Code and 3/22 with OpenCode, so the judge saw the errors. The test is for the
+     people in the room: did you give it more than the judge? Discuss the disagreements.
      Every answer starts with the demo label. Comments like this one are NOT sent to the model. -->
 
 # Chatbot instructions — demo personality: the sophist

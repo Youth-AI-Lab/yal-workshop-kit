@@ -358,6 +358,31 @@ def prepare(n, save):
     return done, problems
 
 
+def repo_workshop():
+    """The number of the workshop this repository is for (its README starts with "# Workshop N -"),
+    or None (the whole kit)."""
+    readme = KIT / "README.md"
+    first = readme.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0] if readme.is_file() else ""
+    found = re.match(r"# Workshop (\d+) ", first)
+    return int(found.group(1)) if found else None
+
+
+def open_page(n):
+    """The page of workshop n, opened in VS Code when the code command is there (a Codespace
+    terminal): the README of the repository of this workshop. Returns its path, or None."""
+    if repo_workshop() != n:
+        return None
+    page = KIT / "README.md"
+    code = shutil.which("code")
+    if code:
+        try:
+            subprocess.run([code, str(page)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            pass  # the page is named on screen anyway
+    return page
+
+
 # Main ---------------------------------------------------------------------------------------
 
 def wrong_command(message):
@@ -427,6 +452,12 @@ def main():
               "second terminal (about 4 to 5 minutes the first time):\n  openwebui start && openwebui sizes")
     if n == 5:
         print("The wiki is in wiki/: start with wiki/index.md.")
+    page = open_page(n)
+    if page:
+        print(f"Today's page: {page.relative_to(KIT)} (Ctrl+Shift+V to read it as a page)")
+    elif repo_workshop():
+        print(f"! This repository is for workshop {repo_workshop()}. Workshop {n} has its own "
+              "repository, with its own Codespace link: see the README of the kit.")
     print(f"First command: {FIRST_COMMAND[n]}")
     if problems:
         sys.exit(1)

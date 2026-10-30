@@ -17,7 +17,8 @@ each column in the last row.
 |  9 | Best insurance (out of scope)     |      |      |      |      |      |      |
 | 10 | Outside the EU 2025 (two sources) |      |      |      |      |      |      |
 | 11 | Benevento unit 2026 (inbox)       |      |      |      |      |      |      |
-|    | **Total /22**                     |      |      |      |      |      |      |
+| 12 | Your territory                    |      |      |      |      |      |      |
+|    | **Total /24**                     |      |      |      |      |      |      |
 
 Example: a score of 1 for question 1 in mode Bare:
 

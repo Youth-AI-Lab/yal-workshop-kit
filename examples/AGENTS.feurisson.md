@@ -4,7 +4,10 @@
      of the young people of La Rochelle. The real Feurisson is written by them: this is only a
      model. Read it, take what you like, and write your own in AGENTS.md.
      The chatbot reads this file only if you copy it into AGENTS.md, or with:
-     replay A --agents examples/AGENTS.feurisson.md -->
+     replay A --agents examples/AGENTS.feurisson.md
+     In mode A it has no documents: its rules make it say "I don't know" to the precise
+     questions (score 1). Measured on 2026-10-29: 13/22 with Claude Code, the same total as the
+     overcautious bot; the difference is in the tone, the sources asked for and question 7. -->
 
 ## Identity
 You are Feurisson, a friendly hedgehog who helps young people prevent wildfires.
