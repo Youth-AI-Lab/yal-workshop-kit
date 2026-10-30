@@ -258,8 +258,19 @@ done
 score --help > /dev/null || echec "score --help"
 code=0; WORKSHOP_HOME="$copie" score A > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "replay A" /tmp/err || { cat /tmp/err; echec "score sans réponses : message attendu replay A"; }
+# score : le dernier verdict du juge l'emporte (il se corrige parfois dans la même réponse)
+/opt/workshop/venv/bin/python - "$(command -v score)" <<'PY' || echec "score : parse_verdict ne garde pas le dernier verdict"
+import importlib.machinery, importlib.util, sys
+l = importlib.machinery.SourceFileLoader("score", sys.argv[1]); m = importlib.util.module_from_spec(importlib.util.spec_from_loader("score", l)); l.exec_module(m)
+assert m.parse_verdict('{"score": 0, "why": "x"} {"score": 1, "why": "y"}')["score"] == "1"
+assert m.parse_verdict("rien") is None
+PY
 code=0; workshop-start > /dev/null 2>&1 || code=$?
 [[ $code == 2 ]] || echec "workshop-start sans numéro : code 2 attendu, obtenu $code"
+# workshop-start : ouvre le README d'un dépôt d'atelier, signale le dépôt d'un autre atelier (sans clé : rien ne démarre)
+d1="$(mktemp -d)"; cp -r "$copie"/. "$d1"/; printf '# Workshop 1 - Test\n' > "$d1/README.md"
+grep -q "Today's page: README.md" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 1)" || echec "workshop-start 1 : README de l'atelier non ouvert"
+grep -q "This repository is for workshop 1" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 3)" || echec "workshop-start 3 dans le dépôt de l'atelier 1 : avertissement absent"
 # Atelier 2 : sans clé, workshop-start 2 ne lance pas Open WebUI en arrière-plan (copie neuve, HOME vide).
 copie2="$(mktemp -d)"; cp -r "$KIT/." "$copie2"; rm -rf "$copie2/.git"
 sortie="$(cd "$copie2" && HOME="$(mktemp -d)" WORKSHOP_HOME="$copie2" workshop-start 2)" || { echo "$sortie"; echec "workshop-start 2"; }
