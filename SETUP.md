@@ -54,15 +54,31 @@ use it because it **shows everything**: what the model reads, searches and does.
 
 Do these steps **at the start of each workshop**, in a new Codespace. They take about 5 minutes.
 
-### Step 1 - Open your Codespace
+### Step 1 - Let the Codespace wait for you
+
+By default, a Codespace stops after **30 minutes** without activity. You lose nothing, but it
+takes about 30 seconds to restart. Change this **before you create your Codespace**: the setting
+only applies to the Codespaces created after it. You do it once for your GitHub account. If you
+did it at an earlier workshop, go to step 2.
 
 1. **Sign in to GitHub** with the account of one of you (a free account is enough).
-2. **Open the Codespace link** at the top of the README of your workshop. For workshop 1:
+2. **Open** https://github.com/settings/codespaces.
+3. **Find** the setting **"Default idle timeout"**, lower on the page.
+4. **Type 120** in the box (or more: the maximum is 240), then **click "Save"**.
+
+![The setting "Default idle timeout" on github.com/settings/codespaces. 1: the number of minutes. 2: the button "Save".](images/setup/idle-timeout.png)
+
+### Step 2 - Open your Codespace
+
+1. **Open the Codespace link** at the top of the README of your workshop. For workshop 1:
 
    👉 **https://codespaces.new/Youth-AI-Lab/yal-workshop-preprompt**
 
-3. **Click** the button **"Create codespace"**.
-4. **Wait about 2 minutes** while the Codespace is built.
+2. **Click** the button **"Create codespace"**. Leave the other choices as they are.
+
+   ![The page "Create a new codespace". 1: the button "Create codespace".](images/setup/create-codespace.png)
+
+3. **Wait about 2 minutes** while the Codespace is built.
 
 You should see VS Code in your browser: the **list of files** on the left (`AGENTS.md`,
 `README.md`, `SETUP.md`…), and a **terminal** at the bottom of the screen. The
@@ -74,15 +90,6 @@ then **"Terminal"**, then **"New Terminal"**.
 > ⚠️ **Important.** **Use the same Codespace all workshop long**: do not create a new one each
 > time. If it stops after a long pause, reopen it from **https://github.com/codespaces**: nothing
 > is lost. At the end of the workshop, save your work with `workshop-save`.
-
-### Step 2 - Let the Codespace wait for you
-
-By default, a Codespace stops after **30 minutes** without activity. You lose nothing, but it
-takes about 30 seconds to restart. To avoid this:
-
-1. **Open** https://github.com/settings/codespaces in a new browser tab.
-2. **Find** the setting **"Default idle timeout"**.
-3. **Set it** to **120** minutes or more (the maximum is 240), and save.
 
 ### Step 3 - Save the key of your pair
 
@@ -312,8 +319,8 @@ stops with the Codespace. Type `openwebui start` again: your knowledge and your 
 Type `openwebui start`: Open WebUI starts again with the new key.
 
 **The Codespace stopped.** - It stops after a long pause. Reopen it from
-https://github.com/codespaces: nothing is lost. To avoid it, see
-[Setup, step 2](#step-2---let-the-codespace-wait-for-you).
+https://github.com/codespaces: nothing is lost. To avoid it with your next Codespaces, see
+[Setup, step 1](#step-1---let-the-codespace-wait-for-you).
 
 **Something else?** - Raise your hand: the facilitator is here for this. Your files stay in the
 Codespace.
