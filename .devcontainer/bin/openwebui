@@ -554,6 +554,39 @@ class OpenWebUI:
         return knowledge, failed
 
 
+def search_works(api, knowledge):
+    r = api.request("POST", "/retrieval/query/collection",
+                    body={"collection_names": [knowledge["id"]], "query": "fire", "k": 1})
+    return bool((r.get("documents") or [[]])[0])
+
+
+def check_search(api, bases):
+    """A test search in each base. Seen once in four first starts in a Codespace (2026-10-30): a base
+    loaded and stored, but the running Open WebUI found nothing in it until it was restarted (the RAG
+    chatbot would then answer without any excerpt). If a base finds nothing: one restart, then the
+    same test. Returns the API, logged in again if Open WebUI restarted."""
+    empty = [k["name"] for k in bases if not search_works(api, k)]
+    if not empty:
+        return api
+    print(f"  The search finds nothing yet in {', '.join(empty)}: restarting Open WebUI once "
+          "(about 20 s)…", flush=True)
+    docker("restart", CONTAINER)
+    start = time.monotonic()
+    while time.monotonic() - start < 180:
+        try:
+            with urllib.request.urlopen(f"{URL}/health", timeout=3):
+                break
+        except (urllib.error.URLError, http.client.HTTPException, OSError):
+            time.sleep(2)
+    api = OpenWebUI().login()
+    empty = [k["name"] for k in bases if not search_works(api, k)]
+    if empty:
+        fail(f"The search still finds nothing in {', '.join(empty)}.\n"
+             "Type openwebui stop, then openwebui start. If it happens again, ask the facilitator.")
+    print(f"  Search OK after the restart ({time.monotonic() - start:.0f} s).", flush=True)
+    return api
+
+
 def size_knowledge_name(size):
     """The knowledge base of one size; 1000 is the base of openwebui start."""
     return KNOWLEDGE_NAME if size == DEFAULT_CHUNK[0] else f"{KNOWLEDGE_NAME}, excerpts of {size}"
@@ -638,6 +671,7 @@ def cmd_start():
     knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
     if failed:
         fail("Some files could not be loaded (see above). Type openwebui start again.")
+    api = check_search(api, [knowledge])
     print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
     api.save_model(rag_model(model, None, knowledge))
     hide_base_model(api, model)
@@ -680,6 +714,7 @@ def cmd_sizes():
     finally:
         # Back to the default size, for every file added later (chatbots, openwebui start).
         set_chunks(api, *DEFAULT_CHUNK)
+    api = check_search(api, list(bases.values()))
     for size, knowledge in bases.items():
         api.save_model(rag_model(model, size, knowledge))
     print("\nTwo models, the same documents cut into excerpts of two sizes:")
