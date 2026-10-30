@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Block E: unpacks the wiki that the facilitator built before the session, from all of corpus/
+# Workshop 5: unpacks the wiki that the facilitator built before the session, from all of corpus/
 # (except the document you added yourselves), with the skills that keep it up to date:
 #   wiki/                       pages by topic, index.md, log.md, AGENTS.md (the rules of the wiki)
 #   .claude/skills/ingest/      "ingest summaries/8N-… into the wiki"
 #   .claude/skills/lint/        "lint the wiki": checks footnotes, links, contradictions
-#   wiki/graphify-out/          the knowledge graph of the wiki, built with graphify (block F)
+#   wiki/graphify-out/          the knowledge graph of the wiki, built with graphify (workshop 5)
 # Then: workshop E.
 set -euo pipefail
 

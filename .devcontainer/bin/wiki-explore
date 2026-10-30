@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Block F: explore the knowledge graph of the wiki, built by graphify before the session.
+# Workshop 5: explore the knowledge graph of the wiki, built by graphify before the session.
 # No model is called: these commands only read wiki/graphify-out/graph.json.
 #
 #   wiki-explore                     opens the interactive map in your browser (it stays open)

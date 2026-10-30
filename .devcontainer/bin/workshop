@@ -122,7 +122,10 @@ esac
 # All modes: only the kit's MCP servers (.mcp.json) can be loaded, and only in D, E and F. Permission mode
 # "manual" (not the default "auto"): Claude Code asks you before it writes a file. The auto and
 # bypass modes are switched off, so a permission prompt cannot offer "switch to auto mode".
-settings='{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}}'
+# No skills bundled with Claude Code (code review, charts, configuration…): the list of skills sent to
+# the model is capped, and with them the workshop's own skills lost their descriptions, so they did not
+# trigger (measured with Claude Code 2.1.303, facilitator/ATELIER-3-OUTILS.md).
+settings='{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}, "disableBundledSkills": true}'
 [[ -n "$excludes" ]] && settings="${settings%\}}, \"claudeMdExcludes\": $excludes}"
 args=(--strict-mcp-config --permission-mode manual --settings "$settings")
 [[ -n "$agents_dir" ]] && args+=(--add-dir "$agents_dir")

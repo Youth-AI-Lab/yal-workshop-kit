@@ -5,8 +5,8 @@
     chatbot-export --name "Feurisson"    writes feurisson.zip, with this name inside
 
 The file holds what goes into the two boxes of every chatbot tool:
-  - Instructions: your AGENTS.md (block A), without the comments;
-  - Knowledge: your summaries (blocks B and C), your wiki pages (block E) and the readable
+  - Instructions: your AGENTS.md (workshop 1), without the comments;
+  - Knowledge: your summaries (workshops 2 and 3), your wiki pages (workshop 5) and the readable
     copies of the official documents (corpus/text/).
 To download it: right-click on the file in the file list, then "Download".
 """
@@ -28,11 +28,11 @@ Exported from the Youth AI Lab workshop on {date}.
 
 ## What is inside
 
-- `instructions.md`: the system prompt you wrote in AGENTS.md (block A). This is the
+- `instructions.md`: the system prompt you wrote in AGENTS.md (workshop 1). This is the
   **Instructions** box.
 - `knowledge/`: {count} files. This is the **Knowledge** box.
   - `summaries__…`: the short summaries, checked or not (their header says who verified them);
-  - `wiki__…`: the pages of your wiki, each fact with its footnote (block E);
+  - `wiki__…`: the pages of your wiki, each fact with its footnote (workshop 5);
   - `corpus-text__…`: the readable copies of the official documents.
 
 ## Rebuild it
@@ -64,11 +64,16 @@ def instructions(kit):
     return text, bool(filled)
 
 
+NOT_KNOWLEDGE = {"index.md", "README.md", "log.md", "CLAUDE.md", "AGENTS.md", "graph.md"}
+
+
 def knowledge(kit):
     files = []
     for folder, prefix in (("summaries", "summaries"), ("wiki", "wiki"), ("corpus/text", "corpus-text")):
         for path in sorted((kit / folder).glob("*.md")):
-            if path.name in ("00-template.md", "CLAUDE.md", "AGENTS.md", "graph.md"):
+            # Catalogues and instructions are not knowledge: the same files left out as in workshop B and
+            # openwebui (indexes, READMEs, templates), plus the wiki's own files (schema, log, map).
+            if path.name in NOT_KNOWLEDGE or path.name.startswith("00-"):
                 continue
             files.append((f"knowledge/{prefix}__{path.name}", path))
     return files
@@ -99,9 +104,9 @@ def main():
     print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
           f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents).")
     if not filled:
-        print("Warning: AGENTS.md has no text under its headings yet (block A): the instructions are empty.")
+        print("Warning: AGENTS.md has no text under its headings yet (workshop 1): the instructions are empty.")
     if not counts["wiki"]:
-        print("Note: no wiki pages (block E is not done yet, or wiki-start was not run).")
+        print("Note: no wiki pages (they come with workshop 5: wiki-start).")
     print(f'To download it: right-click on {out.name} in the file list, then "Download".')
 
 

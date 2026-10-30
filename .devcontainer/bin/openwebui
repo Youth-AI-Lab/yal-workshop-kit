@@ -848,7 +848,7 @@ def cmd_chatbot(args):
         print(f'\nInstructions: your AGENTS.md, {len(text)} lines. It starts with: "{start}"')
     else:
         print("\nWarning: your AGENTS.md is still empty, so this chatbot has no instructions.\n"
-              "Fill it in (block A), then type the same command again.")
+              "Fill it in (workshop 1), then type the same command again.")
     print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" in the message box (bottom right).')
     print("To check the instructions, ask it: Who are you?")
     print("Ask it your test questions again, and compare with scores.md.")

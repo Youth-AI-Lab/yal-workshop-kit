@@ -156,6 +156,10 @@ assert 'instructions.md' in n and 'README.md' in n, n[:5]
 assert '<!--' not in z.read('instructions.md').decode(), 'commentaires dans les instructions'
 for p in ('summaries__', 'wiki__', 'corpus-text__'):
     assert any(x.startswith('knowledge/' + p) for x in n), p
+# Ni catalogues ni fichiers du wiki qui ne sont pas des connaissances (comme workshop B et openwebui).
+bad = [x for x in n if x.startswith('knowledge/') and x.split('__', 1)[1] in
+       ('index.md', 'README.md', 'log.md', 'CLAUDE.md', 'AGENTS.md', 'graph.md') or '__00-' in x]
+assert not bad, bad
 print(len(n), 'fichiers dans le paquet')
 " "$copie/smoke-test.zip" || echec "chatbot-export : paquet incomplet"
 
@@ -339,6 +343,9 @@ for ligne in sys.stdin:
     ok = len(d["tools"]) == outils_attendus
     curation = ["source-note", "summarize", "validate-summary"]
     if mode == "C": ok = ok and mcp == [] and skills == curation
+    # disableBundledSkills: the skills bundled with Claude Code are not offered (they crowded out the
+    # descriptions of the workshop skills).
+    ok = ok and not {"dataviz", "deep-research", "workflow-authoring", "code-review"} & set(d["skills"])
     meteo = ["open-meteo"] if os.environ.get("WORKSHOP_WEATHER") == "1" else []
     if mode == "D": ok = ok and sorted(mcp) == sorted(["fire-danger", "time"] + meteo) and skills == curation
     if mode == "E": ok = ok and sorted(mcp) == ["fire-danger", "time"] and skills == sorted(curation + ["ingest", "lint"])
