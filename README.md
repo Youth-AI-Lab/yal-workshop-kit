@@ -208,4 +208,8 @@ The workshops show one way to build a chatbot. Other guides of the project show 
 
 ---
 
+Texts and screenshots: [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt). Configuration and programs:
+[EUPL-1.2](LICENSES/EUPL-1.2.txt). The official documents are not ours and are not covered: see
+[their note](LICENSES/LicenseRef-Third-Party.txt) and [`REUSE.toml`](REUSE.toml).
+
 *Youth AI Lab (Erasmus+) - Series "Customising a chatbot" - 2026*
