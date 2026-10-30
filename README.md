@@ -23,9 +23,9 @@
 - [The series](#the-series)
 - [Why this approach?](#why-this-approach)
 - [What the chatbot can know](#what-the-chatbot-can-know)
+- [The work loop](#the-work-loop)
 - [How to score](#how-to-score)
 - [From one workshop to the next](#from-one-workshop-to-the-next)
-- [The work loop](#the-work-loop)
 - [Going further](#going-further)
 
 ---
@@ -198,13 +198,12 @@ The workshops show one way to build a chatbot. Other guides of the project show 
   computer of your organisation, so that the data does not leave it.
 - [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide): this kit and the
   guides on your own computer, without a Codespace.
+- [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide): an assistant that remembers
+  you and helps you prepare your sessions. It is for you, never for use with young people.
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).
 - [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) (Google
   Cloud, file `okf/SPEC.md`): the format of the headers of our documents, summaries and wiki
   pages.
-
----
-
 
 ---
 
