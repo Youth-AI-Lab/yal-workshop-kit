@@ -127,6 +127,14 @@ docker info > /dev/null || echec "Docker ne répond pas (fonctionnalité docker-
 openwebui help | grep -q "openwebui start" || echec "openwebui help"
 code=0; openwebui start > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sans clé : message attendu workshop-login"; }
+# Atelier 2 : bases de trois tailles et query --size/--top-k (refus clairs sans clé et sur une taille inconnue).
+openwebui help | grep -q "openwebui sizes" || echec "openwebui help : sizes"
+code=0; openwebui sizes > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui sizes sans clé : message attendu workshop-login"; }
+code=0; openwebui query --size 700 "x" > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "The sizes are 500, 1000, 2000" /tmp/err || { cat /tmp/err; echec "openwebui query --size inconnue : refus attendu"; }
+code=0; openwebui top-k abc > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "Usage: openwebui top-k N" /tmp/err || { cat /tmp/err; echec "openwebui top-k invalide : refus attendu"; }
 # Le partage demande des comptes : refusé dans l'instance de l'atelier (sans comptes).
 code=0; openwebui share open > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "Never make its port public" /tmp/err || { cat /tmp/err; echec "openwebui share hors mode classe : refus attendu"; }

@@ -448,6 +448,15 @@ class OpenWebUIRag:
             raise SystemExit(not_running) from None
         if self.MODEL_ID not in ids:
             raise SystemExit(f'Open WebUI has no chatbot "{self.MODEL_NAME}" yet. Type: openwebui start')
+        # The RAG column is measured with 5 excerpts per question (openwebui start). openwebui top-k
+        # changes it for every chat of this Open WebUI, from the next question.
+        try:
+            top_k = self.request("GET", "/api/v1/retrieval/config").get("TOP_K")
+        except (urllib.error.HTTPError, OSError, ValueError, AttributeError, http.client.HTTPException):
+            top_k = None
+        if top_k not in (None, 5):
+            raise SystemExit(f"The Wildfire RAG models now get {top_k} excerpts per question (openwebui top-k), "
+                             "but the RAG column is measured with 5.\nType openwebui top-k 5, then replay RAG again.")
 
     def ask(self, question):
         """Same tuple as ask(): (answer, context tokens, excerpts, cost, error, peeked)."""

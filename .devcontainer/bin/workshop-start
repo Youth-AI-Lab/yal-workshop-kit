@@ -353,9 +353,8 @@ def prepare(n, save):
         else:
             problems.append(f"Could not unpack the wiki (wiki-start):\n    {out}")
 
-    # TODO (REFONTE, workshop 2): prepare the three RAG knowledge bases and models
-    # ("Wildfire RAG 500 / 1000 / 2000") once openwebui can hold several of them. Not started
-    # here: the first "openwebui start" takes about 3 minutes.
+    # Workshop 2 (RAG): Open WebUI is not started here: its first start takes minutes and needs the
+    # Docker of the Codespace. main() tells the pair to type openwebui start && openwebui sizes.
     return done, problems
 
 
@@ -424,8 +423,8 @@ def main():
     write_marker(save, n)
     print(f"\nAlmost ready for workshop {n}: see the lines with ! above." if problems else f"\nReady for workshop {n}.")
     if n == 2:
-        print("This workshop uses Open WebUI. Start it now in a second terminal (about 3 minutes "
-              "the first time):\n  openwebui start")
+        print("This workshop uses Open WebUI, with knowledge bases of three sizes. Start it now in a "
+              "second terminal (about 4 to 5 minutes the first time):\n  openwebui start && openwebui sizes")
     if n == 5:
         print("The wiki is in wiki/: start with wiki/index.md.")
     print(f"First command: {FIRST_COMMAND[n]}")

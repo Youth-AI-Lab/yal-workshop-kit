@@ -4,6 +4,13 @@
     openwebui start                  starts Open WebUI and loads the workshop knowledge
                                      (the first time, it downloads Open WebUI: about 4.6 GB)
     openwebui query "<question>"     shows the 5 excerpts the RAG would give the model
+    openwebui sizes                  adds two more knowledge bases, cut into excerpts of 500 and
+                                     2000 characters, and the models "Wildfire RAG 500 / 1000 / 2000"
+    openwebui query --size 500 --top-k 3 "<question>"
+                                     the same, in the base of one size (500, 1000 or 2000), with
+                                     another number of excerpts (top-k); nothing to restart
+    openwebui top-k N                the number of excerpts the "Wildfire RAG" models get in the chat,
+                                     from the next question (default 5; openwebui start puts it back)
     openwebui chatbot --name "<name>"
                                      packs your chatbot (chatbot-export) and adds it to Open WebUI
     openwebui stop                   stops Open WebUI (your data is kept)
@@ -14,6 +21,8 @@ Open WebUI is a chatbot tool you can install on your own server. It uses your ke
 In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
     the 5 excerpts closest to the question and gives only those to the model.
+  - "Wildfire RAG 500", "1000", "2000" (after openwebui sizes): the same, with shorter or longer
+    excerpts (1000 is the same base as "Wildfire RAG (workshop kit)").
   - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
 
 (With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the group mode.)
@@ -83,6 +92,12 @@ KNOWLEDGE_DESCRIPTION = ("The knowledge of the workshop kit: summaries/ (short E
                          "corpus/text/ (readable copies of the official documents). Same files as mode B.")
 RAG_ID = "wildfire-rag"
 RAG_NAME = "Wildfire RAG (workshop kit)"
+# Workshop 2: the same files cut into excerpts of three sizes, in characters (Open WebUI's default
+# text splitter counts characters). The overlap is a tenth of the size. 1000/100 is Open WebUI's
+# default: the base of "openwebui start", shared with the size 1000.
+DEFAULT_CHUNK = (1000, 100)
+SIZES = {500: 50, 1000: 100, 2000: 200}
+TOP_K = 5
 # The rules of examples/AGENTS.feurisson.md, adapted: here the model only sees excerpts.
 RAG_PROMPT = """You are a chatbot specialised in wildfire prevention.
 
@@ -533,6 +548,40 @@ class OpenWebUI:
         return knowledge, failed
 
 
+def size_knowledge_name(size):
+    """The knowledge base of one size; 1000 is the base of openwebui start."""
+    return KNOWLEDGE_NAME if size == DEFAULT_CHUNK[0] else f"{KNOWLEDGE_NAME}, excerpts of {size}"
+
+
+def set_top_k(api, top_k):
+    """The number of excerpts each RAG model gets in the chat. Open WebUI reads it at each question:
+    nothing to restart. Saved in its data, like the size of the excerpts."""
+    api.request("POST", "/retrieval/config/update", body={"TOP_K": top_k})
+
+
+def set_chunks(api, size, overlap):
+    """Open WebUI cuts each file when it is added, with the setting of that moment (global, not per
+    knowledge base). Open WebUI saves it in its data: always put the default back afterwards."""
+    api.request("POST", "/retrieval/config/update", body={"CHUNK_SIZE": size, "CHUNK_OVERLAP": overlap})
+
+
+def rag_model(model, size, knowledge):
+    """The form of a "Wildfire RAG" model: Claude + one knowledge base, classic RAG (legacy)."""
+    model_id, name = (RAG_ID, RAG_NAME) if size is None else (f"{RAG_ID}-{size}", f"Wildfire RAG {size}")
+    what = "" if size is None else f" Excerpts of {size} characters."
+    return {
+        "id": model_id, "base_model_id": model, "name": name, "is_active": True,
+        "meta": {"description": "Claude + the workshop knowledge, by vector search (RAG)." + what,
+                 "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
+                                "description": knowledge.get("description", ""), "type": "collection"}],
+                 # No tools: classic RAG. The excerpts enter the context before each answer.
+                 "capabilities": NO_TOOLS},
+        # "legacy": Open WebUI searches before each answer and adds the excerpts to the context.
+        # No temperature or top_p: Claude Sonnet 5.5 refuses them.
+        "params": {"system": RAG_PROMPT, "function_calling": "legacy"},
+    }
+
+
 def knowledge_files():
     """The same files as mode B of `workshop`: summaries/ and corpus/text/."""
     files = []
@@ -562,21 +611,15 @@ def cmd_start():
     print(f"Checking the workshop knowledge: {len(files)} files (same as mode B). "
           "The first time, loading them takes 1 to 2 minutes.", flush=True)
     start = time.monotonic()
+    # The default size and number of excerpts, even if openwebui sizes or top-k changed them: the
+    # RAG demo and replay RAG are always measured the same way.
+    set_chunks(api, *DEFAULT_CHUNK)
+    set_top_k(api, TOP_K)
     knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
     if failed:
         fail("Some files could not be loaded (see above). Type openwebui start again.")
     print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
-    api.save_model({
-        "id": RAG_ID, "base_model_id": model, "name": RAG_NAME, "is_active": True,
-        "meta": {"description": "Claude + the workshop knowledge, by vector search (RAG).",
-                 "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
-                                "description": knowledge.get("description", ""), "type": "collection"}],
-                 # No tools: classic RAG. The excerpts enter the context before each answer.
-                 "capabilities": NO_TOOLS},
-        # "legacy": Open WebUI searches before each answer and adds the excerpts to the context.
-        # No temperature or top_p: Claude Sonnet 5.5 refuses them.
-        "params": {"system": RAG_PROMPT, "function_calling": "legacy"},
-    })
+    api.save_model(rag_model(model, None, knowledge))
     hide_base_model(api, model)
     # No "What's new" window at the first visit: it would hide the chat.
     version = api.request("GET", "/api/config").get("version")
@@ -588,16 +631,97 @@ def cmd_start():
     print("To ask it the test questions and score it: replay RAG, then score RAG")
 
 
-def cmd_query(text):
+def cmd_sizes():
+    """Workshop 2: the knowledge base of openwebui start (excerpts of 1000 characters), plus two
+    more of 500 and 2000, and one "Wildfire RAG" model per size."""
+    check_docker()
+    key, _, model = provider()
+    check_same_key(key)
     api = OpenWebUI().login()
-    found = api.collections(KNOWLEDGE_NAME)
-    if not found:
+    if not api.collections(KNOWLEDGE_NAME):
         fail("The workshop knowledge is not loaded yet. Type: openwebui start")
+    files = knowledge_files()
+    bases = {}
+    try:
+        for size, overlap in SIZES.items():
+            name = size_knowledge_name(size)
+            if size != DEFAULT_CHUNK[0]:
+                print(f"Excerpts of {size} characters: {len(files)} files (the first time, 1 to 2 minutes)…",
+                      flush=True)
+            start = time.monotonic()
+            set_chunks(api, size, overlap)
+            description = f"The same files as {KNOWLEDGE_NAME!r}, cut into excerpts of {size} characters."
+            bases[size], failed = api.fill_collection(name, description, files)
+            if failed:
+                fail(f"Some files could not be loaded in {name!r} (see above). Type openwebui sizes again.")
+            if size != DEFAULT_CHUNK[0]:
+                print(f"  Ready ({time.monotonic() - start:.0f} s).", flush=True)
+    finally:
+        # Back to the default size, for every file added later (chatbots, openwebui start).
+        set_chunks(api, *DEFAULT_CHUNK)
+    for size, knowledge in bases.items():
+        api.save_model(rag_model(model, size, knowledge))
+    print("\nThree models, the same documents cut into excerpts of three sizes:")
+    for size in SIZES:
+        print(f'  "Wildfire RAG {size}"')
+    print("Compare what each base finds:  openwebui query --size 500 \"<question>\"")
+    print("Change the number of excerpts: openwebui query --size 2000 --top-k 3 \"<question>\"")
+
+
+def cmd_top_k(value):
+    """Workshop 2: the number of excerpts every "Wildfire RAG" model gets in the chat."""
+    try:
+        top_k = int(value)
+    except ValueError:
+        top_k = 0
+    if not 1 <= top_k <= 50:
+        fail("Usage: openwebui top-k N   (N from 1 to 50; the default is 5)")
+    api = OpenWebUI().login()
+    set_top_k(api, top_k)
+    print(f"From the next question, each \"Wildfire RAG\" model gets {top_k} excerpts. "
+          f"Back to {TOP_K}: openwebui top-k {TOP_K} (openwebui start does it too).")
+
+
+def parse_query(args):
+    """openwebui query [--size N] [--top-k N] "<question>" """
+    size, top_k, words = DEFAULT_CHUNK[0], TOP_K, []
+    usage = 'Usage: openwebui query [--size 500|1000|2000] [--top-k N] "<question>"'
+    i = 0
+    while i < len(args):
+        if args[i] in ("--size", "--top-k") and i + 1 < len(args):
+            try:
+                value = int(args[i + 1])
+            except ValueError:
+                fail(usage)
+            if args[i] == "--size":
+                if value not in SIZES:
+                    fail(f"The sizes are {', '.join(map(str, SIZES))}. {usage}")
+                size = value
+            else:
+                if not 1 <= value <= 50:
+                    fail(f"Give a number of excerpts from 1 to 50. {usage}")
+                top_k = value
+            i += 2
+        else:
+            words.append(args[i])
+            i += 1
+    if len(words) != 1:
+        fail(usage)
+    return words[0], size, top_k
+
+
+def cmd_query(text, size=DEFAULT_CHUNK[0], top_k=TOP_K):
+    api = OpenWebUI().login()
+    found = api.collections(size_knowledge_name(size))
+    if not found:
+        fail("The workshop knowledge is not loaded yet. Type: openwebui start" if size == DEFAULT_CHUNK[0]
+             else f"The base of excerpts of {size} characters is not ready. Type: openwebui sizes")
     answer = api.request("POST", "/retrieval/query/collection",
-                         body={"collection_names": [found[0]["id"]], "query": text, "k": 5})
+                         body={"collection_names": [found[0]["id"]], "query": text, "k": top_k})
     documents = (answer.get("documents") or [[]])[0]
     metadatas = (answer.get("metadatas") or [[]])[0]
     print(f"Question: {text}")
+    print(f"Base: excerpts of {size} characters. Top-k: {top_k}.")
     print(f"The {len(documents)} excerpts the RAG gives the model (closest first):")
     for i, document in enumerate(documents):
         meta = metadatas[i] if i < len(metadatas) else {}
@@ -642,6 +766,8 @@ def cmd_chatbot(args):
     for old in api.collections(knowledge_name):  # a new export replaces the previous one
         api.delete_collection(old)
     print(f'Adding "{name} chatbot" to Open WebUI: {len(files)} knowledge files…', flush=True)
+    # Files are cut with the setting of the moment: the default size, whatever openwebui sizes left.
+    set_chunks(api, *DEFAULT_CHUNK)
     knowledge, failed = api.fill_collection(
         knowledge_name, f"Everything {name} built during the workshop.", sorted(files))
     shutil.rmtree(tmp, ignore_errors=True)
@@ -1103,8 +1229,12 @@ def main(argv):
              "Never make its port public. To open chatbots to a group, use the Open WebUI guide.")
     elif command == "start" and len(argv) == 1:
         cmd_start()
-    elif command == "query" and len(argv) == 2:
-        cmd_query(argv[1])
+    elif command == "query" and len(argv) >= 2:
+        cmd_query(*parse_query(argv[1:]))
+    elif command == "sizes" and len(argv) == 1:
+        cmd_sizes()
+    elif command == "top-k" and len(argv) == 2:
+        cmd_top_k(argv[1])
     elif command == "chatbot":
         cmd_chatbot(argv[1:])
     elif command == "stop" and len(argv) == 1:
