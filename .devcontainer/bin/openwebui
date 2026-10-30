@@ -898,7 +898,7 @@ def set_port(public):
     want = "Public" if public else "Private"
     state = port_is_public()
     if state is None:
-        print(f"\nThis command cannot check port {PORT} here. In the PORTS tab, set its visibility to {want}.")
+        print(f"\nThis command cannot check port {PORT} here. In the Ports tab, set its visibility to {want}.")
         return
     if state == public:
         print(f"\nPort {PORT} is {want.lower()}.")
@@ -914,22 +914,22 @@ def set_port(public):
     else:
         title = " LAST STEP: make the link private again, so that nobody new can open it."
     print(f"\n{rule}\n{title}\n"
-          f"   1. At the bottom of the window, click the PORTS tab (next to TERMINAL).\n"
-          f"   2. Right-click on the line of port {PORT}.\n"
+          f"   1. At the bottom of the window, click the Ports tab (next to Terminal).\n"
+          f"   2. Right-click on the line Open WebUI (port {PORT}).\n"
           f'   3. Choose "Port Visibility", then "{want}".\n'
           f"   4. Come back to this terminal and press Enter.\n{rule}")
     while True:
         try:
             input("Press Enter when it is done (Ctrl+C to stop here): ")
         except (EOFError, KeyboardInterrupt):
-            print(f"\nNot checked. Set port {PORT} to {want} in the PORTS tab.")
+            print(f"\nNot checked. Set port {PORT} to {want} in the Ports tab.")
             return
         state = port_is_public()
         if state == public:
             print(f"Done: port {PORT} is now {want.lower()}.")
             return
         if state is None:
-            print(f"This command cannot check it. Make sure port {PORT} is {want} in the PORTS tab.")
+            print(f"This command cannot check it. Make sure port {PORT} is {want} in the Ports tab.")
             return
         print(f'Port {PORT} is still {"private" if public else "public"}. In the menu, choose "{want}".')
 
@@ -974,7 +974,7 @@ def show_account(admin, with_password):
           f"   Password: {password}\n\n"
           f" Keep this password for you (do not show it on the projector).\n"
           f" To see it again: openwebui password\n"
-          f" If the address does not open: PORTS tab -> {PORT} -> Open in Browser.\n{rule}")
+          f" If it does not open: Ports tab -> Open WebUI -> Open in Browser.\n{rule}")
 
 
 def cmd_share_open():
