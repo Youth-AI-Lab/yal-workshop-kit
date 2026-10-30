@@ -43,8 +43,8 @@ and any document it was given. The model knows nothing else about your situation
 | # | Workshop | Question of the day | What your pair leaves with |
 |---|---|---|---|
 | 1 | [Instructions and knowledge](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your question 12, columns Bare and A |
-| 2 | When knowledge overflows: everything in the context, then RAG (being written) | Who picks the pieces? | columns B and RAG |
-| 3 | Let it search, give it know-how (being written) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
+| 2 | [When knowledge overflows: everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
+| 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | Connect it to tools (being written) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
 | 5 | Organise what it knows (being written) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
 

@@ -134,12 +134,15 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
      click **Allow** (or Block: both work);
    - Claude Code asks you to **choose a text style** (theme): keep the one proposed and press
      **Enter**;
-   - it asks whether you **trust the folder**: accept;
+   - it shows **Security notes**: press **Enter** to continue;
+   - it asks whether you **trust the folder** ("Quick safety check"). **Careful: the choice
+     proposed is `No, exit`**, and Enter alone closes Claude Code. Press the **down arrow** to
+     choose `Yes, I trust this folder`, then **Enter**;
    - it reminds you that **Claude can make mistakes**: press **Enter**;
    - it says **"Welcome to Claude Code for VS Code"**: press **Enter** to continue.
 
    It asks once more to trust a folder the first time you start mode A (the kit folder):
-   accept again.
+   choose `Yes, I trust this folder` again. If Claude Code closed, type the same command again.
 3. **Look above the input box**: a line like `Clear 0% of context 0 / 200k` shows how full the
    **context window** is (200k = 200,000 tokens). This is **the gauge**. Keep an eye on it.
 4. **Type a first message**, for example `Hello, who are you?`, and press Enter. Read the answer.

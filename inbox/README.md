@@ -1,6 +1,6 @@
 # Inbox - documents not yet in the corpus
 
-> ℹ️ **Note.** This folder is used in **workshop 3** of the series (see its page in `workshops/`).
+> ℹ️ **Note.** This folder is used in **workshop 3** of the series (see its `README.md`, Part 3).
 
 ## What this folder is for
 
@@ -57,7 +57,9 @@ happened:
 
 ## Step 2 - Summarise, check and validate
 
-Go on with the next step of the page of **workshop 3**, in `workshops/`: in `workshop C`, ask
+Go back to Part 3 in the `README.md` of **workshop 3**: its next step adds the page of **your**
+question 12, and that is the document you summarise, check and validate. Summarise the Benevento
+document only as a fallback, if your page is refused: in `workshop C`, ask
 `summarize corpus/80-benevento-aib-2026.pdf` (with your number).
 
 ## To go further: a document of your own territory
