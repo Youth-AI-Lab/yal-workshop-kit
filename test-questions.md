@@ -1,7 +1,7 @@
 # Test set - 12 questions, the same in every mode
 
-> ℹ️ **Note.** This file is used in **every workshop** of the series (see `README.md`, "The work
-> loop").
+> ℹ️ **Note.** This file is used in **every workshop** of the series. Each workshop changes the
+> chatbot, then `replay` asks these questions again, so the columns of `scores.md` can be compared.
 
 ## What this file is for
 
@@ -81,7 +81,8 @@ until you write it. `replay` skips it while its question cell is empty.
    number, a rule. Look first at the list of the kit's summaries,
    [summaries/index.md](https://github.com/Youth-AI-Lab/yal-workshop-kit/blob/main/summaries/index.md):
    if your territory is there, check that the fact is not.
-3. **Write the question** in the third cell of row 12, in the language of your choice.
+3. **Write the question** in the third cell of row 12, in the language of your choice. Write it
+   in the normal editor: you cannot type in the preview.
 4. **Write the expected answer and its source** in the fourth cell, for example:
    `From 1 June to 30 September (https://… , page "…", read on 12 November)`.
 5. **Fill in the score for Bare**: type `replay bare 12`, then score this answer like the others.
