@@ -114,7 +114,7 @@ You cannot see from the outside how a box is used. **That is why the test questi
 
 | Folder | What it holds | Who writes it |
 |---|---|---|
-| `corpus/` | **20 official documents** (web pages, PDF, Word), exactly as they were retrieved, never modified. A readable copy of each one is in `corpus/text/`. Start with `corpus/index.md`. | The authorities |
+| `corpus/` | **20 official documents** (web pages, PDF, Word), exactly as they were retrieved, never modified. A readable copy of each one is in `corpus/text/`. Start with `corpus/index.md`. Their publishers are credited in `corpus/SOURCES.md`. | The authorities |
 | `summaries/` | **One short summary in English per document.** Start with `summaries/index.md`: it says which ones a person has checked ("human-reviewed"). | The model; then a person checks it |
 | `inbox/` | A document that is **not in the corpus yet**. You add it in workshop 3. | - |
 | `wiki/` | Appears in workshop 5: pages by topic, each fact with a footnote to its source. | The model |

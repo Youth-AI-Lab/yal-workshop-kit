@@ -23,6 +23,9 @@ of WikiYouthBot.
 for the 2026 forest-fire campaign, in Italian. **Question 11** of the test set is about it.
 Before you add it, the best the chatbot can say is "I don't know" (scored 1).
 
+This document is public and official. It belongs to its publisher, Provincia di Benevento (Campania), and was
+retrieved from <https://www.provincia.benevento.it/system/files/field/allegati/2026/06/campagna_aib_2026_-_provincia_di_benevento_signed.pdf>.
+
 ## Step 1 - Add it to the corpus
 
 1. **Copy** the command below. It is **one single line**, even if your screen cuts it:

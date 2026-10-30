@@ -7,4 +7,5 @@ retrieved, so that the workshops can use real documents.
 
 They belong to their publishers and keep their own terms. The licences of this repository do not
 cover them, and neither do they cover the photographs, logos or emblems these documents contain.
-Before you reuse one, read the terms of its source: the address is in its header.
+They are credited in corpus/SOURCES.md, and in inbox/README.md for the PDF file. Before you reuse one,
+read the terms of its source: the address is in its header.
