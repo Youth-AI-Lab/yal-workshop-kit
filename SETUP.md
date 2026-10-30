@@ -69,6 +69,8 @@ You should see VS Code in your browser: the **list of files** on the left (`AGEN
 terminal is where you type commands. If you don't see it, open the menu (☰) at the top left,
 then **"Terminal"**, then **"New Terminal"**.
 
+![VS Code in a Codespace. 1: the list of files. 2: the open file. 3: the terminal, where you type commands. 4: the + that opens another terminal. 5: the menu ☰. 6: the list of terminals, when two are open.](images/setup/codespace-overview.png)
+
 > ⚠️ **Important.** **Use the same Codespace all workshop long**: do not create a new one each
 > time. If it stops after a long pause, reopen it from **https://github.com/codespaces**: nothing
 > is lost. At the end of the workshop, save your work with `workshop-save`.
@@ -135,9 +137,14 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
    - Claude Code asks you to **choose a text style** (theme): keep the one proposed and press
      **Enter**;
    - it shows **Security notes**: press **Enter** to continue;
+   - it may ask "Use Claude Code's terminal setup?": choose `2. No, maybe later with
+     /terminal-setup` and press **Enter**;
    - it asks whether you **trust the folder** ("Quick safety check"). **Careful: the choice
      proposed is `No, exit`**, and Enter alone closes Claude Code. Press the **down arrow** to
      choose `Yes, I trust this folder`, then **Enter**;
+
+     ![The trust screen of Claude Code. 1: "No, exit" is the choice proposed: Enter alone closes Claude Code. 2: press the down arrow to choose "Yes, I trust this folder", then Enter.](images/setup/trust-screen.png)
+
    - it reminds you that **Claude can make mistakes**: press **Enter**;
    - it says **"Welcome to Claude Code for VS Code"**: press **Enter** to continue.
 
@@ -145,7 +152,11 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
    choose `Yes, I trust this folder` again. If Claude Code closed, type the same command again.
 3. **Look above the input box**: a line like `Clear 0% of context 0 / 200k` shows how full the
    **context window** is (200k = 200,000 tokens). This is **the gauge**. Keep an eye on it.
-4. **Type a first message**, for example `Hello, who are you?`, and press Enter. Read the answer.
+4. **Type a first message**, for example `Hello`, and press Enter. Read the answer, and look at
+   the gauge again:
+
+   ![After "Hello" in mode bare: the answer, then the gauge in the red frame, 1.7k / 200k, just above the input box.](images/setup/gauge-bare.png)
+
 5. **Leave** the conversation: press **Ctrl+C twice**. You are back in the terminal.
 
 Commands that start with `/` are typed **inside** a conversation; they work from mode C on (in
