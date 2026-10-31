@@ -120,8 +120,8 @@ def read_test_file():
 
 
 def answers_day(path):
-    """The day the answers were given, from replay's header ("# Answers — mode D — 2026-10-30 10:15"),
-    or None."""
+    """The day the answers were given, from replay's header ("# Answers: mode D, 2026-10-31 10:15";
+    saves made before 2026-10-31 say "# Answers — mode D — 2026-10-30 10:15"), or None."""
     try:
         first = path.read_text(encoding="utf-8").split("\n", 1)[0]
     except OSError:
@@ -142,7 +142,8 @@ def with_live_data(question, expected, day=None):
         territories = data["territories"]
     except (OSError, ValueError, KeyError, TypeError):
         return expected + " [mcp/fire-danger.json cannot be read: the level of the day is unknown.]"
-    # The territories named in the question ("Antwerp — Flanders, Belgium" for "in Antwerp").
+    # The territories named in the question ("Antwerp - Flanders, Belgium" for "in Antwerp"; older
+    # files of the kit wrote the key with "—").
     named = {k: v for k, v in territories.items()
              if re.split(r"\s+[—-]\s+", k)[0].lower() in question.lower()} or territories
     date = data.get("date") or "no date"
@@ -714,7 +715,7 @@ class Session:
         if verdict["error"]:
             print(f"{prefix}udge unavailable: {verdict['error']}.")
         else:
-            print(f"{prefix}udge: {verdict['score']} — {verdict['why']}")
+            print(f"{prefix}udge: {verdict['score']}. {verdict['why']}")
         return verdict
 
     def score(self, n, error, peeked, job):
@@ -777,7 +778,7 @@ class Session:
 
     def summary(self, title, path):
         print()
-        print(f"Summary — {title} — {rel(path)}")
+        print(f"Summary: {title} ({rel(path)})")
         print("   #   You  Judge")
         for n, mine, theirs, note in self.report:
             print(f"  {n:>2}   {mine or '-':^3}  {theirs or '-':^5}  {note}")

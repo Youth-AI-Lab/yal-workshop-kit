@@ -584,12 +584,12 @@ def write_answers(mode, agents, questions, server=None):
             shown = agents.relative_to(KIT.resolve())
         except ValueError:
             shown = agents  # outside the kit: the full path
-        lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
+        lines = [f"# Answers: mode {mode}, {datetime.now():%Y-%m-%d %H:%M}", "",
                  f"Instructions: {shown}", "",
                  f"These answers come from other instructions than AGENTS.md. Score them with: "
                  f"score {shown_out} --blind (the scores go into scores-personas.md, not scores.md).", ""]
     else:
-        lines = [f"# Answers — mode {mode} — {datetime.now():%Y-%m-%d %H:%M}", "",
+        lines = [f"# Answers: mode {mode}, {datetime.now():%Y-%m-%d %H:%M}", "",
                  (f"Score each answer from 0 to 2 with: score RAG (it adds a RAG column to scores.md, "
                   f"after B, the first time)." if mode == "RAG" else
                   f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "

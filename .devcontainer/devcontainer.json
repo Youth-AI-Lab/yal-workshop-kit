@@ -1,5 +1,5 @@
 {
-  "name": "Youth AI Lab — customising a chatbot",
+  "name": "Youth AI Lab: build your own chatbot",
   // Configuration DISTRIBUÉE : elle ne construit rien, elle télécharge l'image fabriquée à
   // partir de source/ et publiée par le workflow devcontainer-publish. Créer un Codespace se
   // réduit à ce téléchargement, identique pour tous les binômes.

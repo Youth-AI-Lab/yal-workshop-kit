@@ -99,7 +99,7 @@ PRELOAD_HEADER = ("# Reference knowledge, loaded in full at startup:\n"
 
 
 UNKNOWN = "Unknown mode: {typed}. Modes: bare, A, B, C, D, E, F (workshop help)."
-BANNER = "Workshop — mode {typed}. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F"
+BANNER = "Workshop: mode {typed}. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F"
 # The demo personalities of examples/ (liar, sophist, storyteller) carry this label in their text.
 DEMO_LABEL = "Demo bot:"
 

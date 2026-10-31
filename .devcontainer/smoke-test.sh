@@ -49,19 +49,21 @@ etape "Serveur MCP importable avec l'environnement de l'image"
 import asyncio, json
 import fire_danger_server as s
 r = json.loads(s.fire_danger("Antwerp"))
-entry = r["Antwerp — Flanders, Belgium"]
+# The key of the territory ("Antwerp - Flanders, Belgium"), whatever its separator.
+ANTWERP = next(k for k in r if k.startswith("Antwerp"))
+entry = r[ANTWERP]
 assert entry["level"] is None and "why_no_level" in entry, entry
 assert not any("TO BE COMPLETED" in json.dumps(v) for v in entry.values()), entry
 assert [t.name for t in asyncio.run(s.mcp.list_tools())] == ["territories", "fire_danger"]
 # Daté du jour et « live », mais niveau encore « TO BE COMPLETED » : toujours pas de niveau.
 data = json.load(open("fire-danger.json", encoding="utf-8"))
 data["date"] = s.today()
-data["territories"]["Antwerp — Flanders, Belgium"]["status"] = "live"
+data["territories"][ANTWERP]["status"] = "live"
 s.load = lambda path: data
-entry = json.loads(s.fire_danger("Antwerp"))["Antwerp — Flanders, Belgium"]
+entry = json.loads(s.fire_danger("Antwerp"))[ANTWERP]
 assert entry["level"] is None and entry["status"] == "live", entry
-data["territories"]["Antwerp — Flanders, Belgium"]["level"] = "groen"
-assert json.loads(s.fire_danger("Antwerp"))["Antwerp — Flanders, Belgium"]["level"] == "groen"
+data["territories"][ANTWERP]["level"] = "groen"
+assert json.loads(s.fire_danger("Antwerp"))[ANTWERP]["level"] == "groen"
 assert "EFFIS" not in open("fire-danger.json", encoding="utf-8").read()
 print("fire_danger : pas de niveau sans date du jour ni statut live ; recorded_example coupé")
 PY
