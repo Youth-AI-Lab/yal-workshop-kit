@@ -136,7 +136,7 @@ If you see another message, look at [Troubleshooting](#troubleshooting).
    You should see this line, then the screen of Claude Code:
 
    ```
-   Workshop — mode bare. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F
+   Workshop: mode bare. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F
    ```
 
 2. **The first time**, a few screens come one after the other. None of them is a problem:
