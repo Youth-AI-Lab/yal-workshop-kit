@@ -55,4 +55,4 @@
      emergency numbers first)
      How does it protect young people? (e.g. it never asks for personal information; when
      someone says they are unwell or in danger, it sends them to an adult they trust and to the
-     emergency number: copy the two last "Never" rules of the example) -->
+     emergency number: copy the last two "Never" rules of the example) -->
