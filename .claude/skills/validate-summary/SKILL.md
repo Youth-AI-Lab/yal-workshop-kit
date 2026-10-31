@@ -1,6 +1,6 @@
 ---
 name: validate-summary
-description: Records that a person checked a summary of summaries/ against its source, after applying their corrections — adds a human `verified` entry to its OKF header and marks it stable. Use when the user says "I checked summary …", "the summary is correct", "validate the summary", "sentence N is wrong, it should be …".
+description: Records that a person checked a summary of summaries/ against its source. After applying their corrections, adds a human `verified` entry to its OKF header and marks it stable. Use when the user says "I checked summary …", "the summary is correct", "validate the summary", "sentence N is wrong, it should be …".
 ---
 
 # Recording the check of a summary by a person
@@ -27,7 +27,7 @@ Only a person can validate a summary. You write down what they did and said, not
    - in `summaries/index.md`, replace "(draft, not verified)" by "(human-reviewed)" on its line.
 6. **If they checked only part of it**, do not add `verified` and keep `status: draft`; add
    `review_note: "<which sentences were checked, by whom>"` to the header.
-7. **Report** what changed: corrections, the new `verified` entry, the new status — or what is
+7. **Report** what changed: corrections, the new `verified` entry, the new status; or what is
    still missing before the summary can be validated.
 
 ## What you don't do

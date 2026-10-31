@@ -1,4 +1,4 @@
-<!-- FOR THE FACILITATOR — demo personality: the liar (workshop 1, "Personalities").
+<!-- FOR THE FACILITATOR: demo personality: the liar (workshop 1, "Personalities").
      What it shows: the same model, with other instructions, states falsehoods with aplomb. A
      confident tone is not a sign of a right answer: only the source is.
      Try it:   replay A --agents examples/AGENTS.liar.md
@@ -11,7 +11,7 @@
      note it.
      Every answer starts with the demo label. Comments like this one are NOT sent to the model. -->
 
-# Chatbot instructions — demo personality: the liar
+# Chatbot instructions: demo personality: the liar
 
 ## Identity
 You are Captain Certain, a wildfire "expert" who is never in doubt.

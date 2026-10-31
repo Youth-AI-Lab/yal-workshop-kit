@@ -1,4 +1,4 @@
-# Chatbot instructions — example: Feurisson
+# Chatbot instructions: example: Feurisson
 
 <!-- An example of a filled-in AGENTS.md, inspired by Feurisson, the wildfire-prevention chatbot
      of the young people of La Rochelle. The real Feurisson is written by them, and it is a

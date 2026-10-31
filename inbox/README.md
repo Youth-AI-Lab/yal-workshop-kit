@@ -31,7 +31,7 @@ retrieved from <https://www.provincia.benevento.it/system/files/field/allegati/2
 1. **Copy** the command below. It is **one single line**, even if your screen cuts it:
 
    ```bash
-   corpus-add inbox/benevento-campagna-aib-2026.pdf --name benevento-aib-2026 --title "Campagna AIB 2026 — Provincia di Benevento" --publisher "Provincia di Benevento (Campania)" --language it --description "Province of Benevento (Campania) plan for the 2026 forest-fire campaign." --url "https://www.provincia.benevento.it/system/files/field/allegati/2026/06/campagna_aib_2026_-_provincia_di_benevento_signed.pdf"
+   corpus-add inbox/benevento-campagna-aib-2026.pdf --name benevento-aib-2026 --title "Campagna AIB 2026 - Provincia di Benevento" --publisher "Provincia di Benevento (Campania)" --language it --description "Province of Benevento (Campania) plan for the 2026 forest-fire campaign." --url "https://www.provincia.benevento.it/system/files/field/allegati/2026/06/campagna_aib_2026_-_provincia_di_benevento_signed.pdf"
    ```
 
 2. **Paste it** in the terminal, outside a conversation, with `Ctrl+Shift+V` (`Cmd+V` on a Mac),

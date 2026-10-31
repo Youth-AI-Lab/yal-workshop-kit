@@ -1,7 +1,7 @@
 {
   "note": "Recorded days, for the exercise that replays a past day. NEVER today's level. Each entry is copied by hand from the official source on the day shown, with its evidence kept by the facilitator. The tool recorded_example reads this file only when FIRE_DANGER_RECORDED=1 is set. Barcelona (Pla Alfa, all year) and Naples (no public daily page found) have no entry.",
   "territories": {
-    "La Rochelle — Charente-Maritime, France": {
+    "La Rochelle - Charente-Maritime, France": {
       "recorded_on": "TO BE COMPLETED: YYYY-MM-DD (the day the level applied)",
       "recorded_level": "TO BE COMPLETED: copied from the source",
       "recorded_advice": [
@@ -10,7 +10,7 @@
       "source": "Préfecture de la Charente-Maritime (DDTM), https://www.risque-prevention-incendie.fr/17",
       "copied_by": "TO BE COMPLETED: name, and the date of the copy"
     },
-    "Aix-en-Provence — Bouches-du-Rhône, France": {
+    "Aix-en-Provence - Bouches-du-Rhône, France": {
       "recorded_on": "TO BE COMPLETED: YYYY-MM-DD (the day the level applied)",
       "recorded_level": "TO BE COMPLETED: copied from the source",
       "recorded_advice": [
@@ -19,7 +19,7 @@
       "source": "Préfet des Bouches-du-Rhône (DDTM 13), https://www.risque-prevention-incendie.fr/13",
       "copied_by": "TO BE COMPLETED: name, and the date of the copy"
     },
-    "Antwerp — Flanders, Belgium": {
+    "Antwerp - Flanders, Belgium": {
       "recorded_on": "TO BE COMPLETED: YYYY-MM-DD (the day the level applied)",
       "recorded_level": "TO BE COMPLETED: copied from the source",
       "recorded_advice": [

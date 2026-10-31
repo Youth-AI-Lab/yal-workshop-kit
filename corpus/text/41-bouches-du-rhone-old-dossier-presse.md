@@ -1,6 +1,6 @@
 ---
 type: Document Text
-title: "Les obligations légales de débroussaillement (O.L.D.) dans les Bouches-du-Rhône — dossier de presse"
+title: "Les obligations légales de débroussaillement (O.L.D.) dans les Bouches-du-Rhône - dossier de presse"
 description: "Press kit on the new brush-clearing order of 15 October 2025."
 resource: ../41-bouches-du-rhone-old-dossier-presse.pdf
 tags: [bouches-du-rhone, brush-clearing]
@@ -9,7 +9,7 @@ language: fr
 publisher: "Préfecture des Bouches-du-Rhône"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
-  - { id: original, resource: https://www.bouches-du-rhone.gouv.fr/contenu/telechargement/62204/437861/file/DP%20-%20OLD%20nouvel%20arr%C3%AAt%C3%A9%2011.2025-def.pdf, title: "Les obligations légales de débroussaillement (O.L.D.) dans les Bouches-du-Rhône — dossier de presse" }
+  - { id: original, resource: https://www.bouches-du-rhone.gouv.fr/contenu/telechargement/62204/437861/file/DP%20-%20OLD%20nouvel%20arr%C3%AAt%C3%A9%2011.2025-def.pdf, title: "Les obligations légales de débroussaillement (O.L.D.) dans les Bouches-du-Rhône - dossier de presse" }
 generated: { by: process:pdf-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 | DOSSIER DE PRESSE 

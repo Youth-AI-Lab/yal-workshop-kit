@@ -1,6 +1,6 @@
 ---
 type: Document Text
-title: "PNV-29-gen-slides — incendi 2017 nel Parco Nazionale del Vesuvio"
+title: "PNV-29-gen-slides - incendi 2017 nel Parco Nazionale del Vesuvio"
 description: "Vesuvius National Park slides on the 2017 fires and the restoration needs."
 resource: ../72-vesuvio-incendi-2017.docx
 tags: [campania, statistics]
@@ -9,7 +9,7 @@ language: it
 publisher: "Ente Parco Nazionale del Vesuvio"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
-  - { id: original, resource: https://www.parconazionaledelvesuvio.it/wp-content/uploads/2019/01/PNV-29-gen-slides.docx, title: "PNV-29-gen-slides — incendi 2017 nel Parco Nazionale del Vesuvio" }
+  - { id: original, resource: https://www.parconazionaledelvesuvio.it/wp-content/uploads/2019/01/PNV-29-gen-slides.docx, title: "PNV-29-gen-slides - incendi 2017 nel Parco Nazionale del Vesuvio" }
 generated: { by: process:docx-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 I danni arrecati dalla sequenza di incendi sviluppatisi nel

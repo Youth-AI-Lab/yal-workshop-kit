@@ -1,6 +1,6 @@
 ---
 type: Document Text
-title: "Arrêté préfectoral réglementant l'accès aux espaces exposés aux risques d'incendies de forêt — version consolidée du 9 juillet 2026"
+title: "Arrêté préfectoral réglementant l'accès aux espaces exposés aux risques d'incendies de forêt - version consolidée du 9 juillet 2026"
 description: "Full Bouches-du-Rhône order on access, presence and works in forest areas, consolidated version."
 resource: ../43-bouches-du-rhone-arrete-acces-consolide.pdf
 tags: [bouches-du-rhone, massif-access, regulation]
@@ -9,7 +9,7 @@ language: fr
 publisher: "Préfecture des Bouches-du-Rhône (DDTM)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
-  - { id: original, resource: https://www.bouches-du-rhone.gouv.fr/contenu/telechargement/64663/451977/file/20260709_AP_acces_massifs_travaux_version_consolidee.pdf, title: "Arrêté préfectoral réglementant l'accès aux espaces exposés aux risques d'incendies de forêt — version consolidée du 9 juillet 2026" }
+  - { id: original, resource: https://www.bouches-du-rhone.gouv.fr/contenu/telechargement/64663/451977/file/20260709_AP_acces_massifs_travaux_version_consolidee.pdf, title: "Arrêté préfectoral réglementant l'accès aux espaces exposés aux risques d'incendies de forêt - version consolidée du 9 juillet 2026" }
 generated: { by: process:pdf-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 Direction départementale

@@ -1,6 +1,6 @@
 ---
 type: Document Text
-title: "Ordinanza n. 78 del 12/06/2026 — prevenzione del rischio incendi boschivi"
+title: "Ordinanza n. 78 del 12/06/2026 - prevenzione del rischio incendi boschivi"
 description: "Montoro (Campania) ordinance applying the 2026 fire-prevention measures."
 resource: ../71-montoro-ordinanza-78-2026.pdf
 tags: [campania, regulation]
@@ -9,7 +9,7 @@ language: it
 publisher: "Città di Montoro (Avellino, Campania)"
 retrieved_at: 2026-10-19T00:00:00Z
 sources:
-  - { id: original, resource: https://montoro-api.municipiumapp.it/s3/20111/allegati/uffici-e-servizi/settore-vigilianza-comando-polizia-locale-e-protezione-civile/ordinanza-n-78-del-12-06-2026.pdf, title: "Ordinanza n. 78 del 12/06/2026 — prevenzione del rischio incendi boschivi" }
+  - { id: original, resource: https://montoro-api.municipiumapp.it/s3/20111/allegati/uffici-e-servizi/settore-vigilianza-comando-polizia-locale-e-protezione-civile/ordinanza-n-78-del-12-06-2026.pdf, title: "Ordinanza n. 78 del 12/06/2026 - prevenzione del rischio incendi boschivi" }
 generated: { by: process:pdf-text-extraction, at: 2026-10-20T10:26:36Z }
 ---
 CITTÀ DI MONTORO
