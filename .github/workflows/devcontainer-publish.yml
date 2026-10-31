@@ -12,7 +12,7 @@
 # MULTI-ARCHITECTURE (depuis 2026-10-27) : l'image est construite pour linux/amd64 ET
 # linux/arm64, chacune sur un runner NATIF (ubuntu-latest et ubuntu-24.04-arm, gratuits pour
 # les dépôts publics) — pas d'émulation QEMU. Le smoke-test tourne sur chaque architecture.
-# Les Mac Apple Silicon peuvent alors ouvrir le kit en local sans émulation (kit/LOCAL.md).
+# Les Mac Apple Silicon peuvent alors ouvrir le kit en local sans émulation (guide Youth-AI-Lab/yal-devcontainer-guide).
 # Le job `merge` assemble les deux images en un seul manifeste `IMAGE:VERSION` (c'est lui que
 # devcontainer.json désigne) ; les images par architecture `IMAGE:VERSION-linux-amd64` et
 # `IMAGE:VERSION-linux-arm64` restent dans le paquet comme sous-produits.

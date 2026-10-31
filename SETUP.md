@@ -1,6 +1,6 @@
 # Setup, commands and common problems
 
-The same for the five workshops of the series "Customising a chatbot" (Youth AI Lab, Erasmus+).
+The same for the five workshops of the series "Build your own chatbot" (Youth AI Lab, Erasmus+).
 The page of each workshop is its `README.md`.
 
 - [Before you start](#before-you-start)
@@ -332,4 +332,4 @@ Codespace.
 
 ---
 
-*Youth AI Lab (Erasmus+) - Series "Customising a chatbot" - 2026*
+*Youth AI Lab (Erasmus+) - Series "Build your own chatbot" - 2026*

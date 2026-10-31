@@ -20,8 +20,9 @@
 
 ## Identity
 <!-- Who is your chatbot? Give it a name, a personality, and a way of speaking.
-     Questions to ask yourselves: is it a character (Feurisson is a hedgehog)? Is it formal or
-     friendly? Does it speak in short sentences? -->
+     Questions to ask yourselves: is it a character (the example Feurisson is a hedgehog;
+     the real one is a flame that answers in verse)? Is it formal or friendly? Does it speak
+     in short sentences? -->
 
 ## Theme
 <!-- What is it specialised in? Narrow it down: which territory? which part of the topic?
@@ -51,4 +52,7 @@
 ## Bans and constraints
 <!-- What does it refuse? (e.g. questions outside the theme, kindly, with a suggestion)
      When must the tone change? (e.g. someone reports a fire in progress: no jokes, the
-     emergency numbers first) -->
+     emergency numbers first)
+     How does it protect young people? (e.g. it never asks for personal information; when
+     someone says they are unwell or in danger, it sends them to an adult they trust and to the
+     emergency number: copy the two last "Never" rules of the example) -->

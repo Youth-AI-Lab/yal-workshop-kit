@@ -1,4 +1,6 @@
-# Youth AI Lab - Customising a chatbot
+# Youth AI Lab - Build your own chatbot
+
+**What it reads, and who decides.**
 
 ### Erasmus+ project Youth AI Lab - a series of five hands-on workshops for youth workers
 
@@ -210,6 +212,16 @@ The workshops show one way to build a chatbot. Other guides of the project show 
 | Get help to prepare your sessions, from an assistant that remembers you | [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide) | workshop 4 (memory, skills and a tool) | you, the adult: never for use with young people |
 | Run the workshops and the guides on your own computer, without a Codespace | [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide) | any workshop, before you start it | you, or the colleague who helps you with your computer |
 
+Next, with young people (12–15): the **WikiYouthBot** activity.
+
+- The activity sheet: [WikiYouthBot ideation sheet](https://github.com/Youth-AI-Lab/deliverables/blob/master/Ideation_Sheets/YouthAiLab_Template_Explorations_Ideation_Sheet_WikiYouthBot.pdf) (PDF, 26 pages), and
+  [its printable materials](https://github.com/Youth-AI-Lab/deliverables/tree/master/Ideation_Sheets/WikiYouthBot_Materials) (Bingo grids, score board, SDG sheet).
+- A real week, in La Rochelle in July 2026: [the chatbots the young people built](https://youth-ai-lab.github.io/wikiyouthbot/),
+  with the real Feurisson.
+- Step by step, in French: [the WikiYouthBot page of Wiki@LAB](https://wiki.labaixbidouille.com/ressources/youth-ai-lab/wikiyouthbot).
+
+See also [How this connects to WikiYouthBot](#how-this-connects-to-wikiyouthbot).
+
 And the two standards the series uses:
 
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).
@@ -223,4 +235,4 @@ Texts and screenshots: [CC BY-SA 4.0](LICENSES/CC-BY-SA-4.0.txt). Configuration 
 [EUPL-1.2](LICENSES/EUPL-1.2.txt). The official documents are not ours and are not covered: see
 [their note](LICENSES/LicenseRef-Third-Party.txt) and [`REUSE.toml`](REUSE.toml).
 
-*Youth AI Lab (Erasmus+) - Series "Customising a chatbot" - 2026*
+*Youth AI Lab (Erasmus+) - Series "Build your own chatbot" - 2026*

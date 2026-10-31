@@ -1,5 +1,5 @@
 version = 1
-SPDX-PackageName = "Youth AI Lab - Customising a chatbot"
+SPDX-PackageName = "Youth AI Lab - Build your own chatbot"
 SPDX-PackageSupplier = "Youth AI Lab (Erasmus+)"
 SPDX-PackageDownloadLocation = "https://github.com/Youth-AI-Lab/yal-workshop-kit"
 
@@ -9,7 +9,7 @@ SPDX-PackageDownloadLocation = "https://github.com/Youth-AI-Lab/yal-workshop-kit
 # example chatbots and the skills: CC BY-SA 4.0. The screenshots show the interfaces of Claude Code,
 # Open WebUI, VS Code and GitHub, which belong to their authors.
 [[annotations]]
-path = ["README.md", "sheet.md", "SETUP.md", "LOCAL.md", "AGENTS.md", "CLAUDE.md", "scores.md", "test-questions.md", "examples/**", "summaries/**", "images/**", ".claude/skills/**", ".workshop/**", "corpus/index.md", "corpus/SOURCES.md", "inbox/README.md"]
+path = ["README.md", "sheet.md", "SETUP.md", "AGENTS.md", "CLAUDE.md", "scores.md", "test-questions.md", "examples/**", "summaries/**", "images/**", ".claude/skills/**", ".workshop/**", "corpus/index.md", "corpus/SOURCES.md", "inbox/README.md"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Youth AI Lab partners"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
