@@ -2,7 +2,7 @@
 
 **What it reads, and who decides.**
 
-### Erasmus+ project Youth AI Lab - a series of five hands-on workshops for youth workers
+### Erasmus+ project Youth AI Lab - a series of six hands-on workshops for youth workers
 
 - **Project:** Youth AI Lab (Erasmus+), with five partners:
   - L.A.B. (Aix-en-Provence, France)
@@ -11,14 +11,14 @@
   - Digitale Wolven (Antwerp, Belgium)
   - CSC Vent des Îles (La Rochelle, France)
 
-> 🎯 **Five workshops of 2 hours, in pairs.** The goal is to **see what happens behind a
+> 🎯 **Six workshops of 2 hours, in pairs.** The goal is to **see what happens behind a
 > chatbot**: what it reads before it answers, and who decides what it reads. Each workshop adds
 > one piece to the chatbot of your pair. You can use what you learn if you run the
 > **WikiYouthBot** activity with young people.
 
 > 🎓 **Each workshop has its own repository**, with its own Codespace link: see
-> [The series](#the-series). This repository is the **whole kit**: everything the five workshops
-> use, in one place. The setup, the commands and the common problems are in [SETUP.md](SETUP.md).
+> [The series](#the-series). This repository is the **whole kit**: everything the first five
+> workshops use, in one place. The setup, the commands and the common problems are in [SETUP.md](SETUP.md).
 
 ### Contents
 
@@ -34,7 +34,7 @@
 
 ## The series
 
-All five workshops answer **the same question**:
+All six workshops answer **the same question**:
 
 > **What enters the model's context, when, and who decides?**
 
@@ -49,10 +49,12 @@ and any document it was given. The model knows nothing else about your situation
 | 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
 | 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
+| 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | When is it worth teaching a small model, instead of asking a big one? | your examples and your test; a small fine-tuned model; its comparison with Claude |
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
-[From one workshop to the next](#from-one-workshop-to-the-next)). The slides, their PDF and the facilitator's
+[From one workshop to the next](#from-one-workshop-to-the-next)). Workshop 6 needs nothing from the
+others: it has its own command, `./sorter`. The slides, their PDF and the facilitator's
 sheets are on [the site of the series](https://youth-ai-lab.github.io/yal-workshop/).
 
 What enters the context, workshop by workshop:
