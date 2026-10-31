@@ -448,6 +448,14 @@ class OpenWebUIRag:
             raise SystemExit(not_running) from None
         if self.MODEL_ID not in ids:
             raise SystemExit(f'Open WebUI has no chatbot "{self.MODEL_NAME}" yet. Type: openwebui start')
+        # No accounts in the kit's Open WebUI: openwebui stops it and refuses if its port is public.
+        openwebui = shutil.which("openwebui") or str(Path(__file__).resolve().parent / "openwebui")
+        try:
+            check = subprocess.run([openwebui, "check-private"], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            check = None
+        if check is not None and check.returncode != 0:
+            raise SystemExit(check.stderr.strip() or "openwebui check-private failed.")
         # The RAG column is measured with 5 excerpts per question (openwebui start). openwebui top-k
         # changes it for every chat of this Open WebUI, from the next question.
         try:

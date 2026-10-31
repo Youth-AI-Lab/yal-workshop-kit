@@ -91,7 +91,7 @@ STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text ans
 NO_TOOLS = ("You have no tools in this conversation: you cannot open, search or read any file. Answer from what "
             "you know and from these instructions, and never write tool calls.")
 KNOWLEDGE = ("The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries "
-             "in English, one per source: start there; their OKF header, up to the second ---, says who verified "
+             "in English of the official documents: start there; their OKF header, up to the second ---, says who verified "
              "them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in "
              "their original language: go there for details or when the summaries are not enough; read and search "
              "their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about "
@@ -276,7 +276,7 @@ def write_instructions(mode, agents, run):
         # copy of every official document (never the originals: too big, or not text).
         body = "\n".join([NO_TOOLS, "",
                           "# Reference knowledge, loaded in full at startup:",
-                          "# summaries/ (short summaries, one per source; their header says who verified them) and",
+                          "# summaries/ (short summaries of the official documents; their header says who verified them) and",
                           "# corpus/text/ (readable copies of the full official documents)"]) + "\n"
         for f in sorted((KIT / "summaries").glob("*.md")) + sorted((KIT / "corpus" / "text").glob("*.md")):
             if f.name in ("index.md", "README.md") or f.name.startswith("00-"):
@@ -435,7 +435,7 @@ def main():
         "XDG_DATA_HOME": str(data),
         "PWD": str(cwd),  # OpenCode takes its folder from $PWD, not from the process's folder
         # OpenCode keeps temporary files in $TMPDIR/opencode: one folder per account, so that two
-        # accounts of the workshop server never share (or block) it.
+        # accounts of the old plan-B server never share (or block) it.
         "TMPDIR": str(RUN_DIR / "tmp"),
     })
     (RUN_DIR / "tmp").mkdir(parents=True, exist_ok=True)

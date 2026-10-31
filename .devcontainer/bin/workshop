@@ -138,7 +138,7 @@ read_only=("Bash(ls:*)" "Bash(grep:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(wc:*)"
 # The test material (expected answers, earlier answers, example prompt) is not a source: the
 # prompt says so, and replay flags any answer where the model saw it. No Read() deny rule: with
 # one, Claude Code asks permission for every "cd …; grep …", and nobody can answer during replay.
-knowledge="The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English, one per source: start there; their OKF header, up to the second ---, says who verified them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used. Never open or search test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not sources. You are already in the kit folder: run your commands from here, without cd. To create or change a file, use the Write and Edit tools, never shell commands (cat >, sed -i, printf >>): the person sees exactly what changes before accepting."
+knowledge="The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries in English of the official documents: start there; their OKF header, up to the second ---, says who verified them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in their original language: go there for details or when the summaries are not enough; read and search their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about the topic, search them before answering, and say which document you used. Never open or search test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not sources. You are already in the kit folder: run your commands from here, without cd. To create or change a file, use the Write and Edit tools, never shell commands (cat >, sed -i, printf >>): the person sees exactly what changes before accepting."
 
 # Modes A and B have no tools, but Claude Code's own instructions still describe them: an AGENTS.md
 # that asks to name a document made the model write fake tool calls as text instead of an answer
@@ -164,7 +164,7 @@ case "$mode" in
       echo "$no_tools"
       echo
       echo "# Reference knowledge, loaded in full at startup:"
-      echo "# summaries/ (short summaries, one per source; their header says who verified them) and"
+      echo "# summaries/ (short summaries of the official documents; their header says who verified them) and"
       echo "# corpus/text/ (readable copies of the full official documents)"
       # The summaries and the readable copy of every official document (corpus/text/);
       # never the originals (HTML, PDF, Word), which are far too big or not text.

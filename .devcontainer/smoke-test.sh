@@ -164,7 +164,7 @@ print(len(n), 'fichiers dans le paquet')
 " "$copie/smoke-test.zip" || echec "chatbot-export : paquet incomplet"
 
 etape "openwebui : Docker fonctionne dans le conteneur, la commande demande la clé d'abord"
-# Pas de téléchargement d'Open WebUI ici (4,6 Go) : le démarrage réel est vérifié à la main
+# Pas de téléchargement d'Open WebUI ici (1,6 Go à télécharger) : le démarrage réel est vérifié à la main
 # dans un Codespace (facilitator/SETUP.md).
 docker info > /dev/null || echec "Docker ne répond pas (fonctionnalité docker-in-docker)"
 openwebui help | grep -q "openwebui start" || echec "openwebui help"
@@ -283,6 +283,49 @@ grep -q "there is no key yet" <<< "$sortie" || { echo "$sortie"; echec "workshop
 (cd "$copie" && WORKSHOP_HOME="$copie" workshop-save > /dev/null) || echec "workshop-save"
 [[ -f "$copie/my-work.zip" ]] || echec "workshop-save : my-work.zip absent"
 rm -f "$copie/my-work.zip"
+# Sauvegarde trop ancienne : MANIFEST avec « Workshop: n », avertissements de workshop-start.
+dw="$(mktemp -d)"; cp -r "$KIT/." "$dw"; rm -rf "$dw/.git"; printf 'You are Testbot.\n' >> "$dw/AGENTS.md"
+mkdir -p "$dw/.workshop"; echo '{"workshop": 1}' > "$dw/.workshop/last-start.json"
+(cd "$dw" && WORKSHOP_HOME="$dw" workshop-save > /dev/null) || echec "workshop-save (atelier 1)"
+unzip -p "$dw/my-work.zip" MANIFEST.md | grep -qx "Workshop: 1" || echec "workshop-save : « Workshop: 1 » absent du MANIFEST"
+/opt/workshop/venv/bin/python - "$dw" <<'PY' || echec "copie de sauvegarde plus récente non écrite"
+import sys, zipfile
+d = sys.argv[1]; src = zipfile.ZipFile(f"{d}/my-work.zip")
+with zipfile.ZipFile(f"{d}/my-work (1).zip", "w") as out:
+    for n in src.namelist():
+        data = src.read(n)
+        if n == "MANIFEST.md":
+            data = data.decode().replace("Saved on: ", "Saved on: 2099-01-01 10:00\nWas: ", 1).encode()
+        out.writestr(n, data)
+PY
+sortie="$(cd "$dw" && HOME="$(mktemp -d)" WORKSHOP_HOME="$dw" workshop-start 4 --from my-work.zip 2>&1)" || true
+grep -qF '! my-work (1).zip was saved later (on 2099-01-01 10:00)' <<< "$sortie" || { echo "$sortie"; echec "workshop-start : sauvegarde plus récente non signalée"; }
+grep -qF '! This save is from workshop 1.' <<< "$sortie" || { echo "$sortie"; echec "workshop-start : sauvegarde de l'atelier 1 non signalée à l'atelier 4"; }
+# openwebui (kit, sans comptes) : un port public arrête Open WebUI et refuse ; rien hors Codespace ni en mode classe.
+openwebui check-private || echec "openwebui check-private hors Codespace : rien à refuser"
+/opt/workshop/venv/bin/python - "$(command -v openwebui)" <<'PY' || echec "openwebui : port public non refusé"
+import contextlib, importlib.machinery, importlib.util, io, sys
+l = importlib.machinery.SourceFileLoader("owui", sys.argv[1]); m = importlib.util.module_from_spec(importlib.util.spec_from_loader("owui", l)); l.exec_module(m)
+calls = []; m.docker = lambda *a, **k: calls.append(a); m.port_is_public = lambda: True
+m.gh_set_visibility = lambda v: False; m.time.sleep = lambda s: None
+err = io.StringIO()
+with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+    try:
+        m.refuse_public_port(interactive=False); raise AssertionError("no refusal")
+    except SystemExit as e:
+        assert e.code == 1
+assert ("stop", m.CONTAINER) in calls and "because port 3000 is public" in err.getvalue(), (calls, err.getvalue())
+assert "Forward a Port" in err.getvalue(), err.getvalue()
+# GitHub lets gh make it private: Open WebUI keeps running.
+states = iter([True, False]); calls.clear()
+m.port_is_public = lambda: next(states); m.gh_set_visibility = lambda v: v == "private"
+with contextlib.redirect_stdout(io.StringIO()):
+    m.refuse_public_port(interactive=False)
+assert not calls, calls
+for state in (False, None):
+    calls.clear(); m.port_is_public = lambda: state; m.refuse_public_port(); assert not calls
+m.CLASS = True; m.port_is_public = lambda: True; m.refuse_public_port()
+PY
 
 etape "OpenCode : configuration de chaque mode (répétition à blanc, sans appel au modèle)"
 oc() { WORKSHOP_ENGINE=opencode WORKSHOP_DRY_RUN=1 WORKSHOP_HOME="$copie" workshop "$1" -p hi; }

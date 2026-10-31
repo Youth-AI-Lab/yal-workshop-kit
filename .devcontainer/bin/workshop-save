@@ -22,6 +22,7 @@ import argparse
 import datetime
 import hashlib
 import io
+import json
 import os
 import pathlib
 import re
@@ -266,10 +267,29 @@ def zip_fingerprint(path):
         return None
 
 
+def workshop_number():
+    """The workshop of this work: the repository's README ("# Workshop N - …"), else the last
+    workshop-start (.workshop/last-start.json, in the whole kit); None if neither tells.
+    Reads KIT when called (workshop-start sets it after loading this file)."""
+    kit = KIT
+    try:
+        found = re.match(r"# Workshop (\d+) ", (kit / "README.md").read_text(encoding="utf-8", errors="replace"))
+        if found:
+            return int(found.group(1))
+    except OSError:
+        pass
+    try:
+        n = json.loads((kit / ".workshop" / "last-start.json").read_text(encoding="utf-8")).get("workshop")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return n if isinstance(n, int) else None
+
+
 def manifest(items, name):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    n = workshop_number()
     lines = [f"# Workshop save: {name}", "",
-             f"Saved on: {now}", f"Files: {len(items)}", "",
+             f"Saved on: {now}"] + ([f"Workshop: {n}"] if n else []) + [f"Files: {len(items)}", "",
              "This file was written by `workshop-save` (Youth AI Lab workshop). It holds only what",
              "you made or changed in the kit.", "", "## What is inside", ""]
     groups = {}
