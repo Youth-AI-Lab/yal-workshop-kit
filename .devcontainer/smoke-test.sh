@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
+for c in workshop workshop-claude workshop-opencode replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
 
 etape "zsh et oh-my-zsh pour vscode (shell par défaut des terminaux, réglage dans les métadonnées de l'image)"
 command -v zsh || echec "zsh absent"
@@ -214,8 +214,8 @@ for v in CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_FAST_MODE; do
 done
 
 etape "Réglages de chaque mode (répétition à blanc, sans appel au modèle)"
-grep -q "CLAUDE_CODE_AUTO_CONNECT_IDE=false" "$(command -v workshop)" || echec "workshop : lien avec VS Code non coupé (outils et sélection envoyés au modèle)"
-grep -q "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1" "$(command -v workshop)" || echec "workshop : mémoire automatique active (replay non indépendant)"
+grep -q 'CLAUDE_CODE_AUTO_CONNECT_IDE="false"' "$(command -v workshop-claude)" || echec "workshop-claude : lien avec VS Code non coupé (outils et sélection envoyés au modèle)"
+grep -q 'CLAUDE_CODE_DISABLE_AUTO_MEMORY="1"' "$(command -v workshop-claude)" || echec "workshop-claude : mémoire automatique active (replay non indépendant)"
 reglages() { WORKSHOP_DRY_RUN=1 workshop "$1" -p hi; }
 a_la_suite() { printf '%s\n' "$1" | grep -A1 -xF -- "$2" | tail -1; }
 for m in bare A B C D; do

@@ -2,8 +2,9 @@
 """Starts the workshop chatbot with OpenCode instead of Claude Code (same modes, same rules).
 
 `workshop` runs this file when the engine is opencode (workshop-login --engine opencode, or
-WORKSHOP_ENGINE=opencode). Each mode gives OpenCode the same context and the same tools as the
-Claude Code side of `workshop`: see the help of `workshop` for the modes.
+WORKSHOP_ENGINE=opencode). The modes are described once, in workshop_modes.py: this file turns each
+one into an OpenCode config, as workshop-claude turns it into Claude Code's flags (the same context
+and the same tools).
 
     workshop-opencode <mode>                    the chat in the terminal (OpenCode's own interface)
     workshop-opencode <mode> [opencode flags]   the same, flags passed on (e.g. --continue)
@@ -75,39 +76,17 @@ import tempfile
 import time
 from pathlib import Path
 
+import workshop_modes as modes
+
 KIT = Path(os.environ.get("WORKSHOP_HOME") or Path.home() / "workshop")
 BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-bare")
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
-KIT_SERVERS = ("fire-danger", "time")          # the kit's MCP servers, allowed without asking (D, E, F)
-WEATHER_TOOLS = ("weather_forecast", "geocoding")   # WORKSHOP_WEATHER=1: the only Open-Meteo tools shown
 KEY_FILE = Path.home() / ".workshop-key"
 SETTINGS_FILE = Path.home() / ".workshop-opencode.json"
 
-MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F"}
 STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text answer)
 
-# The texts below are the ones of `workshop` (keep them aligned), with OpenCode's tool names.
-NO_TOOLS = ("You have no tools in this conversation: you cannot open, search or read any file. Answer from what "
-            "you know and from these instructions, and never write tool calls.")
-KNOWLEDGE = ("The reference knowledge is in two folders, each with an index.md catalogue: summaries/ (short summaries "
-             "in English of the official documents: start there; their OKF header, up to the second ---, says who verified "
-             "them: \"status: draft\" means not yet checked by a person) and corpus/ (the full official documents in "
-             "their original language: go there for details or when the summaries are not enough; read and search "
-             "their readable copies in corpus/text/, not the original HTML, PDF or Word files). For a question about "
-             "the topic, search them before answering, and say which document you used. Never open or search "
-             "test-questions.md, scores.md, answers/ or examples/: they are the test material of the workshop, not "
-             "sources. You are already in the kit folder: search and read with the grep, glob and read tools, not "
-             "with shell commands (each shell command waits for the person's approval). To create or change a "
-             "file, use the edit and write tools, never shell commands (cat >, sed -i, printf >>): the person sees "
-             "exactly what changes before accepting.")
-WIKI = ("To answer, first read wiki/index.md, then the relevant pages of wiki/: each fact there has a footnote to its "
-        "source. If the wiki is not enough, search the sources. ")
-GRAPH = ("The wiki (wiki/) is also available as a knowledge graph, through the graphify tools (query_graph, get_node, "
-         "get_neighbors, shortest_path): each node is a concept, an organisation, a rule or a page of the wiki, with "
-         "the page it comes from. To answer, first query the graph to find the relevant nodes and pages, then read "
-         "only those wiki pages to get the exact facts and their footnotes. If the wiki is not enough, search the "
-         "sources. ")
 # Anthropic prices in $ per million tokens (Claude Sonnet 5.5: input 2, output 10, cache read 0.20,
 # cache write 5 min 2.50 = 1.25 x input), from Anthropic's price table (checked 2026-10-27).
 # OpenCode's built-in catalogue puts the cache read at 0.10: the cost shown would be too low.
@@ -217,32 +196,13 @@ def serve_flags(extra):
     return host, port
 
 
-def agents_file(mode):
-    """The WORKSHOP_AGENTS file, or None for AGENTS.md (same rules and messages as `workshop`)."""
-    wanted = os.environ.get("WORKSHOP_AGENTS")
-    if not wanted:
-        return None
-    if mode == "bare":
-        print("Mode bare has no instructions at all: WORKSHOP_AGENTS is ignored.", file=sys.stderr)
-        return None
-    agents = Path(wanted)
-    # A relative path: from here, or else from the kit (examples/AGENTS.liar.md).
-    if not agents.is_absolute() and not agents.is_file() and (KIT / agents).is_file():
-        agents = KIT / agents
-    if not agents.is_file():
-        fail(f"Instructions file not found: {wanted}\n"
-             "Give the path of a file, for example: examples/AGENTS.feurisson.md")
-    return agents
-
-
 def check_wiki(mode):
-    if mode == "E" and not (KIT / "wiki" / "index.md").is_file():
-        fail("No wiki yet. First type: wiki-start")
-    if mode == "E" and not (KIT / "wiki" / "AGENTS.md").is_file():
+    message = modes.missing(mode, KIT)
+    if message:
+        fail(message)
+    if mode.name == "E" and not (KIT / "wiki" / "AGENTS.md").is_file():
         # OpenCode reads the rules of the wiki from wiki/AGENTS.md only (never wiki/CLAUDE.md).
         fail("This wiki has no wiki/AGENTS.md (it comes from an older kit). Ask the facilitator.")
-    if mode == "F" and not (KIT / "wiki" / "graphify-out" / "graph.json").is_file():
-        fail("No graph of the wiki yet. First type: wiki-start")
 
 
 def new_run_dir(mode):
@@ -265,26 +225,16 @@ def write_instructions(mode, agents, run):
         instructions.append(str(run / name))
 
     instructions = []
-    if mode == "bare":
+    if not mode.instructions:
         return instructions
     source = agents or KIT / "AGENTS.md"
     add("AGENTS.md", strip_comments(source.read_text(encoding="utf-8")) if source.is_file() else "")
-    if mode == "A":
-        add("no-tools.md", NO_TOOLS + "\n")
-    elif mode == "B":
-        # The same assembly as `workshop` B: the no-tools line, then every summary and the readable
-        # copy of every official document (never the originals: too big, or not text).
-        body = "\n".join([NO_TOOLS, "",
-                          "# Reference knowledge, loaded in full at startup:",
-                          "# summaries/ (short summaries of the official documents; their header says who verified them) and",
-                          "# corpus/text/ (readable copies of the full official documents)"]) + "\n"
-        for f in sorted((KIT / "summaries").glob("*.md")) + sorted((KIT / "corpus" / "text").glob("*.md")):
-            if f.name in ("index.md", "README.md") or f.name.startswith("00-"):
-                continue
-            body += f"\n\n## Document: {f.relative_to(KIT)}\n\n" + f.read_text(encoding="utf-8")
-        add("knowledge-in-context.md", body)
-    else:
-        add("knowledge.md", {"E": WIKI, "F": GRAPH}.get(mode, "") + KNOWLEDGE + "\n")
+    if "preload" in mode.texts:
+        add("knowledge-in-context.md", modes.preload(KIT))
+    elif mode.texts == ("no_tools",):
+        add("no-tools.md", modes.added_text(mode, "opencode") + "\n")
+    elif mode.texts:
+        add("knowledge.md", modes.added_text(mode, "opencode") + "\n")
     return instructions
 
 
@@ -293,13 +243,13 @@ def tools_of(mode):
     # Base: nothing allowed. A tool denied here is not even sent to the model.
     perms = [rule("*", "*", "deny")]
     mcp = {}
-    if mode in ("C", "D", "E", "F"):
+    if mode.search:
         perms += [rule("read", "*", "allow"), rule("glob", "*", "allow"), rule("grep", "*", "allow"),
                   rule("skill", "*", "allow"),
                   # OpenCode's own skills: not part of the workshop.
                   rule("skill", "opencode", "deny"), rule("skill", "report", "deny"),
                   # Writing a file or ANY shell command: OpenCode asks first (and refuses in -p and replay).
-                  # No shell command is allowed without asking, unlike `workshop`'s Bash(cat:*) and the like:
+                  # No shell command is allowed without asking, unlike workshop-claude's Bash(cat:*) and the like:
                   # OpenCode 2.1.4 matches "cat *" against the whole line, so it would also let through
                   # "cat a > test-questions.md", "find -delete", "find -exec" and "cat ~/.workshop-key"
                   # (external_directory does not apply to shell commands). grep, glob and read search the kit.
@@ -311,7 +261,7 @@ def tools_of(mode):
         # The pair's key: the read tool can never open it. (grep is matched on its pattern, not on its
         # path: if a person approves a folder outside the kit, grep could still find it. Never approve one.)
         perms += [rule("read", "*workshop-key*", "deny")]
-    if mode in ("D", "E", "F"):
+    if "kit" in mode.servers:
         # The kit's MCP servers, as described in .mcp.json for Claude Code (fire-danger and time), so
         # both engines get the same tools.
         try:
@@ -319,8 +269,8 @@ def tools_of(mode):
             servers["fire-danger"]["command"]
         except (OSError, ValueError, KeyError, TypeError):
             fail(f"The MCP server of the kit is not described in {KIT / '.mcp.json'}. Ask the facilitator.")
-        if os.environ.get("WORKSHOP_WEATHER") == "1":
-            # Workshop 4, extension: the Open-Meteo server, reduced to two tools as in `workshop`.
+        if modes.weather_wanted(mode):
+            # Workshop 4, extension: the Open-Meteo server, reduced to two tools (workshop_modes.py).
             try:
                 servers.update(json.loads((KIT / ".mcp.weather.json").read_text(encoding="utf-8"))["mcpServers"])
             except (OSError, ValueError, KeyError, TypeError):
@@ -334,21 +284,21 @@ def tools_of(mode):
             mcp[name] = {"type": "local", "command": command, "codemode": False}
             if server.get("env"):
                 mcp[name]["environment"] = server["env"]
-            if name in KIT_SERVERS:
-                # The same tools as `workshop` allows without asking (mcp__fire-danger, mcp__time).
+            if name in modes.KIT_SERVERS:
+                # The same tools as workshop-claude allows without asking (mcp__fire-danger, mcp__time).
                 perms += [rule(f"{name}_*", "*", "allow")]
             elif name == "open-meteo":
                 # Only these two are sent to the model; the 15 others stay denied (not even shown).
-                perms += [rule(f"open-meteo_{t}", "*", "allow") for t in WEATHER_TOOLS]
+                perms += [rule(f"open-meteo_{t}", "*", "allow") for t in modes.WEATHER_SHOWN]
             else:
                 # A server someone added to .mcp.json: each call is asked, as with Claude Code.
                 perms += [rule(f"{name}_*", "*", "ask")]
-    if mode == "F":
+    if "graphify" in mode.servers:
         mcp["graphify"] = {"type": "local", "codemode": False,
                            "command": [GRAPHIFY_MCP, str(KIT / "wiki" / "graphify-out" / "graph.json")]}
         perms += [rule("graphify_*", "*", "allow")]
-        # The same tools left out as in `workshop` F (about pull requests, not about the wiki).
-        perms += [rule(f"graphify_{t}", "*", "deny") for t in ("list_prs", "get_pr_impact", "triage_prs")]
+        # graphify's tools about pull requests: left out, as with Claude Code (workshop_modes.py).
+        perms += [rule(f"graphify_{t}", "*", "deny") for t in modes.GRAPHIFY_HIDDEN]
     return perms, mcp
 
 
@@ -374,12 +324,12 @@ def build_config(mode, instructions, perms, mcp, steps):
         "policies": [rule("provider.use", "*", "deny"), rule("provider.use", provider, "allow")],
         "instructions": instructions,
         # Explicit: OPENCODE_DISABLE_PROJECT_CONFIG=1 also hides the kit's .claude/skills.
-        "skills": [str(KIT / ".claude" / "skills")] if mode in ("C", "D", "E", "F") else [],
+        "skills": [str(KIT / ".claude" / "skills")] if mode.search else [],
         "agents": {
             "build": {"disabled": True}, "plan": {"disabled": True},
             "general": {"disabled": True}, "explore": {"disabled": True},
             "title": {"disabled": True},  # no extra request to a small model at each session
-            "chatbot": {"mode": "primary", "description": f"Workshop chatbot, mode {mode}", "steps": steps,
+            "chatbot": {"mode": "primary", "description": f"Workshop chatbot, mode {mode.name}", "steps": steps,
                         "permissions": perms},
         },
         "mcp": {"servers": mcp},
@@ -396,9 +346,9 @@ def main():
     if mode in ("help", "-h", "--help"):
         print(__doc__.strip())
         return
-    if mode.lower() not in MODES:
-        fail(f"Unknown mode: {mode}. Modes: bare, A, B, C, D, E, F (workshop help).")
-    typed, mode = mode, MODES[mode.lower()]
+    typed, mode = mode, modes.mode_of(mode)
+    if mode is None:
+        fail(modes.UNKNOWN.format(typed=typed))
     kind, question, extra = parse_args(argv)
 
     # The same check and the same words as `workshop`.
@@ -407,18 +357,23 @@ def main():
     run_flags, steps = print_flags(extra) if kind == "print" else ([], STEPS)
     if kind == "serve":
         serve_host, serve_port = serve_flags(extra)
-    agents = agents_file(mode)
     check_wiki(mode)
+    agents, problem = modes.agents_file(mode, KIT)
+    if problem:
+        fail(problem)
+    problem = modes.weather_problem(mode)
+    if problem:
+        fail(problem)
 
-    run = new_run_dir(mode)
+    run = new_run_dir(mode.name)
     perms, mcp = tools_of(mode)
     config = build_config(mode, write_instructions(mode, agents, run), perms, mcp, steps)
     model = config["model"]
 
-    cwd = BARE_DIR if mode == "bare" else KIT
+    cwd = BARE_DIR if mode.folder == "bare" else KIT
     if kind == "tui":
         # One database per mode: an "Allow always" given in C never reaches D, E, F or replay.
-        data = RUN_DIR / "opencode-data" / mode
+        data = RUN_DIR / "opencode-data" / mode.name
     elif kind == "serve" and os.environ.get("XDG_DATA_HOME"):
         data = Path(os.environ["XDG_DATA_HOME"])
     else:
@@ -466,7 +421,7 @@ def main():
                                      "XDG_DATA_HOME", "PWD")}
         if kind == "tui":
             banner(typed, agents, run, model)
-        print(json.dumps({"engine": "opencode", "mode": mode, "cwd": str(cwd), "run_dir": str(run),
+        print(json.dumps({"engine": "opencode", "mode": mode.name, "cwd": str(cwd), "run_dir": str(run),
                           "server": server, "command": command,
                           "stdin": str(stdin_file) if stdin_file else None,
                           "env": shown, "config": config}, indent=2, ensure_ascii=False))
@@ -475,14 +430,14 @@ def main():
     if not shutil.which("opencode", path=env.get("PATH")):
         shutil.rmtree(run, ignore_errors=True)  # nobody else knows this folder: do not leave it behind
         fail("OpenCode is not installed here (command opencode not found). Ask the facilitator.")
-    if mode == "bare":
+    if mode.folder == "bare":
         BARE_DIR.mkdir(parents=True, exist_ok=True)
     data.mkdir(parents=True, exist_ok=True)
     os.chdir(cwd)
     if kind == "tui":
         banner(typed, agents, run, model)
     elif kind == "serve":
-        print(json.dumps({"url": f"http://{serve_host}:{serve_port}", "directory": str(cwd), "mode": mode,
+        print(json.dumps({"url": f"http://{serve_host}:{serve_port}", "directory": str(cwd), "mode": mode.name,
                           "steps": steps, "run_dir": str(run), "model": model}), flush=True)
     elif server:
         sys.exit(ask_after_warm_up(env, run, run_flags, stdin_file))
@@ -560,15 +515,8 @@ def stop_group(proc):
 
 
 def banner(mode, agents, run, model):
-    """The banner of `workshop`, plus the engine."""
-    print(f"Workshop — mode {mode}. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F",
-          file=sys.stderr)
-    print(f"Engine: OpenCode (model {model})", file=sys.stderr)
-    if agents is not None:
-        print(f"Instructions: {agents} (a copy; AGENTS.md is not used)", file=sys.stderr)
-        # The demo personalities of examples/ (liar, sophist, storyteller) carry this label.
-        if "Demo bot:" in (run / "AGENTS.md").read_text(encoding="utf-8"):
-            print("This demo bot makes deliberate errors.", file=sys.stderr)
+    """The banner of workshop_modes.py, plus the engine."""
+    modes.banner(mode, agents, run / "AGENTS.md", f"Engine: OpenCode (model {model})")
 
 
 if __name__ == "__main__":

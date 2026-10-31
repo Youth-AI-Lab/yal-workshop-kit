@@ -92,7 +92,7 @@ ENV GRAPHIFY_NO_AUTO_REFRESH=1
 
 # Commandes de l'atelier.
 COPY .devcontainer/bin/ /usr/local/bin/
-RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/workshop-opencode /usr/local/bin/replay \
+RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/workshop-claude /usr/local/bin/workshop-opencode /usr/local/bin/replay \
     /usr/local/bin/workshop-login /usr/local/bin/corpus-add \
     /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore \
     /usr/local/bin/chatbot-export /usr/local/bin/openwebui \

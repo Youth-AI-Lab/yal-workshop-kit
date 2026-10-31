@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Starts the workshop chatbot with Claude Code, in one mode of the grid (described in workshop_modes.py).
+
+`workshop` runs this file when the engine is claude (the default), after checking the key:
+    workshop-claude <mode> [claude flags]      e.g. workshop-claude B -p "question" (used by replay)
+
+Environment (the same names as `workshop`): WORKSHOP_HOME, WORKSHOP_BARE_DIR, WORKSHOP_RUN_DIR,
+WORKSHOP_MOD_DIR, WORKSHOP_GRAPHIFY_MCP, WORKSHOP_AGENTS, WORKSHOP_WEATHER,
+WORKSHOP_DRY_RUN=1 (print the folder and the flags instead of running claude: used by the smoke test).
+"""
+import json
+import os
+import shutil
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+import workshop_modes as modes
+
+KIT = Path(os.environ.get("WORKSHOP_HOME") or Path.home() / "workshop")
+BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-bare")
+RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
+MOD_DIR = Path(os.environ.get("WORKSHOP_MOD_DIR") or "/opt/workshop/claude-code-playground/claude-code/mods/token-weather")
+GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP") or "/opt/workshop/venv/bin/graphify-mcp"
+
+# Claude Code's names for the tools of the modes with search (file search goes through Bash).
+SEARCH_TOOLS = "Read,Bash,Edit,Write,Skill"
+# Read-only commands allowed without confirmation. No rg: "rg --pre <program>" runs a program, and a
+# Bash(rg:*) rule would let it through. No Read() deny rule for the test material: with one, Claude
+# Code asks permission for every "cd …; grep …", and nobody can answer during replay.
+READ_ONLY = ("Bash(ls:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(wc:*)", "Bash(find:*)")
+# Only the kit's MCP servers can be loaded. Permission mode "manual" (not the default "auto"): Claude
+# Code asks before it writes a file. The auto and bypass modes are switched off, so a permission prompt
+# cannot offer "switch to auto mode". No skills bundled with Claude Code (code review, charts,
+# configuration…): the list of skills sent to the model is capped, and with them the workshop's own
+# skills lost their descriptions, so they did not trigger (measured with Claude Code 2.1.303,
+# facilitator/ATELIER-3-OUTILS.md).
+SETTINGS = '{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}, "disableBundledSkills": true}'
+
+
+def fail(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def agents_folder(agents):
+    """WORKSHOP_AGENTS: the chatbot follows this file instead of AGENTS.md, which stays as it is.
+    Claude Code still starts in the kit, so search, skills and MCP see the real folders; the kit's
+    CLAUDE.md is excluded, and a run folder holding a copy of the file as its CLAUDE.md is added as a
+    working directory whose CLAUDE.md is loaded: the same way into the context as AGENTS.md, HTML
+    comments left out. A copy, not "@AGENTS.md": Claude Code does not follow an import out of the kit
+    without asking (and nobody can answer during replay). Not a copy of the kit made of symlinks either:
+    grep -r, find and rg do not follow symlinked folders. A new folder at each start: two sessions with
+    the same file (one person chats while the other runs replay) never delete each other's copy. Run
+    folders older than a day are removed first, so they do not pile up."""
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    for old in RUN_DIR.glob("agents-*"):
+        try:
+            if old.is_dir() and now - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    folder = Path(tempfile.mkdtemp(prefix=f"agents-{modes.agents_name(agents) or 'custom'}-", dir=RUN_DIR))
+    shutil.copyfile(agents, folder / "CLAUDE.md")
+    return folder
+
+
+def main():
+    argv = sys.argv[1:]
+    typed = argv.pop(0) if argv and not argv[0].startswith("-") else "D"
+    mode = modes.mode_of(typed)
+    if mode is None:
+        fail(modes.UNKNOWN.format(typed=typed))
+
+    # No link with VS Code: otherwise Claude Code connects to the editor, gives the model its own tools
+    # (even in modes bare, A and B) and sends it the open files and the selected lines (for instance an
+    # expected answer of test-questions.md). It also skips installing that extension. No automatic
+    # memory (it would carry facts from one conversation to the next, and break the fresh session of
+    # each replay question), and no git status of the kit in the context.
+    env = dict(os.environ, CLAUDE_CODE_AUTO_CONNECT_IDE="false", CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL="1",
+               CLAUDE_CODE_DISABLE_AUTO_MEMORY="1", CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS="1")
+
+    message = modes.missing(mode, KIT)
+    if message:
+        fail(message)
+    agents, problem = modes.agents_file(mode, KIT)
+    if problem:
+        fail(problem)
+    settings = SETTINGS
+    args = ["--strict-mcp-config", "--permission-mode", "manual"]
+    folder = None
+    if agents:
+        folder = agents_folder(agents)
+        # The kit's own instructions are left out (both spellings of its path, in case of a link).
+        excludes = sorted({str(KIT / "CLAUDE.md"), str(KIT / "AGENTS.md"),
+                           str(KIT.resolve() / "CLAUDE.md"), str(KIT.resolve() / "AGENTS.md")})
+        settings = settings[:-1] + f', "claudeMdExcludes": {json.dumps(excludes)}}}'
+        env["CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"] = "1"
+    args += ["--settings", settings]
+    if folder:
+        args += ["--add-dir", str(folder)]
+    if MOD_DIR.is_dir():
+        args += ["--plugin-dir", str(MOD_DIR)]
+
+    # bare: an empty folder outside the kit, where no CLAUDE.md can be found.
+    cwd = BARE_DIR if mode.folder == "bare" else KIT
+
+    if not mode.search:
+        args += ["--tools", "", "--disable-slash-commands"]
+    else:
+        allowed = list(READ_ONLY)
+        if "kit" in mode.servers:
+            allowed += [f"mcp__{name}" for name in modes.KIT_SERVERS]
+        if "graphify" in mode.servers:
+            allowed.append("mcp__graphify")
+        args += ["--tools", SEARCH_TOOLS, "--allowedTools", *allowed]
+        if "graphify" in mode.servers:
+            args += ["--disallowedTools", *[f"mcp__graphify__{t}" for t in modes.GRAPHIFY_HIDDEN]]
+    if "graphify" in mode.servers:
+        # The kit's servers plus graphify's, serving the graph of the wiki built by graphify.
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        config = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8"))
+        config["mcpServers"]["graphify"] = {"command": GRAPHIFY_MCP,
+                                            "args": [str(KIT / "wiki" / "graphify-out" / "graph.json")]}
+        (RUN_DIR / "mcp-f.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        args += ["--mcp-config", str(RUN_DIR / "mcp-f.json")]
+    elif "kit" in mode.servers:
+        args += ["--mcp-config", str(KIT / ".mcp.json")]
+
+    if "preload" in mode.texts:
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        everything = RUN_DIR / "knowledge-in-context.md"
+        everything.write_text(modes.preload(KIT), encoding="utf-8")
+        args += ["--append-system-prompt-file", str(everything)]
+    elif mode.texts:
+        args += ["--append-system-prompt", modes.added_text(mode, "claude")]
+
+    problem = modes.weather_problem(mode)
+    if problem:
+        fail(problem)
+    if modes.weather_wanted(mode):
+        args += ["--mcp-config", str(KIT / ".mcp.weather.json"),
+                 "--allowedTools", *[f"mcp__open-meteo__{t}" for t in modes.WEATHER_SHOWN],
+                 "--disallowedTools", *[f"mcp__open-meteo__{t}" for t in modes.WEATHER_HIDDEN]]
+
+    # Banner, except when a question is asked directly (-p): the output must stay clean.
+    if "-p" not in argv and "--print" not in argv:
+        modes.banner(typed, agents, folder / "CLAUDE.md" if folder else None)
+    if os.environ.get("WORKSHOP_DRY_RUN"):
+        print("\n".join([f"cwd={cwd}", *args, *argv]))
+        return
+    if mode.folder == "bare":
+        BARE_DIR.mkdir(parents=True, exist_ok=True)
+    os.chdir(cwd)
+    try:
+        os.execvpe("claude", ["claude", *args, *argv], env)
+    except FileNotFoundError:
+        fail("Claude Code is not installed here (command claude not found). Ask the facilitator.", 127)
+
+
+if __name__ == "__main__":
+    main()
