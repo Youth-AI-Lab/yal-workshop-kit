@@ -781,14 +781,16 @@ def cmd_query(text, size=DEFAULT_CHUNK[0], top_k=TOP_K):
                          body={"collection_names": [found[0]["id"]], "query": text, "k": top_k})
     documents = (answer.get("documents") or [[]])[0]
     metadatas = (answer.get("metadatas") or [[]])[0]
+    scores = (answer.get("distances") or [[]])[0]
     print(f"Question: {text}")
     print(f"Base: excerpts of {size} characters. Top-k: {top_k}.")
     print(f"The {len(documents)} excerpts the RAG gives the model (closest first):")
     for i, document in enumerate(documents):
         meta = metadatas[i] if i < len(metadatas) else {}
+        score = f" (score {scores[i]:.3f})" if i < len(scores) else ""
         excerpt = " ".join(document.split())
-        print(f"\n#{i + 1} {meta.get('name') or meta.get('source')}")
-        print(f"   {excerpt[:300]}{'…' if len(excerpt) > 300 else ''}")
+        print(f"\n#{i + 1} {meta.get('name') or meta.get('source')}{score}")
+        print(f"   {excerpt}")
     print("\nThe model sees only these excerpts. Is the answer to your question in them?")
 
 
