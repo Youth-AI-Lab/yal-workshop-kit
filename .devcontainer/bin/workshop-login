@@ -35,6 +35,7 @@ if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
 else
   ASK='Paste the API key of your pair, then press Enter'
   NEXT='workshop bare'
+  if [[ -f "${WORKSHOP_HOME:-$HOME/workshop}/sorter" ]]; then NEXT='workshop-start 6'; fi   # workshop 6: no chatbot
   REFUSED='Check it with the facilitator.'
   OTHER='Tell the facilitator.'
 fi

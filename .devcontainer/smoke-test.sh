@@ -277,6 +277,26 @@ code=0; workshop-start > /dev/null 2>&1 || code=$?
 d1="$(mktemp -d)"; cp -r "$copie"/. "$d1"/; printf '# Workshop 1 - Test\n' > "$d1/README.md"
 grep -q "Today's page: README.md" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 1)" || echec "workshop-start 1 : README de l'atelier non ouvert"
 grep -q "This repository is for workshop 1" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 3)" || echec "workshop-start 3 dans le dépôt de l'atelier 1 : avertissement absent"
+# Atelier 6 : son propre dépôt, sans kit. workshop-start 6 n'y prépare rien, workshop-save garde messages/,
+# et une nouvelle copie les reprend ; ailleurs, workshop-start 6 renvoie à son dépôt.
+d6="$(mktemp -d)"; printf '# Workshop 6 - Test\n' > "$d6/README.md"; printf '#!/bin/sh\n' > "$d6/sorter"
+mkdir "$d6/messages"; printf '## topic\n- a\n' > "$d6/messages/examples.md"; printf '## topic\n- b\n' > "$d6/messages/test.md"
+git -C "$d6" init -q; git -C "$d6" add -A; git -C "$d6" -c user.name=t -c user.email=t@t commit -qm depart
+d6b="$(mktemp -d)"; cp -r "$d6"/. "$d6b"/
+sortie="$(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-start 6)" || { echo "$sortie"; echec "workshop-start 6"; }
+grep -qF 'First command: ./sorter setup' <<< "$sortie" || { echo "$sortie"; echec "workshop-start 6 : première commande absente"; }
+[[ ! -e "$d6/AGENTS.md" ]] || echec "workshop-start 6 : un fichier du kit a été ajouté"
+printf -- '- mine\n' >> "$d6/messages/examples.md"
+(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-save > /dev/null) || echec "workshop-save (atelier 6)"
+unzip -p "$d6/my-work.zip" messages/examples.md | grep -qx -- '- mine' || echec "workshop-save : messages/ absent du .zip"
+unzip -p "$d6/my-work.zip" MANIFEST.md | grep -qx "Workshop: 6" || echec "workshop-save : « Workshop: 6 » absent du MANIFEST"
+cp "$d6/my-work.zip" "$d6b/"
+(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from my-work.zip > /dev/null) || echec "workshop-start 6 --from"
+grep -qx -- '- mine' "$d6b/messages/examples.md" || echec "workshop-start 6 --from : messages/ non restauré"
+code=0; sortie="$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 6 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "yal-workshop-finetune" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 6 hors de son dépôt : renvoi attendu"; }
+code=0; sortie="$(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-start 3 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "This repository is for workshop 6" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 3 dans le dépôt de l'atelier 6 : refus attendu"; }
 # Atelier 2 : sans clé, workshop-start 2 ne lance pas Open WebUI en arrière-plan (copie neuve, HOME vide).
 copie2="$(mktemp -d)"; cp -r "$KIT/." "$copie2"; rm -rf "$copie2/.git"
 sortie="$(cd "$copie2" && HOME="$(mktemp -d)" WORKSHOP_HOME="$copie2" workshop-start 2)" || { echo "$sortie"; echec "workshop-start 2"; }

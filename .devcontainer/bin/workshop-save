@@ -11,8 +11,9 @@ the file (right-click on it in the file list, then "Download..."), and next time
 What goes in the file: only what you made or changed. Your AGENTS.md, your other instructions
 (.md files of yours next to AGENTS.md or in examples/, e.g. a draft for replay --agents), your
 test questions, your scores, your answers (answers/), your own skills, your summaries and their
-checks, the documents you added (corpus/ 80 to 89), today's fire danger data, your wiki pages.
-A file MANIFEST.md inside lists them.
+checks, the documents you added (corpus/ 80 to 89), today's fire danger data, your wiki pages;
+in workshop 6, your examples and your test (messages/), not the fine-tuned model. A file
+MANIFEST.md inside lists them.
 
 If a save with the same name is already here and holds something else, it is kept under another
 name (with its date): saving never deletes an earlier save.
@@ -48,7 +49,7 @@ DRAFT = re.compile(r"(examples/)?[^./\\][^/\\]*\.md")    # "My bot.md", "example
 SINGLE_FILES = ("test-questions.md", "mcp/fire-danger.json")
 # Folders where the pair's work lands. corpus/index.md and summaries/index.md are kept line by
 # line (index-lines/ in the zip), so that a restore adds lines instead of replacing the index.
-FOLDERS = ("answers", ".claude/skills", "summaries", "corpus", "wiki")
+FOLDERS = ("answers", ".claude/skills", "summaries", "corpus", "wiki", "messages")
 INDEXES = ("corpus/index.md", "summaries/index.md")
 SKIP_PARTS = {"__pycache__", "graphify-out", ".DS_Store"}   # rebuilt, or not yours
 ADDED = re.compile(r"^8[0-9]-")                             # numbers given by corpus-add
@@ -68,6 +69,7 @@ CATEGORIES = (                                   # (prefix of the path in the zi
     ("index-lines/", "Your lines of corpus/index.md and summaries/index.md"),
     ("mcp/", "Today's fire danger data (mcp/fire-danger.json)"),
     ("wiki/", "Your wiki pages (wiki/)"),
+    ("messages/", "Your examples and your test (messages/)"),
 )
 
 
@@ -136,7 +138,8 @@ class Original:
                         self.tree[path.decode("utf-8", "replace")] = meta.split()[2].decode()
         except (OSError, subprocess.SubprocessError):
             pass
-        self.git = "AGENTS.md" in self.tree     # the kit is the root of a git repository
+        # The kit (or the repository of workshop 6) is the root of a git repository.
+        self.git = "AGENTS.md" in self.tree or "sorter" in self.tree
         if self.git and len(next(iter(self.tree.values()))) == 64:
             self.algo = hashlib.sha256          # repository in SHA-256 format
 
@@ -364,7 +367,7 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--name", default="my-work", help="a name for the file, e.g. your team's name")
     args = parser.parse_args()
-    if not (KIT / "test-questions.md").is_file():
+    if not ((KIT / "test-questions.md").is_file() or (KIT / "messages" / "examples.md").is_file()):
         sys.exit(f"No workshop kit in {KIT}: run this command in the workshop.")
 
     name = slug(args.name) or "my-work"
@@ -375,7 +378,8 @@ def main():
 
     items = collect(KIT)
     if not items:
-        print("Nothing to save yet: AGENTS.md is still empty and nothing else was made or changed.")
+        print("Nothing to save yet: AGENTS.md is still empty and nothing else was made or changed."
+              if (KIT / "AGENTS.md").is_file() else "Nothing to save yet: nothing was made or changed.")
         return
     previous = keep_previous(out, items)
     write_zip(items, out, name)
