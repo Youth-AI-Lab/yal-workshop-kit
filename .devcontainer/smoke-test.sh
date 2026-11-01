@@ -256,7 +256,7 @@ sys.path.insert(0, sys.argv[1])
 import workshop_provider as p
 assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small, p.OPENROUTER.judge)), "un Claude par défaut avec OpenRouter"
 assert p.ROUTING == {"data_collection": "deny"}, p.ROUTING
-assert p.EUROPE_ENDPOINTS == ["mistral/eu", "amazon-bedrock/eu-west-1", "azure/eu", "azure/swedencentral", "google-vertex/europe"], p.EUROPE_ENDPOINTS
+assert p.EUROPE_ENDPOINTS == ["mistral/eu"], p.EUROPE_ENDPOINTS
 print(p.OPENROUTER.chat, p.OPENROUTER.small)
 PY
 )" || echec "workshop_provider : modèles par défaut d'OpenRouter"
@@ -401,7 +401,7 @@ routage_europe() { # le dernier corps du journal porte la règle européenne, po
 import json, sys
 c = json.loads(sys.stdin.read())
 assert c['model'] == sys.argv[1], c['model']
-assert c['provider'] == {'data_collection': 'deny', 'zdr': True, 'allow_fallbacks': False, 'only': ['mistral/eu', 'amazon-bedrock/eu-west-1', 'azure/eu', 'azure/swedencentral', 'google-vertex/europe']}, c['provider']" "$1"
+assert c['provider'] == {'data_collection': 'deny', 'zdr': True, 'allow_fallbacks': False, 'only': ['mistral/eu']}, c['provider']" "$1"
 }
 sortie="$(connexion "" --europe)" || { echo "$sortie"; echec "--europe, Entrée seule"; }
 etat "$OR" opencode "openrouter/$petit"
@@ -418,7 +418,7 @@ etat "${OR}B" opencode "openrouter/$petit"; grep -q '"europe": true' "$fichier" 
 connexion "$OR" > /dev/null || echec "retour à la première clé OpenRouter"
 # --model garde sa place ; l'essai dit qu'aucune entreprise européenne ne sert ce modèle.
 code=0; connexion "" --model test/hors-europe > /dev/null 2>/tmp/err || code=$?
-{ [[ "$code" == 4 ]] && grep -qF "Key saved, but no company hosted in Europe serves the model openrouter/test/hors-europe with zero data retention." /tmp/err && grep -qF "workshop-login --model $petit" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle hors d'Europe : phrase attendue, code $code"; }
+{ [[ "$code" == 4 ]] && grep -qF "Key saved, but Mistral does not serve the model openrouter/test/hors-europe in Europe with zero data retention." /tmp/err && grep -qF "workshop-login --model $petit" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle hors d'Europe : phrase attendue, code $code"; }
 grep -q '"europe": true' "$fichier" || echec "--europe perdu après un modèle refusé"
 connexion "" --model "$petit" > /dev/null || echec "--europe : retour au petit modèle"
 # Sans la liste des entreprises du modèle : la valeur de la liste, et on le dit.

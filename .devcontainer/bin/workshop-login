@@ -536,7 +536,7 @@ if [[ "$provider" == openrouter && "$code" == 200 ]]; then
     limit) echo "Key saved, but this key has reached its spending limit. $OTHER" >&2; exit 4 ;;
     model)
       if [[ "$europe" == on ]]; then
-        echo "Key saved, but no company hosted in Europe serves the model $oc_model with zero data retention. Choose another model, for example: workshop-login --model $small_model" >&2
+        echo "Key saved, but Mistral does not serve the model $oc_model in Europe with zero data retention. Choose another model, for example: workshop-login --model $small_model" >&2
       else
         echo "Key saved, but no company can serve the model $oc_model under the workshop's data rule. Choose another model: workshop-login --models openrouter" >&2
       fi

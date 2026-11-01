@@ -41,12 +41,13 @@ PROVIDERS = (ANTHROPIC, OPENROUTER)
 # for a time. A request that no company can serve then fails with 404 or 503.
 ROUTING = {"data_collection": "deny"}
 
-# workshop-login --europe: the endpoints in Europe with zero data retention and no safety retention
-# (facilitator/workshops/measures/2026-11-01-openrouter-free/data-policies-2026-11-01.json). google-vertex/eu is
-# left out: its Gemini models have safety retention. A bare company name would not pin its regional endpoints.
+# workshop-login --europe, the route for young people: Mistral alone, in Europe, with zero data retention. Other
+# companies are served in Europe too, but nothing concerning young people goes to a company whose terms were not read
+# (facilitator/workshops/measures/2026-11-01-openrouter-free/data-policies-2026-11-01.json): Amazon and Azure were
+# not, and Google's may exclude this use. A bare company name would not pin its regional endpoints.
 # This chooses where the model runs, not where OpenRouter handles the request: only eu.openrouter.ai (Business and
 # Enterprise plans) keeps that in Europe. Accounts, billing and security logs may stay in the US in all cases.
-EUROPE_ENDPOINTS = ["mistral/eu", "amazon-bedrock/eu-west-1", "azure/eu", "azure/swedencentral", "google-vertex/europe"]
+EUROPE_ENDPOINTS = ["mistral/eu"]
 
 # text: the answer. tokens_in, tokens_out: as billed. cost: what the provider says the call cost, or None.
 # stop: end, length, refusal or error. kind: None when the call worked, otherwise one of
