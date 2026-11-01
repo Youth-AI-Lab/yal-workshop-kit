@@ -77,14 +77,16 @@ def tool(name):
     raise Refused(f"The command {name} is missing. Ask the facilitator.")
 
 
-def mode_b_too_big():
-    """Workshop 2 starts with mode B, which a small window refuses (workshop-login --europe)."""
+def mode_b_advice():
+    """Workshop 2 starts with mode B, which a model with a small window refuses. What to do then, or ""."""
     try:
         import workshop_modes
         import workshop_provider
     except ImportError:  # this command copied alone
-        return False
-    return not workshop_modes.mode_b_fits(KIT, workshop_provider.saved_window())
+        return ""
+    if workshop_modes.mode_b_fits(KIT, workshop_provider.saved_window()):
+        return ""
+    return workshop_provider.larger_window_advice()
 
 
 def load_save():
@@ -654,8 +656,10 @@ def main():
     page = open_page(n)
     if page:
         print(f"Today's page: {page.relative_to(KIT)} (Ctrl+Shift+V to read it as a page)")
-    if n == 2 and mode_b_too_big():
-        print("Mode B does not run with this model: skip Part 2 of today's page, and start at Part 3.")
+    advice = mode_b_advice() if n == 2 else ""
+    if advice:
+        print(f"Mode B does not run with this model. {advice}")
+        print(f"Then: {FIRST_COMMAND[n]}")
     else:
         print(f"First command: {FIRST_COMMAND[n]}")
     if problems:

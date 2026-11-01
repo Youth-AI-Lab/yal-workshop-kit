@@ -238,14 +238,14 @@ def new_run_dir(mode):
 
 def window_problem(mode):
     """Mode B sends the whole kit at once: a model with a smaller window fails before its first word (measured
-    with workshop-login --europe, 32k)."""
+    with Mistral Small 3.2 at mistral/eu, 32k)."""
     if "preload" not in mode.texts:
         return ""
     context = model_choice()[2]
     if modes.mode_b_fits(KIT, context):
         return ""
     return (f"Mode {mode.name} sends the whole kit at once, and this model reads {context:,} tokens at most.\n"
-            f"This mode cannot run with it. {modes.SKIP_MODE_B}")
+            f"This mode cannot run with it. {workshop_provider.larger_window_advice()}")
 
 
 def write_instructions(mode, agents, run):

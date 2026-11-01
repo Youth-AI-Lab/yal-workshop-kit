@@ -755,6 +755,17 @@ def warn_young_people(service):
               f"workshop-login --europe\nHow to do it: {OPENROUTER_GUIDE}")
 
 
+def name_second_model_chatbots(api, key, model):
+    """Coming back to the first model leaves a chatbot on the second one: nothing tells it from a chatbot
+    built on it, so realign_models() keeps it. With --europe that model reads much less, so name them."""
+    second = base_models(key, model)[1:]
+    names = [r["name"] for r in api.request("GET", "/models/all") if r.get("base_model_id") in second]
+    if names and europe():
+        print(f"{', '.join(names)} stay{'s' if len(names) == 1 else ''} on {second[0]}, which reads much less "
+              f"at once.\nTo move a chatbot: Workspace -> Models -> the chatbot -> Base Model (From) -> {model} "
+              "-> Save & Update.", flush=True)
+
+
 # --- Commands -----------------------------------------------------------------------------------
 
 def hold_lock():
@@ -1098,6 +1109,7 @@ def cmd_class_start():
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
     realign_models(api, key, service, model)
+    name_second_model_chatbots(api, key, model)
     admin, _ = class_secrets()
     print("\nSign-ups are " + ("OPEN: participants can join. Not in a session? Type: openwebui share close"
                                if signup_is_open() else "closed. In a session: openwebui share open"))

@@ -200,7 +200,7 @@ def find_answers(mode):
     if files:
         return max(files, key=lambda p: p.stat().st_mtime)
     if mode.upper() == "B" and not workshop_modes.mode_b_fits(KIT, workshop_provider.saved_window()):
-        raise Stop(f"No answers of mode B: this model cannot run it. {workshop_modes.SKIP_MODE_B}")
+        raise Stop(f"No answers of mode B: this model cannot run it. {workshop_provider.larger_window_advice()}")
     message = f"No answers of mode {mode} yet. First type: replay {mode}"
     others = sorted(p.name for p in (KIT / "answers").glob(f"{mode}-*.md")) if mode != "bare" else []
     if others:

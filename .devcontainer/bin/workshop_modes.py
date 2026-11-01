@@ -171,7 +171,6 @@ def agents_name(agents):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-SKIP_MODE_B = "Skip mode B and go on with the next part of today's page."
 
 
 def preload(kit):

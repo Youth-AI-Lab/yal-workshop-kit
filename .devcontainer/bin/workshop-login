@@ -25,8 +25,8 @@
 # Enter alone keeps the saved key and its model. A new key goes back to the default model, unless
 # --model names one.
 # --europe is saved with the provider: later logins with OpenRouter keep it, --no-europe removes it, a key of
-# another provider drops it. Turning it on moves to the small model (Mistral Small), unless --model names
-# another one. The test of the model says if no European company serves it.
+# another provider drops it. Turning it on moves to the default model of that route, unless --model names
+# another one. After that, a saved model stays. The test of the model says if Mistral does not serve it.
 # OpenCode and Open WebUI read the rule when they start: this command says so if one of them is running. A replay
 # stops before its next question, but the question it is on finishes under the old rule.
 # It chooses where the model runs, not where OpenRouter handles the request (only eu.openrouter.ai, on the
@@ -370,16 +370,16 @@ else
 import sys
 sys.path.insert(0, sys.argv[1])
 import workshop_provider
-print(workshop_provider.OPENROUTER.chat, workshop_provider.OPENROUTER.small)' "$HERE" 2>/dev/null)" || {
+print(workshop_provider.OPENROUTER.chat, workshop_provider.OPENROUTER.small, workshop_provider.EUROPE_MODEL)' "$HERE" 2>/dev/null)" || {
     echo "workshop_provider.py is missing next to workshop-login. Tell the facilitator." >&2; exit 1; }
-  small_model="${default_model##* }"; default_model="${default_model%% *}"
+  read -r default_model small_model europe_model <<<"$default_model"
   # --europe stays with the provider: the file only says it for the provider it names.
   saved_europe="$(python3 -I -c '
 import json, sys
 saved = json.load(open(sys.argv[1], encoding="utf-8"))
 print("on" if saved.get("provider") == sys.argv[2] and saved.get("europe") is True else "off")' "$OPENCODE_FILE" "$provider" 2>/dev/null || echo off)"
   europe="${europe_option:-$saved_europe}"
-  if [[ "$europe" == on ]]; then default_model="$small_model"; fi
+  if [[ "$europe" == on ]]; then default_model="$europe_model"; fi
   oc_model="openrouter/$default_model"
   if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
     REFUSED='Create a new key on openrouter.ai, then type workshop-login again.'
@@ -529,23 +529,30 @@ fi
 # OpenRouter: the key works, now the model. Each failure has its own sentence.
 free_left=""
 if [[ "$provider" == openrouter && "$code" == 200 ]]; then
+  # What to choose instead. With --europe, the list of models would mostly offer models Mistral does not serve, and
+  # a free model has no company in Europe: name a model of this route, never the one that just failed.
+  choose='workshop-login --models openrouter'; add_credits='Add credits, or choose a free model: workshop-login --models free'
+  if [[ "$europe" == on ]]; then
+    choose="workshop-login --model $europe_model"; add_credits='Add credits.'
+    if [[ "$oc_model" == "openrouter/$europe_model" ]]; then choose="workshop-login --model $small_model"; fi
+  fi
   read -r kind status words <<<"$(model_test)"
   case "$kind" in
     ok) ;;
-    credits) echo "Key saved, but this OpenRouter account has no credits left. Add credits, or choose a free model: workshop-login --models free" >&2; exit 4 ;;
+    credits) echo "Key saved, but this OpenRouter account has no credits left. $add_credits" >&2; exit 4 ;;
     limit) echo "Key saved, but this key has reached its spending limit. $OTHER" >&2; exit 4 ;;
     model)
       if [[ "$europe" == on ]]; then
-        echo "Key saved, but Mistral does not serve the model $oc_model in Europe with zero data retention. Choose another model, for example: workshop-login --model $small_model" >&2
+        echo "Key saved, but Mistral does not serve the model $oc_model in Europe with zero data retention. Choose another model, for example: $choose" >&2
       else
         echo "Key saved, but no company can serve the model $oc_model under the workshop's data rule. Choose another model: workshop-login --models openrouter" >&2
       fi
       exit 4 ;;
     busy)
       if [[ "$status" == 429 ]]; then
-        echo "Key saved, but the quota of the model $oc_model is reached for now (HTTP 429). Try again later, or choose another model: workshop-login --models openrouter" >&2
+        echo "Key saved, but the quota of the model $oc_model is reached for now (HTTP 429). Try again later, or choose another model: $choose" >&2
       else
-        echo "Key saved, but the model $oc_model is busy (HTTP $status). Try again in a few minutes, or choose another model: workshop-login --models openrouter" >&2
+        echo "Key saved, but the model $oc_model is busy (HTTP $status). Try again in a few minutes, or choose another model: $choose" >&2
       fi
       exit 4 ;;
     network) echo "Key saved, but the model $oc_model could not be reached (network?). Try: $NEXT" >&2; exit 3 ;;

@@ -493,7 +493,7 @@ def opencode_error(e):
         return Explained("the model stopped at its length limit before the end of its answer.")
     if kind == "compaction.failed":
         return Explained("this question and its documents are too long for the window of this model. "
-                         "Choose a model with a larger window: workshop-login --models openrouter")
+                         + workshop_provider.larger_window_advice())
     if status == 401 or kind == "provider.auth":
         return f"the key was refused ({status or 401}{': ' + message if message else ''}). Check it: workshop-login"
     if status == 402:

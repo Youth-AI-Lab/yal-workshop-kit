@@ -254,13 +254,14 @@ defaut="$(/opt/workshop/venv/bin/python -I - "$BIN" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 import workshop_provider as p
-assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small, p.OPENROUTER.judge)), "un Claude par défaut avec OpenRouter"
+assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small, p.OPENROUTER.judge, p.EUROPE_MODEL)), "un Claude par défaut avec OpenRouter"
 assert p.ROUTING == {"data_collection": "deny"}, p.ROUTING
 assert p.EUROPE_ENDPOINTS == ["mistral/eu"], p.EUROPE_ENDPOINTS
-print(p.OPENROUTER.chat, p.OPENROUTER.small)
+assert p.EUROPE_MODEL != p.OPENROUTER.small, "--europe : le mode B demande une autre fenêtre que celle du petit modèle"
+print(p.OPENROUTER.chat, p.OPENROUTER.small, p.EUROPE_MODEL)
 PY
 )" || echec "workshop_provider : modèles par défaut d'OpenRouter"
-petit="${defaut##* }"; defaut="${defaut%% *}"
+read -r defaut petit europeen <<< "$defaut"
 h=$(mktemp -d); b=$(mktemp -d); mkdir "$h/.claude"
 # Faux curl : répond 200 pour Anthropic ; le reste va au faux OpenRouter.
 cat > "$b/curl" <<'SH'
@@ -276,6 +277,7 @@ cat > "$b/faux.py" <<'PY'
 import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 journal, refus, *modeles = sys.argv[1:]
+europeen = modeles[2]
 tours = {"n": 0}
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -287,11 +289,12 @@ class H(BaseHTTPRequestHandler):
         if self.path.endswith("/models"):
             return self.rend(200, {"data": [{"id": m, "context_length": 128000, "supported_parameters": ["tools"],
                                              "pricing": {"prompt": "0.0000001", "completion": "0.0000002"}} for m in modeles]})
-        if self.path.endswith("/endpoints"):  # un modèle servi plus petit en Europe, et des fenêtres hors de la liste
+        if self.path.endswith("/endpoints"):  # la fenêtre de chaque modèle en Europe, et d'autres entreprises à ignorer
             if os.path.exists(refus + "-fenetre"):
                 return self.rend(500, {"error": {"message": "no"}})
             return self.rend(200, {"data": {"endpoints": [
-                {"tag": "deepinfra/fp8", "context_length": 128000}, {"tag": "mistral/eu", "context_length": 32000},
+                {"tag": "deepinfra/fp8", "context_length": 128000},
+                {"tag": "mistral/eu", "context_length": 262144 if europeen in self.path else 32000},
                 {"tag": "azure/eu", "context_length": 64000}, {"tag": "google-vertex/eu", "context_length": 1000}]}})
         if os.path.exists(refus):
             return self.rend(401, {"error": {"message": "no"}})
@@ -299,7 +302,8 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         corps = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         with open(journal, "a") as f: f.write(json.dumps(corps) + "\n")
-        if "only" in corps.get("provider", {}) and corps["model"] == "test/hors-europe":
+        if "only" in corps.get("provider", {}) and (corps["model"] == "test/hors-europe"
+                                                    or (corps["model"] == europeen and os.path.exists(refus + "-europeen"))):
             return self.rend(404, {"error": {"message": "No allowed providers are available for the selected model."}})
         if not corps.get("stream"):
             return self.rend(200, {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]})
@@ -316,7 +320,7 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
 ThreadingHTTPServer(("127.0.0.1", 8797), H).serve_forever()
 PY
-/opt/workshop/venv/bin/python -I "$b/faux.py" "$b/journal" "$b/refus" "$defaut" "$petit" test/hors-europe & faux=$!
+/opt/workshop/venv/bin/python -I "$b/faux.py" "$b/journal" "$b/refus" "$defaut" "$petit" "$europeen" test/hors-europe & faux=$!
 for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/curl -s -o /dev/null http://127.0.0.1:8797/api/v1/models && break; sleep 0.3; done
 connexion() { # la clé (vide : Entrée seule), puis les options de workshop-login
   local k="$1"; shift
@@ -404,23 +408,28 @@ assert c['model'] == sys.argv[1], c['model']
 assert c['provider'] == {'data_collection': 'deny', 'zdr': True, 'allow_fallbacks': False, 'only': ['mistral/eu']}, c['provider']" "$1"
 }
 sortie="$(connexion "" --europe)" || { echo "$sortie"; echec "--europe, Entrée seule"; }
-etat "$OR" opencode "openrouter/$petit"
-grep -qF "Key OK (OpenCode, OpenRouter, model openrouter/$petit, hosted in Europe). You can start:" <<< "$sortie" || { echo "$sortie"; echec "--europe : Key OK attendu"; }
+etat "$OR" opencode "openrouter/$europeen"
+grep -qF "Key OK (OpenCode, OpenRouter, model openrouter/$europeen, hosted in Europe). You can start:" <<< "$sortie" || { echo "$sortie"; echec "--europe : Key OK attendu"; }
 grep -q '"europe": true' "$fichier" || echec "--europe non enregistré"
-grep -q '"context": 32000' "$fichier" || { cat "$fichier"; echec "--europe : la plus petite fenêtre européenne attendue (32000)"; }
+grep -q '"context": 262144' "$fichier" || { cat "$fichier"; echec "--europe : la fenêtre européenne attendue (262144)"; }
 if grep -q "not checked" <<< "$sortie"; then echo "$sortie"; echec "--europe : fenêtre lue, mais annoncée non vérifiée"; fi
-routage_europe "$petit" || echec "--europe : règle absente de l'essai du modèle"
+routage_europe "$europeen" || echec "--europe : règle absente de l'essai du modèle"
 sortie="$(connexion "")" || { echo "$sortie"; echec "--europe puis Entrée seule"; }
-etat "$OR" opencode "openrouter/$petit"; grep -q '"europe": true' "$fichier" || echec "--europe perdu à la connexion suivante (Entrée seule)"
+etat "$OR" opencode "openrouter/$europeen"; grep -q '"europe": true' "$fichier" || echec "--europe perdu à la connexion suivante (Entrée seule)"
 grep -qF "hosted in Europe" <<< "$sortie" || { echo "$sortie"; echec "--europe gardé : Key OK attendu"; }
 connexion "${OR}B" > /dev/null || echec "--europe puis une nouvelle clé OpenRouter"
-etat "${OR}B" opencode "openrouter/$petit"; grep -q '"europe": true' "$fichier" || echec "--europe perdu avec une nouvelle clé du même fournisseur"
+etat "${OR}B" opencode "openrouter/$europeen"; grep -q '"europe": true' "$fichier" || echec "--europe perdu avec une nouvelle clé du même fournisseur"
 connexion "$OR" > /dev/null || echec "retour à la première clé OpenRouter"
-# --model garde sa place ; l'essai dit qu'aucune entreprise européenne ne sert ce modèle.
+# --model garde sa place ; l'essai dit que Mistral ne sert pas ce modèle, et propose un modèle qui marche.
 code=0; connexion "" --model test/hors-europe > /dev/null 2>/tmp/err || code=$?
-{ [[ "$code" == 4 ]] && grep -qF "Key saved, but Mistral does not serve the model openrouter/test/hors-europe in Europe with zero data retention." /tmp/err && grep -qF "workshop-login --model $petit" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle hors d'Europe : phrase attendue, code $code"; }
+{ [[ "$code" == 4 ]] && grep -qF "Key saved, but Mistral does not serve the model openrouter/test/hors-europe in Europe with zero data retention." /tmp/err && grep -qF "workshop-login --model $europeen" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle hors d'Europe : phrase attendue, code $code"; }
 grep -q '"europe": true' "$fichier" || echec "--europe perdu après un modèle refusé"
-connexion "" --model "$petit" > /dev/null || echec "--europe : retour au petit modèle"
+# Le modèle par défaut refusé : jamais lui-même comme conseil.
+touch "$b/refus-europeen"
+code=0; connexion "" --model "$europeen" > /dev/null 2>/tmp/err || code=$?
+rm "$b/refus-europeen"
+{ [[ "$code" == 4 ]] && grep -qF "for example: workshop-login --model $petit" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle par défaut refusé : l'autre modèle attendu, code $code"; }
+connexion "" --model "$europeen" > /dev/null || echec "--europe : retour au modèle par défaut"
 # Sans la liste des entreprises du modèle : la valeur de la liste, et on le dit.
 touch "$b/refus-fenetre"
 sortie="$(connexion "")" || { echo "$sortie"; echec "--europe sans la liste des entreprises"; }
@@ -431,18 +440,36 @@ rm "$b/refus-fenetre"; connexion "" > /dev/null || echec "--europe : fenêtre re
 : > "$b/journal"
 sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 120 workshop C -p probe 2>&1)" \
   || { echo "$sortie"; echec "workshop C avec --europe"; }
-routage_europe "$petit" || echec "--europe : règle absente de la requête d'OpenCode"
-HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_DRY_RUN=1 workshop-opencode C -p x | /opt/workshop/venv/bin/python -I -c "
+routage_europe "$europeen" || echec "--europe : règle absente de la requête d'OpenCode"
+fenetre_declaree() { # le modèle $1 est déclaré à OpenCode avec la fenêtre $2
+  HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_DRY_RUN=1 workshop-opencode C -p x | /opt/workshop/venv/bin/python -I -c "
 import json, sys
 c = json.load(sys.stdin)['config']['providers']['openrouter']['models'][sys.argv[1]]
-assert c['limit']['context'] == 32000, c" "$petit" || echec "--europe : fenêtre de 32000 non déclarée à OpenCode"
-# Le mode B envoie tout le kit d'un coup : refusé avant toute requête.
+assert c['limit']['context'] == int(sys.argv[2]), c" "$1" "$2"
+}
+fenetre_declaree "$europeen" 200000 || echec "--europe : fenêtre ramenée à 200000 attendue, comme avec Claude"
+# Le mode B tient dans cette fenêtre : la question part, sous la règle européenne.
+: > "$b/journal"
+sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 120 workshop B -p probe 2>&1)" \
+  || { echo "$sortie"; echec "--europe : le mode B doit tourner avec le modèle par défaut"; }
+routage_europe "$europeen" || echec "--europe : règle absente du mode B"
+# Tourner --europe avec un modèle que Mistral ne sert pas : le modèle change.
+connexion "" --no-europe --model test/hors-europe > /dev/null || echec "--no-europe --model"
+sortie="$(connexion "" --europe)" || { echo "$sortie"; echec "--europe depuis un modèle hors d'Europe"; }
+etat "$OR" opencode "openrouter/$europeen"
+# Un modèle à 32k tapé par quelqu'un : gardé, et le mode B est refusé avant toute requête, avec un modèle qui marche.
+connexion "" --model "$petit" > /dev/null || echec "--europe : le petit modèle"
+grep -q '"context": 32000' "$fichier" || { cat "$fichier"; echec "--europe : petit modèle, 32000 attendu"; }
+connexion "" --europe > /dev/null || echec "--europe, déjà là, petit modèle"
+etat "$OR" opencode "openrouter/$petit"
+fenetre_declaree "$petit" 32000 || echec "--europe : fenêtre de 32000 non déclarée à OpenCode"
 : > "$b/journal"; code=0
 sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 60 workshop B -p x 2>&1)" || code=$?
-{ [[ "$code" == 1 ]] && grep -qF "This mode cannot run with it." <<< "$sortie" && [[ ! -s "$b/journal" ]]; } || { echo "$sortie"; echec "--europe : mode B, refus attendu"; }
+{ [[ "$code" == 1 ]] && grep -qF "This mode cannot run with it. Choose a model with a larger window: workshop-login --model $europeen" <<< "$sortie" && [[ ! -s "$b/journal" ]]; } || { echo "$sortie"; echec "--europe : mode B en 32k, refus attendu"; }
+connexion "" --model "$europeen" > /dev/null || echec "--europe : retour au modèle par défaut"
 sortie="$(OPENWEBUI_MODE=class connexion "" 2>&1)" || { echo "$sortie"; echec "--europe en mode classe"; }
 if grep -q "young people" <<< "$sortie"; then echo "$sortie"; echec "--europe en mode classe : pas d'avertissement attendu"; fi
-grep -qF "Key OK (OpenRouter, model $petit, hosted in Europe). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "--europe en mode classe : Key OK attendu"; }
+grep -qF "Key OK (OpenRouter, model $europeen, hosted in Europe). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "--europe en mode classe : Key OK attendu"; }
 # Clé Anthropic : rien n'est enregistré.
 avant="$(cat "$h/.workshop-key" "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json" | sha256sum)"
 code=0; connexion "$ANT" --europe > /dev/null 2>/tmp/err || code=$?
@@ -453,7 +480,7 @@ sortie="$(OPENWEBUI_MODE=class connexion "" --no-europe 2>&1)" || { echo "$sorti
 if grep -q '"europe"' "$fichier"; then cat "$fichier"; echec "--no-europe : réglage resté"; fi
 grep -q '"context": 128000' "$fichier" || { cat "$fichier"; echec "--no-europe : fenêtre de la liste attendue"; }
 grep -q "workshop-login --europe" <<< "$sortie" || { echo "$sortie"; echec "--no-europe : avertissement attendu en mode classe"; }
-etat "$OR" opencode "openrouter/$petit"
+etat "$OR" opencode "openrouter/$europeen"
 tail -1 "$b/journal" | grep -q '"provider": {"data_collection": "deny"}' || echec "--no-europe : règle ordinaire attendue"
 # Règle changée pendant replay : OpenCode ouvert est signalé, et la question suivante ne part pas.
 sortie="$(connexion "")" || { echo "$sortie"; echec "--no-europe puis Entrée seule"; }
@@ -536,6 +563,48 @@ with contextlib.redirect_stdout(sortie):
     owui.warn_young_people(wp.OPENROUTER)
 assert not sortie.getvalue()
 assert score.judge_model("sk-or-x") == wp.OPENROUTER.small and score.judge_model("sk-ant-x") == wp.ANTHROPIC.judge
+# Mode classe avec --europe : deux modèles de base. Chaque chatbot garde le sien ou va au bon ; un seul avec le petit modèle.
+class Api:
+    def __init__(self, lignes):
+        self.lignes, self.modifs = lignes, {}
+    def request(self, methode, chemin, body=None, query=None):
+        if methode == "GET":
+            return self.lignes
+        self.modifs[body["id"]] = body["base_model_id"]
+def bot(nom, base):
+    return {"id": nom, "name": nom, "base_model_id": base, "params": {}, "meta": {}}
+owui.has_tools = lambda *a: True
+petit, grand = wp.OPENROUTER.small, wp.EUROPE_MODEL
+owui.CLASS = True
+assert owui.base_models("sk-or-x", grand) == [grand, petit] and owui.base_models("sk-or-x", petit) == [petit]
+lignes = [bot("petit", petit), bot("ordinaire", wp.OPENROUTER.chat), bot("haiku", wp.ANTHROPIC.small), bot("sonnet", wp.ANTHROPIC.chat)]
+api = Api(lignes)
+with contextlib.redirect_stdout(io.StringIO()):
+    owui.realign_models(api, "sk-or-x", wp.OPENROUTER, grand)
+assert api.modifs == {"petit": petit, "ordinaire": grand, "haiku": petit, "sonnet": grand}, api.modifs
+api = Api([bot("grand", grand), bot("petit", petit)])
+with contextlib.redirect_stdout(io.StringIO()):
+    owui.realign_models(api, "sk-or-x", wp.OPENROUTER, petit)
+assert api.modifs == {"grand": petit, "petit": petit}, api.modifs
+# Le retour au grand modèle ne ramène pas les chatbots : openwebui start les nomme, avec --europe seulement.
+def nommes(modele, reglages):
+    wp.SETTINGS_FILE.write_text(json.dumps(reglages))
+    sortie = io.StringIO()
+    with contextlib.redirect_stdout(sortie):
+        owui.name_second_model_chatbots(Api([bot("grand", grand), bot("petit", petit)]), "sk-or-x", modele)
+    return sortie.getvalue()
+regle = {"provider": "openrouter", "model": "openrouter/" + grand, "europe": True}
+assert "petit stays on " + petit in nommes(grand, regle) and "-> " + grand + " ->" in nommes(grand, regle)
+assert not nommes(petit, regle) and not nommes(grand, {**regle, "europe": False})
+owui.CLASS = False
+# Trop petite fenêtre : un conseil qui marche, jamais le modèle en cours.
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/" + petit, "europe": True}))
+assert wp.larger_window_advice().endswith("workshop-login --model " + grand), wp.larger_window_advice()
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/" + grand, "europe": True}))
+assert grand not in wp.larger_window_advice(), wp.larger_window_advice()
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b"}))
+assert wp.larger_window_advice().endswith("--models openrouter"), wp.larger_window_advice()
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b", "europe": True}))
 ancien = owui.routed({"system": "s", "custom_params": {"provider": json.dumps(wp.ROUTING), "seed": 1}}, wp.OPENROUTER)
 assert ancien["custom_params"]["seed"] == 1 and json.loads(ancien["custom_params"]["provider"]) == wp.routing()
 try:

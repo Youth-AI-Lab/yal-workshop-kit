@@ -48,6 +48,8 @@ ROUTING = {"data_collection": "deny"}
 # This chooses where the model runs, not where OpenRouter handles the request: only eu.openrouter.ai (Business and
 # Enterprise plans) keeps that in Europe. Accounts, billing and security logs may stay in the US in all cases.
 EUROPE_ENDPOINTS = ["mistral/eu"]
+# The chatbot's default model on that route: 262k tokens at mistral/eu, against 32k for Mistral Small 3.2, too few for mode B.
+EUROPE_MODEL = os.environ.get("WORKSHOP_OPENROUTER_EUROPE_MODEL", "mistralai/mistral-small-2603")
 
 # text: the answer. tokens_in, tokens_out: as billed. cost: what the provider says the call cost, or None.
 # stop: end, length, refusal or error. kind: None when the call worked, otherwise one of
@@ -113,6 +115,15 @@ def chat_model(provider):
     if saved.get("provider") == provider.name and model.startswith(provider.name + "/"):
         return model.split("/", 1)[1]
     return provider.chat
+
+
+def larger_window_advice():
+    """One sentence for a person whose model has too small a window: never the model in use."""
+    if not europe():
+        return "Choose a model with a larger window: workshop-login --models openrouter"
+    if chat_model(OPENROUTER) != EUROPE_MODEL:
+        return f"Choose a model with a larger window: workshop-login --model {EUROPE_MODEL}"
+    return "Ask the facilitator."
 
 
 def _kind(status, message):
