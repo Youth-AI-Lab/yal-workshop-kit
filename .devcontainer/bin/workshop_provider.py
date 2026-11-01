@@ -81,6 +81,18 @@ def saved_settings():
         return {}
 
 
+def saved_window():
+    """The window workshop-login saved for the model of this key, or None."""
+    saved = saved_settings()
+    provider = provider_of(read_key())
+    if provider is None or saved.get("provider") != provider.name:
+        return None
+    try:
+        return int(saved.get("context") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
+
 def europe():
     """True after workshop-login --europe."""
     return saved_settings().get("europe") is True

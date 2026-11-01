@@ -171,6 +171,9 @@ def agents_name(agents):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+SKIP_MODE_B = "Skip mode B and go on with the next part of today's page."
+
+
 def preload(kit):
     """Mode B: the no-tools line, then every summary and every readable copy, each under its name."""
     body = f"{NO_TOOLS}\n\n{PRELOAD_HEADER}\n"
@@ -189,6 +192,13 @@ def preload(kit):
                 continue
             body += f"\n\n## Document: {f.relative_to(kit)}\n\n" + f.read_text(encoding="utf-8", errors="replace")
     return body
+
+
+def mode_b_fits(kit, context):
+    """False when the whole kit cannot fit in a window of this many tokens; True when no window is known.
+    Claude's gauge showed 100.7k tokens for these 232,844 characters, about 2.3 a token. No count exists for
+    another model, and OpenCode adds its own text: 2 keeps a margin."""
+    return not context or len(preload(kit)) // 2 < context
 
 
 def added_text(mode, engine):

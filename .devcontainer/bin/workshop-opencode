@@ -238,14 +238,14 @@ def new_run_dir(mode):
 
 def window_problem(mode):
     """Mode B sends the whole kit at once: a model with a smaller window fails before its first word (measured
-    with workshop-login --europe, 32k). 4 characters a token is a low count: the gauge shows nearly twice that."""
+    with workshop-login --europe, 32k)."""
     if "preload" not in mode.texts:
         return ""
     context = model_choice()[2]
-    if not context or len(modes.preload(KIT)) // 4 < context:
+    if modes.mode_b_fits(KIT, context):
         return ""
     return (f"Mode {mode.name} sends the whole kit at once, and this model reads {context:,} tokens at most.\n"
-            "This mode cannot run with it. See the models with a larger window: workshop-login --models openrouter")
+            f"This mode cannot run with it. {modes.SKIP_MODE_B}")
 
 
 def write_instructions(mode, agents, run):
