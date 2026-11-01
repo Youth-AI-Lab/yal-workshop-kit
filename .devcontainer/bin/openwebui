@@ -69,7 +69,7 @@ from pathlib import Path
 
 # replay, score and the smoke test load this file by its path: Python then does not look next to it.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from workshop_provider import OPENROUTER, PROVIDERS, ROUTING, chat_model, provider_of, read_key  # noqa: E402
+from workshop_provider import OPENROUTER, PROVIDERS, chat_model, europe, provider_of, read_key, routing  # noqa: E402
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.12.4")
@@ -208,14 +208,14 @@ def base_models(key, model):
 
 
 def routed(params, service):
-    """The settings of a model, with the routing of OpenRouter (workshop_provider.ROUTING), and without
+    """The settings of a model, with the routing of OpenRouter (workshop_provider.routing()), and without
     it with another provider. Open WebUI adds custom_params to the request and reads a text as JSON.
     A text, as Advanced Params -> Custom Parameters saves it."""
     params = dict(params)
     custom = params.get("custom_params")
     if service is OPENROUTER:
         # Anything but a table cannot be added to (and Open WebUI could not read it in a chat).
-        params["custom_params"] = {**(custom if isinstance(custom, dict) else {}), "provider": json.dumps(ROUTING)}
+        params["custom_params"] = {**(custom if isinstance(custom, dict) else {}), "provider": json.dumps(routing())}
     elif isinstance(custom, dict) and "provider" in custom:
         custom = {name: value for name, value in custom.items() if name != "provider"}
         if custom:
@@ -247,6 +247,9 @@ def check_same_key(key, model):
     if offered_models(env) not in (None, base_models(key, model)):
         fail("Your model changed since Open WebUI started. Type openwebui start (it takes the new model),\n"
              "then this command again.")
+    if provider_of(key) is OPENROUTER and env.get("DEFAULT_MODEL_PARAMS") != json.dumps(routed({}, OPENROUTER)):
+        fail("Your data rule changed since Open WebUI started (workshop-login --europe). Type openwebui start "
+             "(it takes the new rule),\nthen this command again.")
 
 
 def address():
@@ -747,9 +750,9 @@ def realign_models(api, key, service, model):
 
 
 def warn_young_people(service):
-    if service is OPENROUTER:
-        print("\nWarning: with young people, turn on zero-data-retention models hosted in Europe, in your "
-              f"OpenRouter settings.\nHow to do it: {OPENROUTER_GUIDE}")
+    if service is OPENROUTER and not europe():
+        print("\nWarning: with young people, turn on zero-data-retention models hosted in Europe: "
+              f"workshop-login --europe\nHow to do it: {OPENROUTER_GUIDE}")
 
 
 # --- Commands -----------------------------------------------------------------------------------

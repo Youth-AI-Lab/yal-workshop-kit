@@ -8,6 +8,11 @@
 #   workshop-login --models            lists the models you can use with the saved key
 #   workshop-login --models openrouter the models of one provider (anthropic or openrouter)
 #   workshop-login --models free       the free models of OpenRouter
+#   workshop-login --europe            OpenRouter key only: from now on, every new chatbot or replay sends its
+#                                      requests to zero-data-retention models hosted in Europe, or fails.
+#                                      This is the setting for young people. A chatbot already open keeps its
+#                                      old rule: close it and start it again
+#   workshop-login --no-europe         removes that setting
 #
 # The key chooses the provider of every tool: sk-ant-... = Anthropic, sk-or-... = OpenRouter.
 # Two engines: claude (Claude Code, the default) and opencode (OpenCode). Claude Code in the workshop
@@ -19,9 +24,16 @@
 # that does not work never replaces a working key of the other provider.
 # Enter alone keeps the saved key and its model. A new key goes back to the default model, unless
 # --model names one.
+# --europe is saved with the provider: later logins with OpenRouter keep it, --no-europe removes it, a key of
+# another provider drops it. Turning it on moves to the small model (Mistral Small), unless --model names
+# another one. The test of the model says if no European company serves it.
+# OpenCode and Open WebUI read the rule when they start: this command says so if one of them is running. A replay
+# stops before its next question, but the question it is on finishes under the old rule.
+# It chooses where the model runs, not where OpenRouter handles the request (only eu.openrouter.ai, on the
+# Business and Enterprise plans, keeps that in Europe). Accounts, billing and security logs may stay in the US.
 # Also written: ~/.workshop-engine (claude or opencode), ~/.claude/settings.json (Claude Code) and
 # ~/.workshop-opencode.json (OpenCode: provider and model, and for OpenRouter the size of the model's
-# window and its price). The key is in none of them: Claude Code reads it through apiKeyHelper,
+# window, its price and "europe"). The key is in none of them: Claude Code reads it through apiKeyHelper,
 # OpenCode through {file:~/.workshop-key} in its configuration.
 set -euo pipefail
 
@@ -31,7 +43,7 @@ HERE="$(dirname "$(realpath "$0")")"                                       # wor
 KEY_FILE="$HOME/.workshop-key"
 ENGINE_FILE="$HOME/.workshop-engine"
 OPENCODE_FILE="$HOME/.workshop-opencode.json"
-USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL]   (or: workshop-login --models [anthropic|openrouter|free])"
+USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL] [--europe|--no-europe]   (or: workshop-login --models [anthropic|openrouter|free])"
 NOT_HERE='Type workshop-login alone, press Enter, then paste the key.'
 
 # Class mode (Open WebUI guide, one teacher, no facilitator): the same steps, other words.
@@ -53,7 +65,7 @@ for arg in "$@"; do
   case "$arg" in *sk-ant-*|*sk-or-*) echo "$NOT_HERE" >&2; exit 1 ;; esac      # never echo a key pasted on the line
 done
 
-key=""; key_given=0; keep_model=0; engine=""; model=""; list_models=0; models_provider=""
+key=""; key_given=0; keep_model=0; engine=""; model=""; list_models=0; models_provider=""; europe_option=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key)                                                    # only --key -: a key here would stay in ps and in the history
@@ -61,6 +73,8 @@ while [[ $# -gt 0 ]]; do
       key="-"; key_given=1; shift 2 ;;
     --engine) engine="${2:?--engine needs a value: claude or opencode}"; shift 2 ;;
     --model) model="${2:?--model needs a model name}"; shift 2 ;;
+    --europe) europe_option=on; shift ;;
+    --no-europe) europe_option=off; shift ;;
     --models)
       list_models=1; shift
       case "${1:-}" in anthropic|openrouter|free) models_provider="$1"; shift ;; esac ;;
@@ -116,13 +130,28 @@ if not ids:
 print("\n".join("openrouter/" + i for i in ids))' "$models_file" 2>/dev/null
 }
 
+# The smallest window among the European companies of this model, from OpenRouter's public list of its
+# companies (no key needed): the list of models can give a much larger one, from a company elsewhere.
+# Prints nothing when it cannot be told.
+europe_window() {
+  curl -s --max-time 20 "$OPENROUTER_API/models/$model_id/endpoints" 2>/dev/null | python3 -I -c '
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import workshop_provider
+endpoints = json.load(sys.stdin)["data"]["endpoints"]
+print(min(e["context_length"] for e in endpoints
+          if e.get("tag") in workshop_provider.EUROPE_ENDPOINTS and type(e.get("context_length")) is int and e["context_length"] > 0))' \
+    "$HERE" 2>/dev/null || true
+}
+
 # What to add to ~/.workshop-opencode.json for this model: its window, and its price in dollars per
 # million tokens. From the live list; without it, what was saved for the same model.
+# $1: the window to write instead, when there is one (europe_window).
 model_facts() {
   python3 -I -c '
 import json, sys
 from decimal import Decimal
-models_file, settings_file, wanted = sys.argv[1:]
+models_file, settings_file, wanted, window = sys.argv[1:]
 facts, found = {}, {}
 try:
     found = next(m for m in json.load(open(models_file, encoding="utf-8"))["data"] if m.get("id") == wanted)
@@ -141,8 +170,10 @@ if not found:
             facts = {k: saved[k] for k in ("context", "cost") if k in saved}
     except Exception:
         pass
+if window:
+    facts["context"] = int(window)
 print("".join(", %s: %s" % (json.dumps(k), json.dumps(v)) for k, v in facts.items()))' \
-    "$models_file" "$OPENCODE_FILE" "$model_id" 2>/dev/null || true
+    "$models_file" "$OPENCODE_FILE" "$model_id" "${1:-}" 2>/dev/null || true
 }
 
 # The models of OpenRouter, one per line, for --models: the live list, else OpenCode's catalogue.
@@ -283,6 +314,12 @@ if [[ ! "$key" =~ ^sk-(ant|or)-[A-Za-z0-9_-]+$ ]]; then
   exit 1
 fi
 
+# Before anything is saved or sent.
+if [[ "$key" == sk-ant-* && "$europe_option" == on ]]; then
+  echo "--europe needs an OpenRouter key (sk-or-…). This is an Anthropic key. Nothing saved." >&2
+  exit 1
+fi
+
 # Engine: --engine, else WORKSHOP_ENGINE, else the key, else the saved one, else claude.
 saved_key="$(cat "$KEY_FILE" 2>/dev/null || true)"
 saved_engine="$(tr -d '[:space:]' 2>/dev/null < "$ENGINE_FILE" || true)"
@@ -324,6 +361,7 @@ fi
 [[ "$engine" == opencode ]] && need_opencode
 
 # Provider and model. For OpenCode, the model is "<provider>/<model id>" (as in `opencode models`).
+saved_europe=off; europe=off
 if [[ "$key" == sk-ant-* ]]; then
   provider="anthropic"; provider_name="Anthropic"; oc_model="anthropic/$ANTHROPIC_MODEL_ID"
 else
@@ -332,20 +370,30 @@ else
 import sys
 sys.path.insert(0, sys.argv[1])
 import workshop_provider
-print(workshop_provider.OPENROUTER.chat)' "$HERE" 2>/dev/null)" || {
+print(workshop_provider.OPENROUTER.chat, workshop_provider.OPENROUTER.small)' "$HERE" 2>/dev/null)" || {
     echo "workshop_provider.py is missing next to workshop-login. Tell the facilitator." >&2; exit 1; }
+  small_model="${default_model##* }"; default_model="${default_model%% *}"
+  # --europe stays with the provider: the file only says it for the provider it names.
+  saved_europe="$(python3 -I -c '
+import json, sys
+saved = json.load(open(sys.argv[1], encoding="utf-8"))
+print("on" if saved.get("provider") == sys.argv[2] and saved.get("europe") is True else "off")' "$OPENCODE_FILE" "$provider" 2>/dev/null || echo off)"
+  europe="${europe_option:-$saved_europe}"
+  if [[ "$europe" == on ]]; then default_model="$small_model"; fi
   oc_model="openrouter/$default_model"
   if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
     REFUSED='Create a new key on openrouter.ai, then type workshop-login again.'
     OTHER='Check that your OpenRouter account has credits and that the key is active.'
   fi
 fi
-# Enter alone keeps the model chosen earlier. A new key does not. Claude Code has no choice of model.
+# Enter alone keeps the model chosen earlier. A new key does not, and neither does turning --europe on:
+# that model was chosen without it. Claude Code has no choice of model.
 saved_model="$(python3 -I -c '
 import json, sys
 saved = json.load(open(sys.argv[1], encoding="utf-8"))
 print(saved["model"] if saved.get("provider") == sys.argv[2] else "")' "$OPENCODE_FILE" "$provider" 2>/dev/null || true)"
-if [[ "$keep_model" == 1 && "$kept_engine" == opencode && "$saved_model" == "$provider/"* && "$saved_model" =~ ^[A-Za-z0-9._:~/@-]+$ ]]; then
+if [[ "$keep_model" == 1 && "$kept_engine" == opencode && "$saved_model" == "$provider/"* && "$saved_model" =~ ^[A-Za-z0-9._:~/@-]+$
+      && ! ( "$europe" == on && "$saved_europe" == off ) ]]; then
   oc_model="$saved_model"
 fi
 if [[ -n "$model" ]]; then
@@ -442,11 +490,15 @@ else
   "env": { $common }
 }
 EOF
-  facts="$(model_facts)"
+  window=""
+  if [[ "$europe" == on ]]; then window="$(europe_window)"; fi
+  facts="$(model_facts "$window")"
 fi
+europe_saved=""
+if [[ "$europe" == on ]]; then europe_saved=', "europe": true'; fi
 # OpenCode: provider and model, always the provider of the saved key.
 write_file "$OPENCODE_FILE" <<EOF
-{"provider": "$provider", "model": "$oc_model"$facts, "engine_explicit": $explicit}
+{"provider": "$provider", "model": "$oc_model"$facts$europe_saved, "engine_explicit": $explicit}
 EOF
 
 if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
@@ -456,14 +508,22 @@ elif [[ "$kept_engine" == opencode ]]; then                    # what the next c
 else
   where="Claude Code, $provider_name, model $ANTHROPIC_MODEL_ID"
 fi
+if [[ "$europe" == on ]]; then where+=", hosted in Europe"; fi
+
+# OpenCode reads the rule when it starts: what is open now goes on without it.
+if [[ "$europe" != "$saved_europe" ]] && pgrep -u "$(id -u)" -x opencode > /dev/null 2>&1; then
+  echo "OpenCode is already open and keeps the old data rule: close it and start it again. A replay stops by itself before its next question."
+fi
 
 # Open WebUI was started with the key of that moment, and does not read this file again.
 running="$(timeout 5 docker ps --format '{{.Names}}' 2>/dev/null || true)"
 if [[ "$key" != "$saved_key" ]] && grep -qxE 'yal-kit-openwebui|yal-openwebui-class' <<<"$running"; then
   echo "Open WebUI keeps the old key until you type: openwebui start"
+elif [[ "$europe" != "$saved_europe" ]] && grep -qxE 'yal-kit-openwebui|yal-openwebui-class' <<<"$running"; then
+  echo "Open WebUI keeps the old data rule until you type: openwebui start"
 fi
-if [[ "$provider" == openrouter && "${OPENWEBUI_MODE:-}" == class ]]; then
-  echo "Warning: with young people, turn on zero-data-retention models hosted in Europe."
+if [[ "$provider" == openrouter && "${OPENWEBUI_MODE:-}" == class && "$europe" != on ]]; then
+  echo "Warning: with young people, turn on zero-data-retention models hosted in Europe: workshop-login --europe"
 fi
 
 # OpenRouter: the key works, now the model. Each failure has its own sentence.
@@ -474,7 +534,13 @@ if [[ "$provider" == openrouter && "$code" == 200 ]]; then
     ok) ;;
     credits) echo "Key saved, but this OpenRouter account has no credits left. Add credits, or choose a free model: workshop-login --models free" >&2; exit 4 ;;
     limit) echo "Key saved, but this key has reached its spending limit. $OTHER" >&2; exit 4 ;;
-    model) echo "Key saved, but no company can serve the model $oc_model while promising not to keep the questions. Choose another model: workshop-login --models openrouter" >&2; exit 4 ;;
+    model)
+      if [[ "$europe" == on ]]; then
+        echo "Key saved, but no company hosted in Europe serves the model $oc_model with zero data retention. Choose another model, for example: workshop-login --model $small_model" >&2
+      else
+        echo "Key saved, but no company can serve the model $oc_model under the workshop's data rule. Choose another model: workshop-login --models openrouter" >&2
+      fi
+      exit 4 ;;
     busy)
       if [[ "$status" == 429 ]]; then
         echo "Key saved, but the quota of the model $oc_model is reached for now (HTTP 429). Try again later, or choose another model: workshop-login --models openrouter" >&2
@@ -499,6 +565,9 @@ case "$code" in
   200)
     echo "Key OK ($where). You can start: $NEXT"
     if [[ -n "$free_left" ]]; then echo "$free_left"; fi
+    if [[ "$europe" == on && -z "${window:-}" ]]; then
+      echo "(OpenRouter's list of the companies of this model could not be read: the size of its window in Europe is not checked.)"
+    fi
     if [[ "$engine" != "$kept_engine" && "${OPENWEBUI_MODE:-}" != class ]]; then
       echo "WORKSHOP_ENGINE=$engine is not saved. Without it, workshop uses $(engine_name "$kept_engine"). To keep $(engine_name "$engine"): workshop-login --engine $engine"
     fi ;;

@@ -122,6 +122,14 @@ def engine():
     return name or "claude"
 
 
+def check_data_rule(rule):
+    """OpenCode's server and Open WebUI keep the data rule of their start. After a workshop-login --europe
+    (or --no-europe) in another terminal, the next question must not go out under the old rule."""
+    if workshop_provider.routing() != rule:
+        raise SystemExit("Your data rule changed during this replay (workshop-login --europe or --no-europe). The next "
+                         "question was not sent.\nThe answers so far stay in answers/. Type the same replay command again.")
+
+
 def claude_engine_line():
     """The model of Claude Code: --model, else the one workshop-login saved in its settings."""
     model = os.environ.get("WORKSHOP_MODEL")
@@ -244,6 +252,7 @@ class OpenCode:
 
     def __init__(self, mode, agents):
         self.mode, self.url, self.cwd, self.model, self.steps = mode, None, KIT, "?", 15
+        self.rule = workshop_provider.routing()  # read before the server, which reads it once
         self.proc, self.run_dir, self.view = None, None, None
         self.priced, self.price_unknown = False, False
         RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -362,6 +371,7 @@ class OpenCode:
 
     def ask(self, question):
         """Returns (answer, context tokens, actions, cost, error, peeked), like ask()."""
+        check_data_rule(self.rule)
         (self.tmp / "question.txt").write_text(question, encoding="utf-8")
         events = self.tmp / "run.jsonl"
         # The question on stdin: as an argument, OpenCode 2.1.4 sends it wrapped in quotes.
@@ -481,6 +491,9 @@ def opencode_error(e):
         return Explained(BLOCKED)
     if kind == "output-limit":
         return Explained("the model stopped at its length limit before the end of its answer.")
+    if kind == "compaction.failed":
+        return Explained("this question and its documents are too long for the window of this model. "
+                         "Choose a model with a larger window: workshop-login --models openrouter")
     if status == 401 or kind == "provider.auth":
         return f"the key was refused ({status or 401}{': ' + message if message else ''}). Check it: workshop-login"
     if status == 402:
@@ -540,6 +553,7 @@ class OpenWebUIRag:
     def __init__(self):
         self.url = f"http://127.0.0.1:{int(os.environ.get('WORKSHOP_OPENWEBUI_PORT', '3000'))}"
         self.token = ""
+        self.rule = workshop_provider.routing()  # start() checks that Open WebUI has this one
 
     def engine_line(self):
         service = workshop_provider.provider_of(workshop_provider.read_key()) or workshop_provider.ANTHROPIC
@@ -598,6 +612,7 @@ class OpenWebUIRag:
 
     def ask(self, question):
         """Same tuple as ask(): (answer, context tokens, excerpts, cost, error, peeked)."""
+        check_data_rule(self.rule)
         try:
             r = self.request("POST", "/api/chat/completions", {
                 "model": self.MODEL_ID, "messages": [{"role": "user", "content": question}], "stream": False},

@@ -35,7 +35,8 @@ Read: ~/.workshop-key (the key, never copied: the config points to the file) and
 ~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
 "model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window;
 without it, 200k for Claude models and OpenCode's catalogue for the others; optional "cost": what the
-model costs, for the cost shown: {"input": 0.1, "output": 0.3}, in $ per million tokens).
+model costs, for the cost shown: {"input": 0.1, "output": 0.3}, in $ per million tokens; optional
+"europe": true, read by workshop_provider.routing()).
 The key chooses the provider (sk-ant- Anthropic, sk-or- OpenRouter), whatever that file says. A file for
 the other provider, or no file: the model comes from workshop_provider.py.
 
@@ -235,6 +236,18 @@ def new_run_dir(mode):
     return Path(tempfile.mkdtemp(prefix=f"oc-{mode}-", dir=RUN_DIR))
 
 
+def window_problem(mode):
+    """Mode B sends the whole kit at once: a model with a smaller window fails before its first word (measured
+    with workshop-login --europe, 32k). 4 characters a token is a low count: the gauge shows nearly twice that."""
+    if "preload" not in mode.texts:
+        return ""
+    context = model_choice()[2]
+    if not context or len(modes.preload(KIT)) // 4 < context:
+        return ""
+    return (f"Mode {mode.name} sends the whole kit at once, and this model reads {context:,} tokens at most.\n"
+            "This mode cannot run with it. See the models with a larger window: workshop-login --models openrouter")
+
+
 def write_instructions(mode, agents, run):
     """Writes the instructions files of the mode into the run folder; returns their paths, in order."""
     def add(name, text):
@@ -334,7 +347,8 @@ def build_config(mode, instructions, perms, mcp, steps):
         model_settings["cost"] = cost
     provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
     if provider == workshop_provider.OPENROUTER.name:
-        provider_settings["provider"] = dict(workshop_provider.ROUTING)  # sent with every request
+        # Sent with every request, and read only here: workshop-login warns, and replay stops, if it changes.
+        provider_settings["provider"] = workshop_provider.routing()
         # OpenRouter checks the balance against the longest possible answer: with OpenCode's default
         # (195,288 tokens, measured) a capped key or a small balance fails with 402 on a short question.
         model_settings.setdefault("limit", {"context": 200000})["output"] = MAX_OUTPUT
@@ -386,7 +400,7 @@ def main():
     agents, problem = modes.agents_file(mode, KIT)
     if problem:
         fail(problem)
-    problem = modes.weather_problem(mode)
+    problem = modes.weather_problem(mode) or window_problem(mode)
     if problem:
         fail(problem)
 

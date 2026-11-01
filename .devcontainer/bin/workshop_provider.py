@@ -36,9 +36,17 @@ OPENROUTER = Provider("openrouter", "OpenRouter", "sk-or-", TEST_API or "https:/
                       os.environ.get("WORKSHOP_OPENROUTER_JUDGE_MODEL", "deepseek/deepseek-v4-flash"))
 PROVIDERS = (ANTHROPIC, OPENROUTER)
 
-# OpenRouter sends a question to any company that serves the model unless told otherwise: never to one
-# that may keep it or train on it. A request that no company can serve then fails with 404 or 503.
+# OpenRouter sends a question to any company that serves the model unless told otherwise. This rule leaves
+# out the companies that may collect the data or train on it; some of the others may still keep questions
+# for a time. A request that no company can serve then fails with 404 or 503.
 ROUTING = {"data_collection": "deny"}
+
+# workshop-login --europe: the endpoints in Europe with zero data retention and no safety retention
+# (facilitator/workshops/measures/2026-11-01-openrouter-free/data-policies-2026-11-01.json). google-vertex/eu is
+# left out: its Gemini models have safety retention. A bare company name would not pin its regional endpoints.
+# This chooses where the model runs, not where OpenRouter handles the request: only eu.openrouter.ai (Business and
+# Enterprise plans) keeps that in Europe. Accounts, billing and security logs may stay in the US in all cases.
+EUROPE_ENDPOINTS = ["mistral/eu", "amazon-bedrock/eu-west-1", "azure/eu", "azure/swedencentral", "google-vertex/europe"]
 
 # text: the answer. tokens_in, tokens_out: as billed. cost: what the provider says the call cost, or None.
 # stop: end, length, refusal or error. kind: None when the call worked, otherwise one of
@@ -71,6 +79,18 @@ def saved_settings():
         return saved if isinstance(saved, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def europe():
+    """True after workshop-login --europe."""
+    return saved_settings().get("europe") is True
+
+
+def routing():
+    """What every OpenRouter request sends in "provider"."""
+    if europe():
+        return dict(ROUTING, zdr=True, only=EUROPE_ENDPOINTS, allow_fallbacks=False)
+    return ROUTING
 
 
 def chat_model(provider):
@@ -136,7 +156,7 @@ def _request_anthropic(provider, key, system, user, model, max_tokens, effort):
 
 def _request_openrouter(provider, key, system, user, model, max_tokens, effort):
     # max_tokens is deprecated there, and some companies refuse less than 16.
-    body = {"model": model, "max_completion_tokens": max(max_tokens, 16), "provider": ROUTING,
+    body = {"model": model, "max_completion_tokens": max(max_tokens, 16), "provider": routing(),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     if effort:
         body["reasoning"] = {"effort": effort}

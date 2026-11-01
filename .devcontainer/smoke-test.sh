@@ -256,9 +256,11 @@ sys.path.insert(0, sys.argv[1])
 import workshop_provider as p
 assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small, p.OPENROUTER.judge)), "un Claude par défaut avec OpenRouter"
 assert p.ROUTING == {"data_collection": "deny"}, p.ROUTING
-print(p.OPENROUTER.chat)
+assert p.EUROPE_ENDPOINTS == ["mistral/eu", "amazon-bedrock/eu-west-1", "azure/eu", "azure/swedencentral", "google-vertex/europe"], p.EUROPE_ENDPOINTS
+print(p.OPENROUTER.chat, p.OPENROUTER.small)
 PY
 )" || echec "workshop_provider : modèles par défaut d'OpenRouter"
+petit="${defaut##* }"; defaut="${defaut%% *}"
 h=$(mktemp -d); b=$(mktemp -d); mkdir "$h/.claude"
 # Faux curl : répond 200 pour Anthropic ; le reste va au faux OpenRouter.
 cat > "$b/curl" <<'SH'
@@ -271,9 +273,9 @@ SH
 chmod +x "$b/curl"
 # Faux OpenRouter : la liste des modèles, /key, et le modèle, qui force une recherche quand on lui parle en flux.
 cat > "$b/faux.py" <<'PY'
-import json, os, sys
+import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-journal, refus, modele = sys.argv[1:4]
+journal, refus, *modeles = sys.argv[1:]
 tours = {"n": 0}
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -283,16 +285,26 @@ class H(BaseHTTPRequestHandler):
         self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_GET(self):
         if self.path.endswith("/models"):
-            return self.rend(200, {"data": [{"id": modele, "context_length": 128000, "supported_parameters": ["tools"],
-                                             "pricing": {"prompt": "0.0000001", "completion": "0.0000002"}}]})
+            return self.rend(200, {"data": [{"id": m, "context_length": 128000, "supported_parameters": ["tools"],
+                                             "pricing": {"prompt": "0.0000001", "completion": "0.0000002"}} for m in modeles]})
+        if self.path.endswith("/endpoints"):  # un modèle servi plus petit en Europe, et des fenêtres hors de la liste
+            if os.path.exists(refus + "-fenetre"):
+                return self.rend(500, {"error": {"message": "no"}})
+            return self.rend(200, {"data": {"endpoints": [
+                {"tag": "deepinfra/fp8", "context_length": 128000}, {"tag": "mistral/eu", "context_length": 32000},
+                {"tag": "azure/eu", "context_length": 64000}, {"tag": "google-vertex/eu", "context_length": 1000}]}})
         if os.path.exists(refus):
             return self.rend(401, {"error": {"message": "no"}})
         self.rend(200, {"data": {"label": "test"}})
     def do_POST(self):
         corps = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         with open(journal, "a") as f: f.write(json.dumps(corps) + "\n")
+        if "only" in corps.get("provider", {}) and corps["model"] == "test/hors-europe":
+            return self.rend(404, {"error": {"message": "No allowed providers are available for the selected model."}})
         if not corps.get("stream"):
             return self.rend(200, {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]})
+        if os.path.exists(refus + "-lent"):  # le temps de taper workshop-login pendant la question
+            time.sleep(4)
         tours["n"] += 1; d = {"content": "DONE"}; fin = "stop"
         if tours["n"] == 1:
             d = {"tool_calls": [{"index": 0, "id": "c1", "type": "function", "function": {"name": "grep",
@@ -304,7 +316,7 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
 ThreadingHTTPServer(("127.0.0.1", 8797), H).serve_forever()
 PY
-/opt/workshop/venv/bin/python -I "$b/faux.py" "$b/journal" "$b/refus" "$defaut" & faux=$!
+/opt/workshop/venv/bin/python -I "$b/faux.py" "$b/journal" "$b/refus" "$defaut" "$petit" test/hors-europe & faux=$!
 for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/curl -s -o /dev/null http://127.0.0.1:8797/api/v1/models && break; sleep 0.3; done
 connexion() { # la clé (vide : Entrée seule), puis les options de workshop-login
   local k="$1"; shift
@@ -358,7 +370,7 @@ grep -qF "WORKSHOP_ENGINE=opencode is not saved" <<< "$sortie" || { echo "$sorti
 
 etape "OpenRouter en mode classe : l'avertissement sur les jeunes ; Anthropic sans changement"
 sortie="$(OPENWEBUI_MODE=class connexion "$OR" 2>&1)" || { echo "$sortie"; echec "mode classe avec une clé OpenRouter"; }
-grep -qF "Warning: with young people, turn on zero-data-retention models hosted in Europe." <<< "$sortie" || { echo "$sortie"; echec "mode classe : avertissement absent"; }
+grep -qxF "Warning: with young people, turn on zero-data-retention models hosted in Europe: workshop-login --europe" <<< "$sortie" || { echo "$sortie"; echec "mode classe : avertissement absent"; }
 grep -qF "Key OK (OpenRouter, model $defaut). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "mode classe : Key OK attendu"; }
 sortie="$(OPENWEBUI_MODE=class connexion "$ANT" 2>&1)" || { echo "$sortie"; echec "mode classe avec une clé Anthropic"; }
 if grep -q "young people" <<< "$sortie"; then echec "mode classe, Anthropic : l'avertissement ne le concerne pas"; fi
@@ -381,6 +393,95 @@ assert "matches" in reponse and "ripgrep execution failed" not in reponse, repon
 print("deux requêtes, modèle par défaut, routage dans chacune, recherche :", reponse.split(chr(10))[0])
 PY
 [[ -z "$(find "$h" -type f -name rg)" ]] || echec "OpenCode a téléchargé son propre rg alors qu'il y en a un sur le PATH"
+
+etape "workshop-login --europe : enregistré, gardé, retiré, perdu au changement de fournisseur, refusé avec une clé Anthropic"
+fichier="$h/.workshop-opencode.json"
+routage_europe() { # le dernier corps du journal porte la règle européenne, pour le modèle $1
+  tail -1 "$b/journal" | /opt/workshop/venv/bin/python -I -c "
+import json, sys
+c = json.loads(sys.stdin.read())
+assert c['model'] == sys.argv[1], c['model']
+assert c['provider'] == {'data_collection': 'deny', 'zdr': True, 'allow_fallbacks': False, 'only': ['mistral/eu', 'amazon-bedrock/eu-west-1', 'azure/eu', 'azure/swedencentral', 'google-vertex/europe']}, c['provider']" "$1"
+}
+sortie="$(connexion "" --europe)" || { echo "$sortie"; echec "--europe, Entrée seule"; }
+etat "$OR" opencode "openrouter/$petit"
+grep -qF "Key OK (OpenCode, OpenRouter, model openrouter/$petit, hosted in Europe). You can start:" <<< "$sortie" || { echo "$sortie"; echec "--europe : Key OK attendu"; }
+grep -q '"europe": true' "$fichier" || echec "--europe non enregistré"
+grep -q '"context": 32000' "$fichier" || { cat "$fichier"; echec "--europe : la plus petite fenêtre européenne attendue (32000)"; }
+if grep -q "not checked" <<< "$sortie"; then echo "$sortie"; echec "--europe : fenêtre lue, mais annoncée non vérifiée"; fi
+routage_europe "$petit" || echec "--europe : règle absente de l'essai du modèle"
+sortie="$(connexion "")" || { echo "$sortie"; echec "--europe puis Entrée seule"; }
+etat "$OR" opencode "openrouter/$petit"; grep -q '"europe": true' "$fichier" || echec "--europe perdu à la connexion suivante (Entrée seule)"
+grep -qF "hosted in Europe" <<< "$sortie" || { echo "$sortie"; echec "--europe gardé : Key OK attendu"; }
+connexion "${OR}B" > /dev/null || echec "--europe puis une nouvelle clé OpenRouter"
+etat "${OR}B" opencode "openrouter/$petit"; grep -q '"europe": true' "$fichier" || echec "--europe perdu avec une nouvelle clé du même fournisseur"
+connexion "$OR" > /dev/null || echec "retour à la première clé OpenRouter"
+# --model garde sa place ; l'essai dit qu'aucune entreprise européenne ne sert ce modèle.
+code=0; connexion "" --model test/hors-europe > /dev/null 2>/tmp/err || code=$?
+{ [[ "$code" == 4 ]] && grep -qF "Key saved, but no company hosted in Europe serves the model openrouter/test/hors-europe with zero data retention." /tmp/err && grep -qF "workshop-login --model $petit" /tmp/err; } || { cat /tmp/err; echec "--europe, modèle hors d'Europe : phrase attendue, code $code"; }
+grep -q '"europe": true' "$fichier" || echec "--europe perdu après un modèle refusé"
+connexion "" --model "$petit" > /dev/null || echec "--europe : retour au petit modèle"
+# Sans la liste des entreprises du modèle : la valeur de la liste, et on le dit.
+touch "$b/refus-fenetre"
+sortie="$(connexion "")" || { echo "$sortie"; echec "--europe sans la liste des entreprises"; }
+grep -q "is not checked" <<< "$sortie" || { echo "$sortie"; echec "--europe : fenêtre non vérifiée, message attendu"; }
+grep -q '"context": 128000' "$fichier" || { cat "$fichier"; echec "--europe : valeur de la liste attendue"; }
+rm "$b/refus-fenetre"; connexion "" > /dev/null || echec "--europe : fenêtre relue"
+# Le vrai OpenCode envoie la règle et déclare la fenêtre.
+: > "$b/journal"
+sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 120 workshop C -p probe 2>&1)" \
+  || { echo "$sortie"; echec "workshop C avec --europe"; }
+routage_europe "$petit" || echec "--europe : règle absente de la requête d'OpenCode"
+HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_DRY_RUN=1 workshop-opencode C -p x | /opt/workshop/venv/bin/python -I -c "
+import json, sys
+c = json.load(sys.stdin)['config']['providers']['openrouter']['models'][sys.argv[1]]
+assert c['limit']['context'] == 32000, c" "$petit" || echec "--europe : fenêtre de 32000 non déclarée à OpenCode"
+# Le mode B envoie tout le kit d'un coup : refusé avant toute requête.
+: > "$b/journal"; code=0
+sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 60 workshop B -p x 2>&1)" || code=$?
+{ [[ "$code" == 1 ]] && grep -qF "This mode cannot run with it." <<< "$sortie" && [[ ! -s "$b/journal" ]]; } || { echo "$sortie"; echec "--europe : mode B, refus attendu"; }
+sortie="$(OPENWEBUI_MODE=class connexion "" 2>&1)" || { echo "$sortie"; echec "--europe en mode classe"; }
+if grep -q "young people" <<< "$sortie"; then echo "$sortie"; echec "--europe en mode classe : pas d'avertissement attendu"; fi
+grep -qF "Key OK (OpenRouter, model $petit, hosted in Europe). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "--europe en mode classe : Key OK attendu"; }
+# Clé Anthropic : rien n'est enregistré.
+avant="$(cat "$h/.workshop-key" "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json" | sha256sum)"
+code=0; connexion "$ANT" --europe > /dev/null 2>/tmp/err || code=$?
+{ [[ "$code" == 1 ]] && grep -qF -- "--europe needs an OpenRouter key" /tmp/err && grep -q "Nothing saved" /tmp/err; } || { cat /tmp/err; echec "--europe avec une clé Anthropic : refus attendu, code $code"; }
+[[ "$avant" == "$(cat "$h/.workshop-key" "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json" | sha256sum)" ]] || echec "--europe avec une clé Anthropic : quelque chose a été enregistré"
+# --no-europe : le modèle reste, la règle et la fenêtre reviennent, l'avertissement aussi.
+sortie="$(OPENWEBUI_MODE=class connexion "" --no-europe 2>&1)" || { echo "$sortie"; echec "--no-europe"; }
+if grep -q '"europe"' "$fichier"; then cat "$fichier"; echec "--no-europe : réglage resté"; fi
+grep -q '"context": 128000' "$fichier" || { cat "$fichier"; echec "--no-europe : fenêtre de la liste attendue"; }
+grep -q "workshop-login --europe" <<< "$sortie" || { echo "$sortie"; echec "--no-europe : avertissement attendu en mode classe"; }
+etat "$OR" opencode "openrouter/$petit"
+tail -1 "$b/journal" | grep -q '"provider": {"data_collection": "deny"}' || echec "--no-europe : règle ordinaire attendue"
+# Règle changée pendant replay : OpenCode ouvert est signalé, et la question suivante ne part pas.
+sortie="$(connexion "")" || { echo "$sortie"; echec "--no-europe puis Entrée seule"; }
+if grep -q "keeps the old data rule" <<< "$sortie"; then echo "$sortie"; echec "règle inchangée : pas de ligne attendue"; fi
+: > "$b/journal"; touch "$b/refus-lent"
+HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 replay C 1 2 3 > /tmp/replay-regle 2>&1 & r=$!
+for _ in $(seq 1 300); do grep -q '"stream": true' "$b/journal" && break; sleep 0.2; done
+sortie="$(connexion "" --europe)" || { echo "$sortie"; echec "--europe pendant replay"; }
+grep -qF "OpenCode is already open and keeps the old data rule" <<< "$sortie" || { echo "$sortie"; echec "--europe pendant replay : ligne attendue"; }
+code=0; wait "$r" || code=$?
+rm "$b/refus-lent"
+{ [[ "$code" == 1 ]] && grep -qF "Your data rule changed during this replay" /tmp/replay-regle; } || { cat /tmp/replay-regle; echec "replay : arrêt attendu, code $code"; }
+/opt/workshop/venv/bin/python -I - "$b/journal" <<'PY' || echec "replay : une question est partie sous l'ancienne règle"
+import json, sys
+corps = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+questions = {json.dumps(c["messages"][-1]) for c in corps if c.get("stream") and c["provider"] == {"data_collection": "deny"}}
+assert len(questions) == 1, questions
+PY
+rm -f "$copie"/answers/C-*.md
+connexion "" --no-europe > /dev/null || echec "--no-europe après replay"
+# Changement de fournisseur : le réglage part, et le fichier d'Anthropic ne change pas d'un octet.
+connexion "" --europe > /dev/null || echec "--europe de nouveau"
+sortie="$(connexion "$ANT")" || { echo "$sortie"; echec "--europe puis clé Anthropic"; }
+grep -qF "Key OK (Claude Code, Anthropic, model claude-sonnet-5-5)" <<< "$sortie" || { echo "$sortie"; echec "clé Anthropic après --europe : Key OK attendu"; }
+[[ "$(cat "$fichier")" == '{"provider": "anthropic", "model": "anthropic/claude-sonnet-5-5", "engine_explicit": false}' ]] || { cat "$fichier"; echec "clé Anthropic : fichier changé"; }
+connexion "$OR" > /dev/null || echec "retour à OpenRouter après --europe"
+etat "$OR" opencode "openrouter/$defaut"
+if grep -q '"europe"' "$fichier"; then cat "$fichier"; echec "--europe gardé après un changement de fournisseur"; fi
 kill "$faux"; wait "$faux" 2>/dev/null || true
 rm -rf "$h" "$b"
 
@@ -419,7 +520,38 @@ with contextlib.redirect_stdout(sortie):
 assert not sortie.getvalue()
 with contextlib.redirect_stdout(sortie):
     owui.warn_young_people(wp.OPENROUTER)
-assert "zero-data-retention models hosted in Europe" in sortie.getvalue()
+assert "turn on zero-data-retention models hosted in Europe: workshop-login --europe\nHow to do it: https://" in sortie.getvalue(), sortie.getvalue()
+# --europe : la même règle partout, pas d'avertissement, un autre juge, et Open WebUI redémarre pour la prendre.
+class Conteneur:
+    returncode = 0
+    stdout = json.dumps(["OPENAI_API_KEY=sk-or-x", "DEFAULT_MODEL_PARAMS=" + json.dumps(owui.routed({}, wp.OPENROUTER))])
+owui.docker = lambda *a, **k: Conteneur
+owui.check_same_key("sk-or-x", "a/b")
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b", "europe": True}))
+assert wp.routing() == {"data_collection": "deny", "zdr": True, "only": wp.EUROPE_ENDPOINTS, "allow_fallbacks": False}
+assert json.loads(owui.routed({}, wp.OPENROUTER)["custom_params"]["provider"]) == wp.routing()
+assert "custom_params" not in owui.routed({}, wp.ANTHROPIC)
+sortie = io.StringIO()
+with contextlib.redirect_stdout(sortie):
+    owui.warn_young_people(wp.OPENROUTER)
+assert not sortie.getvalue()
+assert score.judge_model("sk-or-x") == wp.OPENROUTER.small and score.judge_model("sk-ant-x") == wp.ANTHROPIC.judge
+ancien = owui.routed({"system": "s", "custom_params": {"provider": json.dumps(wp.ROUTING), "seed": 1}}, wp.OPENROUTER)
+assert ancien["custom_params"]["seed"] == 1 and json.loads(ancien["custom_params"]["provider"]) == wp.routing()
+try:
+    owui.check_same_key("sk-or-x", "a/b")
+    raise AssertionError("une règle changée doit arrêter check_same_key")
+except SystemExit:
+    pass
+# replay RAG : Open WebUI garde sa règle, la question suivante ne part pas.
+rag = replay.OpenWebUIRag()
+rag.request = lambda *a, **k: (_ for _ in ()).throw(AssertionError("question envoyée"))
+wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b"}))
+try:
+    rag.ask("q")
+    raise AssertionError("une règle changée doit arrêter replay RAG")
+except SystemExit as e:
+    assert "Your data rule changed" in str(e), e
 print("score, replay, openwebui : chargés ; juge, ligne Engine, routage et avertissement OK")
 PY
 rm -rf "$h" "$l"
