@@ -254,7 +254,7 @@ defaut="$(/opt/workshop/venv/bin/python -I - "$BIN" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 import workshop_provider as p
-assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small)), "un Claude par défaut avec OpenRouter"
+assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small, p.OPENROUTER.judge)), "un Claude par défaut avec OpenRouter"
 assert p.ROUTING == {"data_collection": "deny"}, p.ROUTING
 print(p.OPENROUTER.chat)
 PY
@@ -396,7 +396,7 @@ score, lien, replay, owui = charge("score", sys.argv[1]), charge("score2", sys.a
 wp = sys.modules["workshop_provider"]
 assert os.path.dirname(wp.__file__) == os.path.dirname(os.path.realpath(sys.argv[1])), wp.__file__
 # Le juge suit la clé.
-assert score.judge_model("sk-or-x") == wp.OPENROUTER.small and score.judge_model("sk-ant-x") == wp.ANTHROPIC.small
+assert score.judge_model("sk-or-x") == wp.OPENROUTER.judge and score.judge_model("sk-ant-x") == wp.ANTHROPIC.judge
 assert lien.JUDGE_MODEL == wp.ANTHROPIC.small == score.JUDGE_MODEL
 # La ligne Engine de replay, que score relit pour écrire le modèle sous le tableau.
 def relue(ligne):

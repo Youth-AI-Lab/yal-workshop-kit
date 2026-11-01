@@ -22,14 +22,18 @@ SETTINGS_FILE = Path.home() / ".workshop-opencode.json"  # written by workshop-l
 # Tests only: another address for the API of both providers (a fake endpoint).
 TEST_API = os.environ.get("WORKSHOP_PROVIDER_API")
 
-# name: as in ~/.workshop-opencode.json. chat, small: model ids as the provider's API knows them.
-Provider = namedtuple("Provider", "name label prefix api chat small")
+# name: as in ~/.workshop-opencode.json. chat, small, judge: model ids as the provider's API knows them.
+# small: the cheaper model of class mode, and ./sorter compare. judge: score.
+# OpenRouter: chosen from measures (facilitator/workshops/measures/2026-11-01-openrouter-free), none of them Claude.
+Provider = namedtuple("Provider", "name label prefix api chat small judge")
 ANTHROPIC = Provider("anthropic", "Anthropic", "sk-ant-", TEST_API or "https://api.anthropic.com/v1",
                      os.environ.get("WORKSHOP_ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+                     os.environ.get("WORKSHOP_ANTHROPIC_SMALL_MODEL", "claude-haiku-5-5"),
                      os.environ.get("WORKSHOP_ANTHROPIC_SMALL_MODEL", "claude-haiku-5-5"))
 OPENROUTER = Provider("openrouter", "OpenRouter", "sk-or-", TEST_API or "https://openrouter.ai/api/v1",
-                      os.environ.get("WORKSHOP_OPENROUTER_MODEL", "mistralai/mistral-small-3.2-24b-instruct"),
-                      os.environ.get("WORKSHOP_OPENROUTER_SMALL_MODEL", "mistralai/mistral-small-3.2-24b-instruct"))
+                      os.environ.get("WORKSHOP_OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"),
+                      os.environ.get("WORKSHOP_OPENROUTER_SMALL_MODEL", "mistralai/mistral-small-3.2-24b-instruct"),
+                      os.environ.get("WORKSHOP_OPENROUTER_JUDGE_MODEL", "deepseek/deepseek-v4-flash"))
 PROVIDERS = (ANTHROPIC, OPENROUTER)
 
 # OpenRouter sends a question to any company that serves the model unless told otherwise: never to one

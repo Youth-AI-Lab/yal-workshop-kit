@@ -530,7 +530,7 @@ def read_key():
 def judge_model(key):
     """WORKSHOP_JUDGE_MODEL, else the small model of the provider of this key."""
     provider = workshop_provider.provider_of(key) or workshop_provider.ANTHROPIC
-    return os.environ.get("WORKSHOP_JUDGE_MODEL") or provider.small
+    return os.environ.get("WORKSHOP_JUDGE_MODEL") or provider.judge
 
 
 def parse_verdict(text):

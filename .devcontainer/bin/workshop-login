@@ -194,7 +194,7 @@ import sys
 sys.path.insert(0, sys.argv[1])
 import workshop_provider
 reply = workshop_provider.ask(sys.stdin.read(), ".", ".", model=sys.argv[2], max_tokens=16, url=sys.argv[3], timeout=60)
-print(reply.kind or "ok", reply.status or 0)' "$HERE" "$model_id" "$OPENROUTER_API/chat/completions" 2>/dev/null \
+print(reply.kind or "ok", reply.status or 0, " ".join(reply.message.split())[:160])' "$HERE" "$model_id" "$OPENROUTER_API/chat/completions" 2>/dev/null \
     || echo "other 0"
 }
 
@@ -469,7 +469,7 @@ fi
 # OpenRouter: the key works, now the model. Each failure has its own sentence.
 free_left=""
 if [[ "$provider" == openrouter && "$code" == 200 ]]; then
-  read -r kind status <<<"$(model_test)"
+  read -r kind status words <<<"$(model_test)"
   case "$kind" in
     ok) ;;
     credits) echo "Key saved, but this OpenRouter account has no credits left. Add credits, or choose a free model: workshop-login --models free" >&2; exit 4 ;;
@@ -483,7 +483,7 @@ if [[ "$provider" == openrouter && "$code" == 200 ]]; then
       fi
       exit 4 ;;
     network) echo "Key saved, but the model $oc_model could not be reached (network?). Try: $NEXT" >&2; exit 3 ;;
-    *) echo "Key saved, but the test answered HTTP $status (model $model_id). $OTHER" >&2; exit 4 ;;
+    *) echo "Key saved, but the test answered HTTP $status (model $model_id): ${words:-no details}. $OTHER" >&2; exit 4 ;;
   esac
   if [[ "$oc_model" == *:free ]]; then
     info="$(key_info)"

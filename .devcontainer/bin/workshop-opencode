@@ -91,6 +91,7 @@ RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-ru
 GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
 KEY_FILE = workshop_provider.KEY_FILE
 
+MAX_OUTPUT = 8192  # OpenRouter: the longest answer of one step
 STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text answer)
 
 # Anthropic prices in $ per million tokens (Claude Sonnet 5.5: input 2, output 10, cache read 0.20,
@@ -334,6 +335,9 @@ def build_config(mode, instructions, perms, mcp, steps):
     provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
     if provider == workshop_provider.OPENROUTER.name:
         provider_settings["provider"] = dict(workshop_provider.ROUTING)  # sent with every request
+        # OpenRouter checks the balance against the longest possible answer: with OpenCode's default
+        # (195,288 tokens, measured) a capped key or a small balance fails with 402 on a short question.
+        model_settings.setdefault("limit", {"context": 200000})["output"] = MAX_OUTPUT
     if os.environ.get("WORKSHOP_OPENCODE_BASEURL"):
         provider_settings["baseURL"] = os.environ["WORKSHOP_OPENCODE_BASEURL"]
     return {
