@@ -36,15 +36,34 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+# Its own folder first: the smoke test and others load this file with python -I, without its folder.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workshop_modes  # noqa: E402
+import workshop_provider  # noqa: E402
+
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 WORKSHOP = os.environ.get("WORKSHOP_CMD", "workshop")
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F", "rag": "RAG"}
 # The test material: if the model saw it, the answer may be copied from the expected answers.
 TEST_MATERIAL = re.compile(r"test-questions\.md|scores\.md|(^|[\s./'\"])answers/|(^|[\s./'\"])examples/")
+# Left out of the copy of the kit that OpenCode searches during a replay (the top of the kit only). The
+# saved .zip files and the Open WebUI administrator account have no use there either. .git holds the
+# history of the test material: the copy gets an empty repository instead (make_view).
+NOT_IN_VIEW = shutil.ignore_patterns("test-questions.md", "scores*.md", "answers", "examples", ".git", "*.zip",
+                                     ".openwebui-class")
 # The label every answer of a deceptive demo bot must start with (examples/AGENTS.liar.md...).
 DEMO_LABEL = "⚠️ Demo bot: this answer contains deliberate errors."
 HAS_LABEL = re.compile(r"demo bot: this answer contains deliberate errors", re.I)
+
+
+class Explained(str):
+    """An error that already says what to do: "Check the key" after it would send people the wrong way."""
+
+
+BLOCKED = "the company that runs the model blocked this answer (content filter)."
+EMPTY_ANSWER = Explained("the model gave an empty answer and no reason. Try this question again. "
+                         "If all the answers are empty, ask the facilitator.")
 
 
 def read_rows():
@@ -101,6 +120,18 @@ def engine():
         except OSError:
             name = ""
     return name or "claude"
+
+
+def claude_engine_line():
+    """The model of Claude Code: --model, else the one workshop-login saved in its settings."""
+    model = os.environ.get("WORKSHOP_MODEL")
+    if not model:
+        try:
+            saved = json.loads((Path.home() / ".claude" / "settings.json").read_text(encoding="utf-8"))
+            model = saved["env"]["ANTHROPIC_MODEL"]
+        except (OSError, ValueError, KeyError, TypeError):
+            model = os.environ.get("ANTHROPIC_MODEL") or workshop_provider.ANTHROPIC.chat
+    return f"Engine: Claude Code (model {model})"
 
 
 def ask(mode, question, agents=None, server=None):
@@ -169,11 +200,13 @@ def describe(tool, args):
 
 # ---------------------------------------------------------------- OpenCode
 
-def describe_opencode(tool, args):
-    """The same sentences as describe(), for OpenCode's tool names (MCP tools: <server>_<tool>)."""
+def describe_opencode(tool, args, view=None):
+    """The same sentences as describe(), for OpenCode's tool names (MCP tools: <server>_<tool>).
+    A path in the view is shown as the path in the kit."""
     path = str(args.get("path") or args.get("filePath") or "?")
     if os.path.isabs(path):
-        path = os.path.relpath(path, KIT)
+        in_view = view is not None and Path(path).is_relative_to(view)
+        path = os.path.relpath(path, view if in_view else KIT)
     if tool == "read":
         return "read " + path
     if tool == "shell":
@@ -202,11 +235,17 @@ class OpenCode:
     as the chat of that mode), a random password, and a fresh database deleted at the end, so
     that an "Allow always" given in a chat never applies here. Each question is a new session:
     `opencode run --server` with the question on stdin, then `opencode session export` for the
-    size of the context, the cost and the tool calls (`run` does not report the last step)."""
+    size of the context, the cost and the tool calls (`run` does not report the last step).
+
+    In the modes with search tools, the server works in a view: a copy of the kit without the test
+    material, made at the start, in the run folder. OpenCode's grep and glob read the whole kit whatever
+    the instructions say, and a rule on their path does not stop them (grep is matched on its pattern).
+    With the view there is nothing to find, and each answer stays comparable."""
 
     def __init__(self, mode, agents):
         self.mode, self.url, self.cwd, self.model, self.steps = mode, None, KIT, "?", 15
-        self.proc, self.run_dir = None, None
+        self.proc, self.run_dir, self.view = None, None, None
+        self.priced, self.price_unknown = False, False
         RUN_DIR.mkdir(parents=True, exist_ok=True)
         # Named oc-*: workshop-opencode removes those older than a day if replay was killed.
         self.tmp = Path(tempfile.mkdtemp(prefix=f"oc-replay-{mode}-", dir=RUN_DIR))
@@ -225,6 +264,8 @@ class OpenCode:
     def start(self):
         """Starts the server and waits until it answers and its MCP servers are connected (else
         the first question would go out without their tools). Raises SystemExit with the reason."""
+        if workshop_modes.MODES[self.mode].search:
+            self.make_view()
         log = self.tmp / "server.log"
         with open(log, "w", encoding="utf-8") as out:
             # Its own process group: stop() ends the MCP servers it started, too.
@@ -244,6 +285,7 @@ class OpenCode:
                     self.url, self.cwd = info["url"], Path(info.get("directory") or KIT)
                     self.model, self.steps = info.get("model") or "?", int(info.get("steps") or 15)
                     self.run_dir = Path(info["run_dir"]) if info.get("run_dir") else None
+                    self.priced = bool(info.get("priced"))
             time.sleep(0.2)
         states = None
         while time.monotonic() < deadline:
@@ -261,6 +303,42 @@ class OpenCode:
             if state != "connected":
                 print(f"Warning: the MCP server {name} is not ready ({state}): the answers will not have "
                       "its tools.", flush=True)
+        self.check_key()
+
+    def check_key(self):
+        """The server reads the key at its first model request, then keeps it. If it were still to come, a
+        workshop-login in another terminal could send a key of one company to the address of the other. So
+        it reads it now, and only then is the saved key compared with the model of this replay."""
+        try:
+            self.cli("api", "--server", self.url, "get", "/api/model", timeout=30)  # has the key in clear: not kept
+        except subprocess.TimeoutExpired:
+            pass
+        now = workshop_provider.provider_of(workshop_provider.read_key())
+        if now and not self.model.startswith(now.name + "/"):
+            raise SystemExit(f"The saved key changed while replay was starting: it is now a key for {now.label}. "
+                             "Nothing was sent. Type the same replay command again.")
+
+    def make_view(self):
+        """The copy of the kit the model searches. A persona of examples/ is not in it: workshop-opencode
+        gets its full path (WORKSHOP_AGENTS) and copies it into the instructions."""
+        self.view = self.tmp / "view"
+        try:
+            shutil.copytree(KIT, self.view, symlinks=True,
+                            ignore=lambda folder, names: NOT_IN_VIEW(folder, names) if Path(folder) == KIT else set())
+        except shutil.Error as e:  # raised at the end: everything else is there
+            print(f"Warning: {len(e.args[0])} file(s) of the kit could not be copied for this replay: "
+                  "the model will not see them.", flush=True)
+        # OpenCode's search only follows .gitignore in a git repository: a kit in one must stay so here, or
+        # replay would find graphify's files and others that the chat never sees.
+        kit = KIT.resolve()
+        if any((folder / ".git").exists() for folder in (kit, *kit.parents)):
+            try:
+                subprocess.run(["git", "init", "-q", "--template="], cwd=self.view, capture_output=True, timeout=30,
+                               check=True)
+            except (OSError, subprocess.SubprocessError):
+                print("Warning: this replay may search more files than the chat does (git did not work here).",
+                      flush=True)
+        self.env["WORKSHOP_HOME"] = str(self.view)
 
     def fail(self, log):
         text = log.read_text(encoding="utf-8", errors="replace").strip() if log.is_file() else ""
@@ -306,15 +384,21 @@ class OpenCode:
             elif d.get("type") == "text":
                 texts.append((d.get("part") or {}).get("text", ""))
         if sid is None:
+            # Not one event: this is how an empty answer ends, with code 0 (measured with 2.1.4).
             last = ((self.tmp / "run.err").read_text(errors="replace").strip().splitlines() or [""])[-1]
-            return "", 0, [], 0.0, error or last or f"opencode exited with code {client.returncode}", False
+            nothing = EMPTY_ANSWER if client.returncode == 0 else f"opencode exited with code {client.returncode}"
+            return "", 0, [], 0.0, error or last or nothing, False
         try:
             export = json.loads(self.cli("session", "export", "--server", self.url, sid).stdout)
-            answer, context, actions, cost, peeked, steps = parse_export(export)
+            answer, context, actions, cost, peeked, steps = parse_export(export, self.view)
         except (ValueError, AttributeError, subprocess.TimeoutExpired):
             answer, context, actions, cost, peeked, steps = "\n".join(texts).strip(), 0, [], 0.0, False, 0
         if error is None and client.returncode != 0:
             error = f"opencode exited with code {client.returncode}"
+        if error is None and not answer:
+            error = EMPTY_ANSWER
+        # OpenCode ignores the cost that the provider reports: without a price, it always says 0.
+        self.price_unknown = self.price_unknown or (cost == 0 and context > 0 and not self.priced)
         if error is None and steps >= self.steps:
             # The last step allowed: OpenCode takes the tools away and makes the model answer
             # (Claude Code stops with an error instead, at --max-turns 15).
@@ -378,17 +462,40 @@ def read_events(path):
 
 
 def opencode_error(e):
-    """An error event of `opencode run`, in a few words (401: the key)."""
+    """An error event of `opencode run`, in a few words. 401 is the key; 402, 429 and 503 are not, and a
+    403 is not always (OpenCode calls every 403 provider.auth: a spending limit, a text flagged by moderation).
+    (OpenCode tries 429 and 503 again for about 90 seconds before it reports them: measured with 2.1.4.)"""
     data = e.get("data") if isinstance(e.get("data"), dict) else {}
     status = data.get("statusCode") or e.get("status") or e.get("statusCode")
     message = str(data.get("message") or e.get("message") or "").strip()
     kind = str(e.get("type") or e.get("name") or "error")
+    said = f"{status}{': ' + message if message else ''}"
+    what = workshop_provider.error_kind(status, message)
+    if what == "limit":
+        return Explained(f"this key or its account reached a spending limit ({said}). Raise the limit on the "
+                         "provider's website, or ask the facilitator.")
+    if what == "refused":
+        return Explained(f"the company that runs the model blocked this text ({said}). Change the question, "
+                         "or ask the facilitator.")
+    if kind == "provider.content-filter":
+        return Explained(BLOCKED)
+    if kind == "output-limit":
+        return Explained("the model stopped at its length limit before the end of its answer.")
     if status == 401 or kind == "provider.auth":
-        return f"the key was refused (401{': ' + message if message else ''}). Check it: workshop-login"
+        return f"the key was refused ({status or 401}{': ' + message if message else ''}). Check it: workshop-login"
+    if status == 402:
+        return Explained(f"no credits left on this key ({said}). Add credits on the provider's website, "
+                         "or ask the facilitator.")
+    if status == 429:
+        return Explained(f"too many requests, or the quota of this key or of this model is used up ({said}). "
+                         "Wait a minute, then try again.")
+    if status == 503 or "no endpoints" in message.lower():  # what the routing of OpenRouter can lead to
+        return Explained(f"the model is busy, or no company can serve it now ({said}). Try again later, "
+                         "or ask the facilitator.")
     return f"{kind}{f' {status}' if status else ''}: {message}".strip().rstrip(":")
 
 
-def parse_export(export):
+def parse_export(export, view=None):
     """From `opencode session export`: (answer, context, actions, cost, peeked, steps). The context is
     the largest request of the session (what was sent to the model at one step), as with Claude Code."""
     answer, context, actions, peeked, steps = "", 0, [], False, 0
@@ -406,13 +513,17 @@ def parse_export(export):
             elif c.get("type") == "tool":
                 state = c.get("state") or {}
                 args = state.get("input") or {}
-                actions.append(describe_opencode(c.get("name") or "?", args if isinstance(args, dict) else {}))
-                # What the model asked for, and what came back (a grep on the whole kit names files).
-                seen = json.dumps([args, state.get("content"), state.get("output"), state.get("error")])
-                peeked = peeked or bool(TEST_MATERIAL.search(seen))
+                actions.append(describe_opencode(c.get("name") or "?", args if isinstance(args, dict) else {}, view))
+                # What came back (a grep on the whole kit names files). Asking is not seeing: a call that
+                # failed or was refused returned nothing, and a search for the name finds nothing in the view.
+                if state.get("status") != "error":
+                    seen = json.dumps([state.get("content"), state.get("output")])
+                    peeked = peeked or bool(TEST_MATERIAL.search(seen))
         if "".join(texts).strip():
             answer = "\n".join(texts).strip()  # the last step that wrote text
     cost = (export.get("info") or {}).get("cost") or 0.0
+    if view is not None:  # the model only knows the folder it works in
+        answer = answer.replace(f"{view}/", "")
     return answer, context, actions, cost, peeked, steps
 
 
@@ -431,8 +542,10 @@ class OpenWebUIRag:
         self.token = ""
 
     def engine_line(self):
-        return (f'Engine: Open WebUI, chatbot "{self.MODEL_NAME}" (the same model as workshop, given the '
-                "excerpts of summaries/ and corpus/text/ closest to each question)")
+        service = workshop_provider.provider_of(workshop_provider.read_key()) or workshop_provider.ANTHROPIC
+        # score reads "(model ...)": nothing else inside these brackets.
+        return (f'Engine: Open WebUI, chatbot "{self.MODEL_NAME}" (model {workshop_provider.chat_model(service)}), '
+                "given the excerpts of summaries/ and corpus/text/ closest to each question")
 
     def request(self, method, path, body=None, timeout=30):
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -462,14 +575,17 @@ class OpenWebUIRag:
             raise SystemExit(not_running) from None
         if self.MODEL_ID not in ids:
             raise SystemExit(f'Open WebUI has no chatbot "{self.MODEL_NAME}" yet. Type: openwebui start')
-        # No accounts in the kit's Open WebUI: openwebui stops it and refuses if its port is public.
+        # No accounts in the kit's Open WebUI: openwebui stops it and refuses if its port is public. And
+        # Open WebUI keeps the key of its start: another key since then means another provider or model
+        # than the Engine line says.
         openwebui = shutil.which("openwebui") or str(Path(__file__).resolve().parent / "openwebui")
-        try:
-            check = subprocess.run([openwebui, "check-private"], capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            check = None
-        if check is not None and check.returncode != 0:
-            raise SystemExit(check.stderr.strip() or "openwebui check-private failed.")
+        for command in ("check-private", "check-same-key"):
+            try:
+                check = subprocess.run([openwebui, command], capture_output=True, text=True, timeout=60)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if check.returncode != 0:
+                raise SystemExit(check.stderr.strip() or f"openwebui {command} failed.")
         # The RAG column is measured with 5 excerpts per question (openwebui start). openwebui top-k
         # changes it for every chat of this Open WebUI, from the next question.
         try:
@@ -492,12 +608,12 @@ class OpenWebUIRag:
         except (OSError, ValueError, http.client.HTTPException) as e:
             return "", 0, [], 0.0, f"no answer from Open WebUI ({e})", False
         try:
-            answer = (r["choices"][0]["message"].get("content") or "").strip()
+            choice = r["choices"][0]
+            answer = (choice["message"].get("content") or "").strip()
         except (KeyError, IndexError, TypeError):
             return "", 0, [], 0.0, f"unexpected answer from Open WebUI: {str(r)[:200]}", False
         if not answer:
-            return "", 0, [], 0.0, ("Open WebUI gave an empty answer (check the key: workshop-login, then "
-                                    "openwebui start, which gives the key to Open WebUI)"), False
+            return "", 0, [], 0.0, self.why_empty(r, choice), False
         context = int(((r.get("usage") or {}).get("prompt_tokens")) or 0)
         numbers = {}  # one number per file, in the order of the excerpts
         for source in r.get("sources") or []:
@@ -511,6 +627,21 @@ class OpenWebUIRag:
         if shown:
             shown.insert(0, "Open WebUI gave it excerpts of these files, numbered as in the answer")
         return answer, context, shown, 0.0, None, False
+
+    @staticmethod
+    def why_empty(reply, choice):
+        """Open WebUI answered, without any text. That alone says nothing about the key."""
+        error = choice.get("error") or reply.get("error")
+        if error:
+            said = error.get("message") if isinstance(error, dict) else error
+            return Explained(f"Open WebUI gave an empty answer: {str(said)[:200]}")
+        finish = choice.get("finish_reason")
+        if finish == "content_filter":
+            return Explained(BLOCKED)
+        if finish == "length":
+            return Explained("the model stopped at its length limit before it wrote an answer.")
+        return Explained("Open WebUI gave an empty answer and no reason. If all the answers are empty, check the key "
+                         "and its credits: workshop-login, then openwebui start, which gives the key to Open WebUI.")
 
     def stop(self):
         pass
@@ -554,8 +685,6 @@ def main():
             print("The RAG chatbot has its own instructions (made by openwebui start): --agents only works "
                   "with modes A to F.")
             sys.exit(1)
-    # Here and not at the top: the smoke test loads this file with python -I, without its folder.
-    import workshop_modes
     if mode in workshop_modes.MODES:
         message = workshop_modes.missing(workshop_modes.MODES[mode], KIT)
         if message:  # before the first question, not three errors later
@@ -587,6 +716,8 @@ def main():
         if name not in ("claude", "opencode"):
             print(f"Unknown engine: {name} (claude or opencode). Type: workshop-login")
             sys.exit(1)
+        # Pinned: a key changed during this replay never changes the engine of the remaining questions.
+        os.environ["WORKSHOP_ENGINE"] = name
         if name == "opencode":
             server = OpenCode(mode, agents)
     signal.signal(signal.SIGTERM, stop_on_signal)
@@ -624,9 +755,8 @@ def write_answers(mode, agents, questions, server=None):
                   f"after B, the first time)." if mode == "RAG" else
                   f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
                   f"{mode.capitalize()} column of scores.md)."), ""]
-    if server:
-        # Under the title, so that score and the people who read the file know the engine.
-        lines[2:2] = [server.engine_line(), ""]
+    # Under the title, so that score and the people who read the file know the engine.
+    lines[2:2] = [server.engine_line() if server else claude_engine_line(), ""]
     try:
         run(mode, agents, questions, out, shown_out, labelled, lines, server)
     except KeyboardInterrupt:
@@ -669,11 +799,17 @@ def run(mode, agents, questions, out, shown_out, labelled, lines, server=None):
             lines += [""]
         out.write_text("\n".join(lines), encoding="utf-8", errors="replace")  # written as we go
         if in_a_row == 3:
-            print("Three errors in a row: stopping. Check the key (workshop-login" +
+            print("Three errors in a row: stopping." if isinstance(error, Explained) else
+                  "Three errors in a row: stopping. Check the key (workshop-login" +
                   (", then openwebui start" if mode == "RAG" else "") + ") and the network.")
             break
     minutes, seconds = divmod(round(time.monotonic() - start), 60)
-    cost = "not shown by Open WebUI" if mode == "RAG" else f"${total:.2f}"
+    if mode == "RAG":
+        cost = "not shown by Open WebUI"
+    elif server is not None and server.price_unknown:
+        cost = "not known, OpenCode has no price for this model"
+    else:
+        cost = f"${total:.2f}"
     print(f"Answers: {shown_out}   (cost: {cost}, time: {minutes} min {seconds:02d} s)")
     if errors < asked:  # at least one answer to score
         print(f"Next: score {shown_out} --blind" if agents else f"Next: score {mode}")

@@ -498,7 +498,7 @@ def start_openwebui():
         ow = tool("openwebui")
     except Refused as e:
         return [str(e)]
-    # The key, checked by openwebui itself (an OpenRouter key does not work there): a clear
+    # The key, checked by openwebui itself (no key, or not an Anthropic or OpenRouter key): a clear
     # message now rather than in the log.
     code, out = run([ow, "check-key"], timeout=30)
     if code != 0:

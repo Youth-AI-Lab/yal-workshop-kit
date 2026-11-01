@@ -91,6 +91,14 @@ opencode --version
 [[ "$(opencode --version)" == "opencode v$attendu" ]] || echec "OpenCode : version attendue $attendu"
 command -v workshop-opencode || echec "workshop-opencode absent"
 
+etape "ripgrep à la version figée, et les bibliothèques des commandes (importées, pas des commandes)"
+attendu="$(cat "$KIT/.devcontainer/ripgrep-version")"
+rg --version | head -1
+[[ "$(rg --version | head -1)" == "ripgrep $attendu "* ]] || echec "ripgrep : version attendue $attendu"
+for f in workshop_modes.py workshop_provider.py; do
+  [[ -r "$(dirname "$(realpath "$(command -v workshop-login)")")/$f" ]] || echec "$f absent à côté des commandes"
+done
+
 etape "Mod token-weather présent"
 [[ -d /opt/workshop/claude-code-playground/claude-code/mods/token-weather ]] || echec "mod absent"
 
@@ -114,10 +122,10 @@ for a in "--key sk-ant-api03-SMOKETEST0000000000" sk-ant-api03-SMOKETEST00000000
 done
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé sur la ligne enregistrée"
 
-etape "Une clé OpenRouter est refusée avec Claude Code (OpenRouter : OpenCode seulement)"
-code=0; printf '%s\n' sk-or-v1-SMOKETEST0000000000 | workshop-login --key - 2>/tmp/err || code=$?
-[[ "$code" == 1 ]] || echec "clé OpenRouter avec Claude Code : code attendu 1, obtenu $code"
-grep -q -- "--engine opencode" /tmp/err || echec "clé OpenRouter : message vers OpenCode attendu"
+etape "Une clé OpenRouter est refusée avec --engine claude (Claude Code : Anthropic seulement)"
+code=0; printf '%s\n' sk-or-v1-SMOKETEST0000000000 | workshop-login --engine claude --key - 2>/tmp/err || code=$?
+[[ "$code" == 1 ]] || echec "clé OpenRouter avec --engine claude : code attendu 1, obtenu $code"
+grep -q -- "type workshop-login without --engine claude" /tmp/err || echec "clé OpenRouter : message vers OpenCode attendu"
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé OpenRouter enregistrée avec Claude Code"
 printf '{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}' > "$HOME/.claude/settings.json" 2>/dev/null || { mkdir -p "$HOME/.claude"; printf '{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}' > "$HOME/.claude/settings.json"; }
 if workshop bare -p hi 2>/tmp/err; then echec "workshop a démarré avec un ancien réglage OpenRouter"; fi
@@ -238,6 +246,183 @@ code=0; printf '%s\n' sk-ant-NEW0000000000 | HOME="$h" PATH="$b:$PATH" workshop-
 [[ "$code" == 2 ]] && grep -q "earlier key is kept" /tmp/err || { cat /tmp/err; echec "clé refusée : message attendu"; }
 [[ "$(cat "$h/.workshop-key")" == sk-ant-OLD0000000000 ]] || echec "clé refusée : l'ancienne clé a été remplacée"
 rm -rf "$h" "$b"
+
+etape "La clé choisit le fournisseur : passages Anthropic <-> OpenRouter (faux points d'accès, aucun appel réel)"
+# Le module donne les modèles par défaut : aucun nom écrit ici, on vérifie seulement qu'aucun n'est un Claude.
+BIN="$(dirname "$(realpath "$(command -v workshop-login)")")"
+defaut="$(/opt/workshop/venv/bin/python -I - "$BIN" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import workshop_provider as p
+assert not any("claude" in m for m in (p.OPENROUTER.chat, p.OPENROUTER.small)), "un Claude par défaut avec OpenRouter"
+assert p.ROUTING == {"data_collection": "deny"}, p.ROUTING
+print(p.OPENROUTER.chat)
+PY
+)" || echec "workshop_provider : modèles par défaut d'OpenRouter"
+h=$(mktemp -d); b=$(mktemp -d); mkdir "$h/.claude"
+# Faux curl : répond 200 pour Anthropic ; le reste va au faux OpenRouter.
+cat > "$b/curl" <<'SH'
+#!/bin/bash
+for a in "$@"; do
+  case "$a" in *api.anthropic.com*) cat > /dev/null; printf 200; exit 0 ;; esac
+done
+exec /usr/bin/curl "$@"
+SH
+chmod +x "$b/curl"
+# Faux OpenRouter : la liste des modèles, /key, et le modèle, qui force une recherche quand on lui parle en flux.
+cat > "$b/faux.py" <<'PY'
+import json, os, sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+journal, refus, modele = sys.argv[1:4]
+tours = {"n": 0}
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def rend(self, code, corps):
+        data = json.dumps(corps).encode()
+        self.send_response(code); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_GET(self):
+        if self.path.endswith("/models"):
+            return self.rend(200, {"data": [{"id": modele, "context_length": 128000, "supported_parameters": ["tools"],
+                                             "pricing": {"prompt": "0.0000001", "completion": "0.0000002"}}]})
+        if os.path.exists(refus):
+            return self.rend(401, {"error": {"message": "no"}})
+        self.rend(200, {"data": {"label": "test"}})
+    def do_POST(self):
+        corps = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
+        with open(journal, "a") as f: f.write(json.dumps(corps) + "\n")
+        if not corps.get("stream"):
+            return self.rend(200, {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]})
+        tours["n"] += 1; d = {"content": "DONE"}; fin = "stop"
+        if tours["n"] == 1:
+            d = {"tool_calls": [{"index": 0, "id": "c1", "type": "function", "function": {"name": "grep",
+                 "arguments": json.dumps({"pattern": "wildfire", "path": "summaries"})}}]}; fin = "tool_calls"
+        self.send_response(200); self.send_header("content-type", "text/event-stream"); self.end_headers()
+        for c in ({"choices": [{"index": 0, "delta": dict(d, role="assistant")}]},
+                  {"choices": [{"index": 0, "delta": {}, "finish_reason": fin}], "usage": {"prompt_tokens": 10, "completion_tokens": 1}}):
+            self.wfile.write(f"data: {json.dumps(c)}\n\n".encode())
+        self.wfile.write(b"data: [DONE]\n\n")
+ThreadingHTTPServer(("127.0.0.1", 8797), H).serve_forever()
+PY
+/opt/workshop/venv/bin/python -I "$b/faux.py" "$b/journal" "$b/refus" "$defaut" & faux=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do /usr/bin/curl -s -o /dev/null http://127.0.0.1:8797/api/v1/models && break; sleep 0.3; done
+connexion() { # la clé (vide : Entrée seule), puis les options de workshop-login
+  local k="$1"; shift
+  if [[ -n "$k" ]]; then set -- --key - "$@"; fi
+  printf '%s\n' "$k" | HOME="$h" PATH="$b:$PATH" WORKSHOP_OPENROUTER_API=http://127.0.0.1:8797/api/v1 workshop-login "$@"
+}
+etat() { # clé attendue, moteur attendu, modèle attendu pour OpenCode
+  [[ "$(cat "$h/.workshop-key")" == "$1" ]] || echec "clé enregistrée : attendu ${1:0:7}…"
+  [[ "$(cat "$h/.workshop-engine")" == "$2" ]] || echec "moteur enregistré : attendu $2"
+  grep -qF "\"model\": \"$3\"" "$h/.workshop-opencode.json" || { cat "$h/.workshop-opencode.json"; echec "modèle enregistré : attendu $3"; }
+}
+ANT=sk-ant-api03-SMOKETEST0000000000; OR=sk-or-v1-SMOKETEST0000000000
+sortie="$(connexion "$ANT")" || { echo "$sortie"; echec "clé Anthropic neuve"; }
+etat "$ANT" claude anthropic/claude-sonnet-5-5
+grep -qF "Key OK (Claude Code, Anthropic, model claude-sonnet-5-5)" <<< "$sortie" || { echo "$sortie"; echec "Key OK d'Anthropic : texte attendu"; }
+grep -q apiKeyHelper "$h/.claude/settings.json" || echec "apiKeyHelper absent avec une clé Anthropic"
+sortie="$(connexion "$OR")" || { echo "$sortie"; echec "Anthropic puis OpenRouter"; }
+etat "$OR" opencode "openrouter/$defaut"
+grep -qF "Key OK (OpenCode, OpenRouter, model openrouter/$defaut)" <<< "$sortie" || { echo "$sortie"; echec "Key OK d'OpenRouter : texte attendu"; }
+if grep -q apiKeyHelper "$h/.claude/settings.json"; then echec "apiKeyHelper gardé avec une clé OpenRouter (elle partirait chez Anthropic)"; fi
+{ grep -q '"context": 128000' "$h/.workshop-opencode.json" && grep -q '"cost"' "$h/.workshop-opencode.json"; } || echec "fenêtre et prix du modèle non enregistrés"
+tail -1 "$b/journal" | /opt/workshop/venv/bin/python -I -c "
+import json, sys
+c = json.loads(sys.stdin.read())
+assert c['provider'] == {'data_collection': 'deny'} and c['model'] == sys.argv[1] and 'max_tokens' not in c, c" "$defaut" \
+  || echec "essai du modèle sans la règle data_collection"
+sortie="$(connexion "")" || { echo "$sortie"; echec "Entrée seule avec une clé OpenRouter"; }
+grep -q "the saved key is kept" <<< "$sortie" || { echo "$sortie"; echec "Entrée seule : message attendu"; }
+etat "$OR" opencode "openrouter/$defaut"
+# Une clé refusée ne remplace pas une clé de l'autre fournisseur.
+sortie="$(connexion "$ANT")" || { echo "$sortie"; echec "OpenRouter puis Anthropic"; }
+etat "$ANT" claude anthropic/claude-sonnet-5-5
+grep -q apiKeyHelper "$h/.claude/settings.json" || echec "apiKeyHelper non rétabli au retour vers Anthropic"
+touch "$b/refus"
+code=0; connexion "$OR" 2>/tmp/err > /dev/null || code=$?
+{ [[ "$code" == 2 ]] && grep -q "earlier key is kept" /tmp/err; } || { cat /tmp/err; echec "clé OpenRouter refusée : code 2 et ancienne clé gardée attendus, obtenu $code"; }
+etat "$ANT" claude anthropic/claude-sonnet-5-5
+rm "$b/refus"
+# OpenCode choisi avec --engine : il reste après un passage par OpenRouter ; --engine claude revient en arrière.
+connexion "$ANT" --engine opencode > /dev/null || echec "--engine opencode avec une clé Anthropic"
+etat "$ANT" opencode anthropic/claude-sonnet-5-5
+connexion "$OR" > /dev/null || echec "OpenCode explicite puis OpenRouter"
+connexion "$ANT" > /dev/null || echec "retour à Anthropic"
+etat "$ANT" opencode anthropic/claude-sonnet-5-5
+connexion "$ANT" --engine claude > /dev/null || echec "--engine claude"
+etat "$ANT" claude anthropic/claude-sonnet-5-5
+# WORKSHOP_ENGINE : pour une commande, jamais enregistré, et dit à l'écran.
+sortie="$(WORKSHOP_ENGINE=opencode connexion "$ANT")" || { echo "$sortie"; echec "WORKSHOP_ENGINE=opencode"; }
+etat "$ANT" claude anthropic/claude-sonnet-5-5
+grep -qF "WORKSHOP_ENGINE=opencode is not saved" <<< "$sortie" || { echo "$sortie"; echec "WORKSHOP_ENGINE non enregistré : message attendu"; }
+
+etape "OpenRouter en mode classe : l'avertissement sur les jeunes ; Anthropic sans changement"
+sortie="$(OPENWEBUI_MODE=class connexion "$OR" 2>&1)" || { echo "$sortie"; echec "mode classe avec une clé OpenRouter"; }
+grep -qF "Warning: with young people, turn on zero-data-retention models hosted in Europe." <<< "$sortie" || { echo "$sortie"; echec "mode classe : avertissement absent"; }
+grep -qF "Key OK (OpenRouter, model $defaut). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "mode classe : Key OK attendu"; }
+sortie="$(OPENWEBUI_MODE=class connexion "$ANT" 2>&1)" || { echo "$sortie"; echec "mode classe avec une clé Anthropic"; }
+if grep -q "young people" <<< "$sortie"; then echec "mode classe, Anthropic : l'avertissement ne le concerne pas"; fi
+grep -qF "Key OK (Anthropic, model claude-sonnet-5-5). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "mode classe, Anthropic : Key OK attendu"; }
+
+etape "OpenRouter avec le vrai OpenCode : une recherche (rg sans téléchargement), le modèle, la règle de routage"
+connexion "$OR" > /dev/null || echec "clé OpenRouter"
+: > "$b/journal"
+sortie="$(HOME="$h" WORKSHOP_HOME="$copie" WORKSHOP_OPENCODE_BASEURL=http://127.0.0.1:8797/api/v1 timeout 120 workshop C -p probe 2>&1)" \
+  || { echo "$sortie"; echec "workshop C avec une clé OpenRouter"; }
+/opt/workshop/venv/bin/python -I - "$b/journal" "$defaut" <<'PY' || echec "OpenRouter avec OpenCode : requêtes inattendues"
+import json, sys
+corps = [json.loads(l) for l in open(sys.argv[1])]
+assert len(corps) == 2, len(corps)
+for c in corps:
+    assert c["provider"] == {"data_collection": "deny"}, c.get("provider")
+    assert c["model"] == sys.argv[2], c["model"]
+reponse = [str(m.get("content")) for m in corps[1]["messages"] if m.get("role") == "tool"][-1]
+assert "matches" in reponse and "ripgrep execution failed" not in reponse, reponse[:200]
+print("deux requêtes, modèle par défaut, routage dans chacune, recherche :", reponse.split(chr(10))[0])
+PY
+[[ -z "$(find "$h" -type f -name rg)" ]] || echec "OpenCode a téléchargé son propre rg alors qu'il y en a un sur le PATH"
+kill "$faux"; wait "$faux" 2>/dev/null || true
+rm -rf "$h" "$b"
+
+etape "score, replay, openwebui : chargés d'ailleurs (SourceFileLoader, python -I), avec le module à côté d'eux"
+h=$(mktemp -d); l=$(mktemp -d); ln -s "$(command -v score)" "$l/score-lien"
+(cd "$h" && HOME="$h" /opt/workshop/venv/bin/python -I - "$(command -v score)" "$l/score-lien" "$(command -v replay)" "$(command -v openwebui)" <<'PY') || echec "chargement par SourceFileLoader"
+import contextlib, importlib.machinery, importlib.util, io, json, os, pathlib, sys
+def charge(nom, chemin):
+    l = importlib.machinery.SourceFileLoader(nom, chemin)
+    m = importlib.util.module_from_spec(importlib.util.spec_from_loader(nom, l)); l.exec_module(m)
+    return m
+score, lien, replay, owui = charge("score", sys.argv[1]), charge("score2", sys.argv[2]), charge("replay", sys.argv[3]), charge("owui", sys.argv[4])
+wp = sys.modules["workshop_provider"]
+assert os.path.dirname(wp.__file__) == os.path.dirname(os.path.realpath(sys.argv[1])), wp.__file__
+# Le juge suit la clé.
+assert score.judge_model("sk-or-x") == wp.OPENROUTER.small and score.judge_model("sk-ant-x") == wp.ANTHROPIC.small
+assert lien.JUDGE_MODEL == wp.ANTHROPIC.small == score.JUDGE_MODEL
+# La ligne Engine de replay, que score relit pour écrire le modèle sous le tableau.
+def relue(ligne):
+    p = pathlib.Path("reponses.md"); p.write_text(f"# Answers: mode C\n\n{ligne}\n\n## 1\n", encoding="utf-8")
+    return score.model_of(p)
+wp.KEY_FILE.write_text("sk-or-x\n"); wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b:free"}))
+assert relue(replay.OpenWebUIRag().engine_line()) == "a/b:free"
+assert relue("Engine: OpenCode (model openrouter/a/b:free)") == "openrouter/a/b:free"
+assert score.different_models({"bare": "openrouter/a/b:free", "A": "a/b:free"}) is None
+assert "cannot be compared" in score.different_models({"bare": "a/b:free", "A": "claude-sonnet-5-5"})
+os.environ["WORKSHOP_MODEL"] = "claude-sonnet-5-5"
+ligne = replay.claude_engine_line()
+assert ligne == "Engine: Claude Code (model claude-sonnet-5-5)" and relue(ligne) == "claude-sonnet-5-5", ligne
+# Open WebUI : la règle de routage sur les modèles d'OpenRouter, jamais sur ceux d'Anthropic.
+assert owui.routed({}, wp.OPENROUTER)["custom_params"]["provider"] == json.dumps(wp.ROUTING)
+assert "custom_params" not in owui.routed({"custom_params": {"provider": "{}"}}, wp.ANTHROPIC)
+sortie = io.StringIO()
+with contextlib.redirect_stdout(sortie):
+    owui.warn_young_people(wp.ANTHROPIC)
+assert not sortie.getvalue()
+with contextlib.redirect_stdout(sortie):
+    owui.warn_young_people(wp.OPENROUTER)
+assert "zero-data-retention models hosted in Europe" in sortie.getvalue()
+print("score, replay, openwebui : chargés ; juge, ligne Engine, routage et avertissement OK")
+PY
+rm -rf "$h" "$l"
 
 etape "Réglages de chaque mode (répétition à blanc, sans appel au modèle)"
 grep -q 'CLAUDE_CODE_AUTO_CONNECT_IDE="false"' "$(command -v workshop-claude)" || echec "workshop-claude : lien avec VS Code non coupé (outils et sélection envoyés au modèle)"

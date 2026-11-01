@@ -16,7 +16,7 @@
 #   WORKSHOP_AGENTS=examples/AGENTS.liar.md workshop A
 # (this is how `replay A --agents examples/AGENTS.liar.md` tries a demo personality).
 #
-# Engine: Claude Code, or OpenCode after `workshop-login --engine opencode` (the same modes).
+# Engine: Claude Code, or OpenCode after `workshop-login --engine opencode` or with an OpenRouter key.
 # For one command only: WORKSHOP_ENGINE=opencode workshop C
 #
 # Workshop 4, to go further (modes D, E, F): WORKSHOP_WEATHER=1 workshop D adds a weather tool
@@ -45,8 +45,9 @@ case "$engine" in
   *) echo "Unknown engine: $engine (claude or opencode). Type: workshop-login" >&2; exit 1 ;;
 esac
 if [[ -z "$key" && "$engine" == claude ]] && head -c 6 "$HOME/.workshop-key" 2>/dev/null | grep -qx 'sk-or-'; then
-  # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it.
-  echo "The saved key is an OpenRouter key: it works with OpenCode only (workshop-login --engine opencode)." >&2
+  # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it. An OpenRouter key
+  # saves the engine opencode, so only WORKSHOP_ENGINE=claude leads here.
+  echo "The saved key is an OpenRouter key: it works with OpenCode only. Type this command without WORKSHOP_ENGINE=claude." >&2
   echo "For Claude Code, type workshop-login and paste an Anthropic key (it starts with sk-ant-)." >&2
   exit 1
 fi

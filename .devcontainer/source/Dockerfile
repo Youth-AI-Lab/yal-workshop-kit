@@ -46,6 +46,25 @@ RUN set -eu; v="$(cat /tmp/opencode-version)"; \
 # du binaire suffit), pas de modèles gratuits d'OpenCode Zen.
 ENV OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_MODELS_FETCH=1 OPENCODE_DISABLE_FREE_MODELS=1
 
+# ripgrep : les outils grep et glob d'OpenCode en ont besoin. Sans rg sur le PATH, OpenCode le télécharge
+# à la première recherche : grep et glob échouent hors ligne (« ripgrep execution failed », mesuré avec
+# OpenCode 2.1.4), et replay le ferait à chaque lancement (XDG_DATA_HOME neuf). Archive officielle prise sur
+# la page de la version et vérifiée par sa somme SHA-256 écrite ici (fichiers .sha256 de la 15.2.0, à
+# reprendre si ripgrep-version change). musl : binaire statique, seule variante x86_64 de la page.
+COPY .devcontainer/ripgrep-version /tmp/ripgrep-version
+RUN set -eu; v="$(cat /tmp/ripgrep-version)"; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) a=x86_64; sum=33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c ;; \
+      arm64) a=aarch64; sum=800b1e7206afe799dfb5a6901f23147cfaabe0e52210538100f61e86e1740915 ;; \
+      *) exit 1 ;; esac; \
+    d="ripgrep-$v-$a-unknown-linux-musl"; \
+    curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/$v/$d.tar.gz" -o /tmp/rg.tgz; \
+    echo "$sum  /tmp/rg.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/rg.tgz -C /tmp "$d/rg"; \
+    install -m 755 "/tmp/$d/rg" /usr/local/bin/rg; \
+    rm -rf /tmp/rg.tgz "/tmp/$d" /tmp/ripgrep-version; \
+    rg --version | head -1 | grep -q "^ripgrep $v "
+
 # qrencode : `openwebui share open` (mode classe) affiche le lien en QR code à projeter.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends qrencode \

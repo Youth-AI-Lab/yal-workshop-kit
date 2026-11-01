@@ -17,27 +17,32 @@ The judge's scores always go into scores-judge.md (for a persona: the "Judge sco
 scores-personas.md), so that you can compare. --auto writes only the judge's scores.
 """
 
-import http.client
 import json
 import os
 import re
 import sys
+import threading
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+# Its real folder: the smoke test and measure.py load this file without it on the path.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import workshop_provider
+
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
 MODES = {"bare": "bare", "a": "A", "b": "B", "c": "C", "d": "D", "e": "E", "f": "F", "rag": "RAG"}
-JUDGE_MODEL = os.environ.get("WORKSHOP_JUDGE_MODEL", "claude-haiku-5-5")
-JUDGE_URL = os.environ.get("WORKSHOP_JUDGE_URL", "https://api.anthropic.com/v1/messages")
+# Until the key is known: main() and ask_judge() choose with judge_model().
+JUDGE_MODEL = os.environ.get("WORKSHOP_JUDGE_MODEL") or workshop_provider.ANTHROPIC.small
+JUDGE_URL = os.environ.get("WORKSHOP_JUDGE_URL", "")  # another address (tests); empty: the provider's
+MAX_WAIT = 60  # seconds: if OpenRouter asks for longer, the judge stops instead of waiting
 # Dollars per million tokens (input, output), Anthropic price list of October 2026, prompts under
 # 100k tokens. A model missing here: the cost is shown in tokens only, never guessed.
 PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
 SHOW_LINES = 25
+UNKNOWN = "unknown"  # the model of an answers file without an Engine line
 PERSONAS = ["Feurisson", "Liar", "Storyteller", "Sophist", "Overcautious"]
 # The label of the deceptive demo bots: removed from what the judge reads, so that the judge
 # scores the content (otherwise the label alone would tell it to give 0). Only the label is
@@ -208,6 +213,15 @@ def header_of(path):
             break
         head.append(line)
     return head
+
+
+def model_of(path):
+    """The model of an answers file, from replay's line "Engine: OpenCode (model ...)", else UNKNOWN."""
+    for line in header_of(path):
+        m = re.match(r"^\W*Engine:.*\(model\s+([^\s()]+)\)", line)
+        if m and m.group(1) != "?":
+            return m.group(1)
+    return UNKNOWN
 
 
 def persona_of(path):
@@ -420,6 +434,58 @@ class Target:
         self._save(lines, bounds, rows)
         return None
 
+    def _models_line(self, lines, bounds):
+        """The number of the "Models:" line under the table, or None."""
+        i = bounds[1]
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        return i if i < len(lines) and lines[i].startswith("Models:") else None
+
+    def models(self):
+        """{column: model} from the "Models:" line under the table."""
+        lines, bounds, _ = self._load()
+        at = self._models_line(lines, bounds)
+        if at is None:
+            return {}
+        parts = (p.split("=", 1) for p in lines[at].removeprefix("Models:").split(", "))
+        return {p[0].strip(): p[1].strip() for p in parts if len(p) == 2}
+
+    def note_model(self, model, numbers):
+        """Writes the model of this column under the table, for the questions just scored (numbers).
+        Scores left from another model stay in the column: both names are kept ("X + Y"). Answers
+        with no known model start no line: the file stays as it was."""
+        lines, bounds, rows = self._load()
+        entries, at = self.models(), self._models_line(lines, bounds)
+        if model == UNKNOWN and not entries:
+            return
+        c = column(rows, self.name)
+        others = any(r[0].strip().isdigit() and int(r[0]) not in numbers and len(r) > c and r[c].strip()
+                     for r in rows[2:])
+        if others:
+            before = entries.get(self.name, UNKNOWN)
+            model = before if model in before.split(" + ") else f"{before} + {model}"
+        entries[self.name] = model
+        # In the order of the columns. A column that is gone goes last.
+        names = sorted(entries, key=lambda name: (column(rows, name) is None, column(rows, name) or 0))
+        line = "Models: " + ", ".join(f"{name}={entries[name]}" for name in names)
+        if at is None:
+            lines[bounds[1]:bounds[1]] = ["", line]
+        else:
+            lines[at] = line
+        self._save(lines, bounds, rows)
+
+
+def different_models(models):
+    """One warning sentence if some columns of {column: model} used different models, else None.
+    Unknown models do not count. The same model through another engine or route is the same model."""
+    known = {name: model for name, model in models.items() if model != UNKNOWN}
+    names = {re.sub(r"^(openrouter/)?(anthropic/)?", "", one)
+             for model in known.values() for one in model.split(" + ") if one != UNKNOWN}
+    if len(names) < 2:
+        return None
+    return ("These columns used different models, so they cannot be compared: "
+            + ", ".join(f"{name}={model}" for name, model in known.items()) + ".")
+
 
 def blank_copy(rows, keep=2):
     """The rows of a table with only its first `keep` columns filled."""
@@ -455,10 +521,16 @@ def create_personas_file(scores_rows, path):
 # ---------------------------------------------------------------- the judge
 
 def read_key():
-    path = Path.home() / ".workshop-key"
-    if not path.is_file():
+    key = workshop_provider.read_key()
+    if not key:
         raise Stop("No key yet. Type: workshop-login")
-    return path.read_text(encoding="utf-8").strip()
+    return key
+
+
+def judge_model(key):
+    """WORKSHOP_JUDGE_MODEL, else the small model of the provider of this key."""
+    provider = workshop_provider.provider_of(key) or workshop_provider.ANTHROPIC
+    return os.environ.get("WORKSHOP_JUDGE_MODEL") or provider.small
 
 
 def parse_verdict(text):
@@ -497,67 +569,129 @@ def for_judge(answer):
     return DEMO_LABEL.sub("", answer).strip()
 
 
-def ask_judge(key, rules, mode, meaning, n, question, expected, answer, actions):
-    """One judge call, tried up to three times. Returns score, why, error, tokens in and out, calls."""
+class Waiting:
+    """What the judge's four workers share during one run of score: when the next call may start, and
+    why not to call at all."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.until = 0.0  # on the clock of time.monotonic()
+        self.stopped = None  # (error, alone)
+
+    def pause(self, seconds):
+        with self.lock:
+            self.until = max(self.until, time.monotonic() + seconds)
+
+    def stop(self, error, alone=False):
+        with self.lock:
+            self.stopped = self.stopped or (error, alone)
+
+    def wait(self):
+        while (left := self.until - time.monotonic()) > 0:
+            time.sleep(left)
+
+
+def failure(reply):
+    """The words of a failed call, as they were before OpenRouter."""
+    detail = reply.message[:150]
+    if reply.status and reply.status != 200:
+        return f"HTTP {reply.status}" + (f": {detail}" if detail else "")
+    return detail or "the judge's reply was not understood"
+
+
+def ask_judge(key, rules, mode, meaning, n, question, expected, answer, actions, waiting=None):
+    """One judge call, tried up to three times. Returns score, why, error, tokens in and out, calls,
+    what the provider says it cost (cost, for priced calls), and alone: the judge stopped for this run.
+    waiting: the Waiting of this run. Without it (measure.py) each call stands alone: what went wrong
+    for one question stops nothing for the next one."""
+    waiting = waiting or Waiting()
     answer = for_judge(answer)
     if len(actions) > 1500:
         actions = actions[:1500].rsplit(" · ", 1)[0] + " · …"
-    body = {
-        "model": JUDGE_MODEL,
-        "max_tokens": 1024,
-        "system": JUDGE_SYSTEM.format(rules=rules),
-        "messages": [{"role": "user", "content":
-                      f"Mode of the chatbot: {mode} ({meaning})\n\n"
-                      f"Question {n}: {question}\n\n"
-                      f"Expected answer (and its source): {expected}\n\n"
-                      f"<actions>\n{actions or '(no file read, no search, no tool used)'}\n</actions>\n\n"
-                      f"<answer>\n{answer or '(empty answer)'}\n</answer>"}],
-        "output_config": {"effort": "low"},  # a short comparison: little thinking needed
-    }
-    result = {"score": None, "why": "", "error": None, "in": 0, "out": 0, "calls": 0}
+    system = JUDGE_SYSTEM.format(rules=rules)
+    user = (f"Mode of the chatbot: {mode} ({meaning})\n\n"
+            f"Question {n}: {question}\n\n"
+            f"Expected answer (and its source): {expected}\n\n"
+            f"<actions>\n{actions or '(no file read, no search, no tool used)'}\n</actions>\n\n"
+            f"<answer>\n{answer or '(empty answer)'}\n</answer>")
+    provider, model = workshop_provider.provider_of(key), judge_model(key)
+    openrouter = provider is workshop_provider.OPENROUTER
+    max_tokens, effort = 1024, "low"  # a short comparison: little thinking needed
+    result = {"score": None, "why": "", "error": None, "in": 0, "out": 0, "calls": 0,
+              "cost": 0.0, "priced": 0, "alone": False}
     for attempt in (1, 2, 3):
         if attempt > 1:
             time.sleep(2)
-        request = urllib.request.Request(JUDGE_URL, data=json.dumps(body).encode("utf-8"), headers={
-            "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-        try:
-            with urllib.request.urlopen(request, timeout=90) as response:
-                data = json.load(response)
-            if not isinstance(data, dict):
-                raise ValueError("its reply is not a JSON object")
-        except urllib.error.HTTPError as e:
-            try:
-                detail = json.load(e).get("error", {}).get("message", "")
-            except (ValueError, AttributeError):
-                detail = ""
-            if e.code in (401, 403):
-                result["error"] = f"the key was refused (HTTP {e.code}): type workshop-login"
-                return result
-            result["error"] = f"HTTP {e.code}" + (f": {detail[:150]}" if detail else "")
-            if e.code == 400:  # an older judge model may not know "effort": try without it
-                body.pop("output_config", None)
-            continue
-        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
-            result["error"] = f"no answer from the judge ({getattr(e, 'reason', e)})"
-            continue
-        usage = data.get("usage") or {}
-        result["calls"] += 1
-        result["in"] += (usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
-                         + usage.get("cache_creation_input_tokens", 0))
-        result["out"] += usage.get("output_tokens", 0)
-        if data.get("stop_reason") == "refusal":
+        waiting.wait()
+        if waiting.stopped:
+            result.update(error=waiting.stopped[0], alone=waiting.stopped[1])
+            return result
+        reply = workshop_provider.ask(key, system, user, model=model, max_tokens=max_tokens, effort=effort,
+                                      url=JUDGE_URL or None)
+        if reply.status == 200 or reply.tokens_in or reply.tokens_out or reply.cost:
+            result["calls"] += 1
+            result["in"] += reply.tokens_in or 0
+            result["out"] += reply.tokens_out or 0
+            if reply.cost is not None:
+                result["cost"] += reply.cost
+                result["priced"] += 1
+        kind = reply.kind
+        if provider is workshop_provider.ANTHROPIC and reply.status != 200 and kind in (
+                "credits", "limit", "model", "refused"):  # OpenRouter's kinds: Anthropic's words stay
+            kind = "key" if reply.status == 403 else "other"
+        if kind == "key":
+            where = f" (HTTP {reply.status})" if reply.status else f": {reply.message}"
+            result["error"] = f"the key was refused{where}: type workshop-login"
+            # 401 is OpenRouter's word for a key that does not work: no need to try the others. Its 403
+            # can be about one text only. Anthropic: each question gets its own try, as it always did.
+            if openrouter and reply.status == 401:
+                waiting.stop(result["error"])
+            return result
+        if kind in ("credits", "limit", "model"):
+            detail = f" ({reply.message[:150]})" if reply.message else ""
+            result["error"] = {"credits": f"no credits left on this key{detail}",
+                               "limit": f"a spending limit stopped this key{detail}",
+                               "model": f"the model {model} is not available on {provider.label}{detail}. "
+                                        "Ask the facilitator"}[kind]
+            result["alone"] = True
+            waiting.stop(result["error"], alone=True)
+            return result
+        if kind == "refused":
             result["error"] = "the judge refused to score"
+            if reply.status == 403:  # the same text would be refused again
+                return result
             continue
-        text = "".join(b.get("text", "") for b in data.get("content") or [] if b.get("type") == "text")
-        if data.get("stop_reason") == "max_tokens":  # cut before the end: give it more room
-            body["max_tokens"] = 2048
-        verdict = parse_verdict(text)
+        if kind == "busy":
+            result["error"] = failure(reply)
+            wait = 2 ** attempt if reply.retry_after is None else reply.retry_after
+            if openrouter and wait > MAX_WAIT:
+                result.update(error=f"OpenRouter asks to wait {wait:.0f} seconds", alone=True)
+                waiting.stop(result["error"], alone=True)
+                return result
+            waiting.pause(min(wait, MAX_WAIT))
+            continue
+        if kind == "network":
+            result["error"] = f"no answer from the judge ({reply.message})"
+            continue
+        if kind:
+            result["error"] = failure(reply)
+            if reply.status == 400:  # an older judge model may not know "effort": try without it
+                effort = None
+            continue
+        cut_again = reply.stop == "length" and max_tokens == 2048
+        if reply.stop == "length":  # cut before the end: give it more room
+            max_tokens = 2048
+            if openrouter:  # its thinking counts in the room: the next try goes without effort
+                effort = None
+        verdict = parse_verdict(reply.text)
         if os.environ.get("WORKSHOP_JUDGE_DEBUG"):  # for the facilitator: what the judge said
-            print(f"[judge, question {n}, try {attempt}] {text!r}", file=sys.stderr)
+            print(f"[judge, question {n}, try {attempt}] {reply.text!r}", file=sys.stderr)
         if verdict:
             result.update(verdict, error=None)
             return result
         result["error"] = "the judge's reply was not understood"
+        if cut_again and openrouter:
+            return result
     return result
 
 
@@ -606,12 +740,16 @@ def rel(path):
         return str(path)
 
 
-def cost_line(calls, tokens_in, tokens_out):
+def cost_line(calls, tokens_in, tokens_out, cost=0.0, priced=0):
+    """priced: the calls whose cost the provider reported (Anthropic's replies give none)."""
     if not calls:
         return "Judge: not called."
     line = (f"Judge: {calls} call(s) to {JUDGE_MODEL}, {tokens_in:,} input + {tokens_out:,} output "
             f"tokens")
-    if JUDGE_MODEL in PRICES:
+    if priced:
+        part = "" if priced == calls else f" for {priced} of {calls} call(s)"
+        line += f" = ${cost:.4f}{part}, as reported by the provider"
+    elif JUDGE_MODEL in PRICES:
         price_in, price_out = PRICES[JUDGE_MODEL]
         cost = (tokens_in * price_in + tokens_out * price_out) / 1_000_000
         line += f" = ${cost:.4f}"
@@ -702,12 +840,13 @@ def targets(mode, persona, style):
 class Session:
     """The scoring of one answers file: what is asked, what is written, what it cost."""
 
-    def __init__(self, style, human, judge, no_judge=None):
+    def __init__(self, style, human, judge):
         self.style, self.human, self.judge = style, human, judge
-        self.no_judge = no_judge  # why there is no judge at all (an OpenRouter key), or None
+        self.no_judge = None  # why the judge stopped for this run (no credits left), or None
         self.report, self.disagreements, self.counted = [], 0, set()
-        self.calls = self.tokens_in = self.tokens_out = 0
-        self.written = {"human": False, "judge": False}
+        self.calls = self.tokens_in = self.tokens_out = self.priced = 0
+        self.cost = 0.0
+        self.written = {"human": set(), "judge": set()}  # the questions written in each table
 
     def pay(self, n, verdict):
         """Adds a judge call to the cost (once per question)."""
@@ -716,16 +855,24 @@ class Session:
             self.calls += verdict["calls"]
             self.tokens_in += verdict["in"]
             self.tokens_out += verdict["out"]
+            self.cost += verdict.get("cost", 0.0)
+            self.priced += verdict.get("priced", 0)
 
     def hear_judge(self, n, job):
-        if job is None:  # no judge at all, or a question that test-questions.md does not have (any more)
-            verdict = {"score": None, "why": "", "error": self.no_judge or "test-questions.md has no "
+        if job is None:  # a question that test-questions.md does not have (any more)
+            verdict = {"score": None, "why": "", "error": "test-questions.md has no "
                        f"expected answer for question {n}", "in": 0, "out": 0, "calls": 0}
         else:
             verdict = job.result()
         self.pay(n, verdict)
         prefix = f"Question {n}: j" if self.style == "auto" else "J"
-        if verdict["error"]:
+        if verdict.get("alone"):  # one line for the run, not one per question
+            if not self.no_judge:
+                print(f"Judge stopped: {verdict['error']}. "
+                      + ("The other questions get no judge's score." if self.style == "auto"
+                         else "You score alone for this run."))
+            self.no_judge = verdict["error"]
+        elif verdict["error"]:
             print(f"{prefix}udge unavailable: {verdict['error']}.")
         else:
             print(f"{prefix}udge: {verdict['score']}. {verdict['why']}")
@@ -781,12 +928,14 @@ class Session:
                 notes.append("not written")
             elif before and before != mine:
                 print(f"(It replaces the {before} that was in {self.human.path.name}.)")
-            self.written["human"] |= not warning
+            if not warning:
+                self.written["human"].add(n)
         if self.judge and theirs:
             warning = self.judge.write(n, theirs)
             if warning:
                 print(warning)
-            self.written["judge"] |= not warning
+            if not warning:
+                self.written["judge"].add(n)
         return notes
 
     def summary(self, title, path):
@@ -801,14 +950,26 @@ class Session:
                 print(f"{who}: {sum(values)} out of {2 * len(values)} ({len(values)} question(s) scored)")
         if self.style == "blind":
             print(f"Disagreements: {self.disagreements}")
-        print(cost_line(self.calls, self.tokens_in, self.tokens_out))
+        print(cost_line(self.calls, self.tokens_in, self.tokens_out, self.cost, self.priced))
         if self.written["human"]:
             print(f"Your scores: {self.human.label()}")
         if self.written["judge"]:
             print(f"Judge's scores: {self.judge.label()}")
 
+    def note_models(self, model):
+        """Writes the model next to the scores, and warns if the columns cannot be compared."""
+        models = {}
+        for target, who in ((self.human, "human"), (self.judge, "judge")):
+            if target and self.written[who]:
+                target.note_model(model, self.written[who])
+                models.update(target.models())
+        warning = different_models(models)
+        if warning:
+            print(warning)
+
 
 def main():
+    global JUDGE_MODEL
     target, numbers, style = parse_args(sys.argv[1:])
     questions, rules, meanings = read_test_file()
     path = answers_file(target)
@@ -824,15 +985,8 @@ def main():
     # No ERROR, no test material, and an expected answer to compare with.
     to_judge = [s for s in sections if not s[5] and not s[6] and s[0] in questions]
     key = read_key() if to_judge else None
-    no_judge = None
-    if key and not key.startswith("sk-ant-"):
-        # The judge is a Claude model called with an Anthropic key: an OpenRouter key cannot call it.
-        if style == "auto":
-            raise Stop("The judge needs an Anthropic key (it starts with sk-ant-). Score by hand in "
-                       "scores.md, or ask the facilitator.")
-        print("No judge with an OpenRouter key (it needs an Anthropic key, sk-ant-): you score alone.")
-        no_judge = "no judge with an OpenRouter key"
-        to_judge, key = [], None
+    if key:
+        JUDGE_MODEL = judge_model(key)
     human, judge = targets(mode, persona, style)
 
     title = f"mode {mode}" + (f", persona {persona}" if persona else "")
@@ -848,9 +1002,10 @@ def main():
     day = answers_day(path)
     expected = {n: with_live_data(q, e, day) for n, (q, e) in questions.items()}
     pool = ThreadPoolExecutor(max_workers=4)
+    waiting = Waiting()
     jobs = {s[0]: pool.submit(ask_judge, key, rules, mode, meaning, s[0], s[1], expected[s[0]],
-                              s[2], s[4]) for s in to_judge}
-    session = Session(style, human, judge, no_judge)
+                              s[2], s[4], waiting) for s in to_judge}
+    session = Session(style, human, judge)
     stopped = None
     try:
         for i, (n, q, answer, context, actions, error, peeked) in enumerate(sections, 1):
@@ -867,6 +1022,7 @@ def main():
                 session.pay(n, job.result())
     pool.shutdown(wait=False)
     session.summary(title, path)
+    session.note_models(model_of(path))
     if stopped is not None:
         # Do not wait for the judge calls still running: up to three tries of 90 s each.
         sys.stdout.flush()

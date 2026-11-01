@@ -46,6 +46,7 @@ CLASS_HELP = """Open WebUI for your groups: you build chatbots, then open them t
 The guide: https://github.com/Youth-AI-Lab/yal-openwebui-guide"""
 
 import fcntl
+import functools
 import hashlib
 import http.client
 import json
@@ -66,8 +67,11 @@ import uuid
 import zipfile
 from pathlib import Path
 
+# replay, score and the smoke test load this file by its path: Python then does not look next to it.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workshop_provider import OPENROUTER, PROVIDERS, ROUTING, chat_model, provider_of, read_key  # noqa: E402
+
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
-KEY_FILE = Path.home() / ".workshop-key"
 IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.12.4")
 # "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to a group.
 CLASS = os.environ.get("OPENWEBUI_MODE", "workshop") == "class"
@@ -83,15 +87,11 @@ PORT = int(os.environ.get("WORKSHOP_OPENWEBUI_PORT", "3000"))
 LOCK = Path(tempfile.gettempdir()) / f"{CONTAINER}.lock"
 URL = f"http://127.0.0.1:{PORT}"
 
-# The same model as `workshop` (see workshop-login), through the OpenAI-compatible API of Anthropic.
-# Anthropic only: an OpenRouter key (sk-or-) is for OpenCode (workshop-login --engine opencode).
-PROVIDERS = {
-    "sk-ant-": ("https://api.anthropic.com/v1",
-                os.environ.get("WORKSHOP_ANTHROPIC_MODEL", "claude-sonnet-5-5")),
-}
-
-# Class mode also offers a cheaper model, for simple chatbots (Anthropic keys).
-SMALL_MODELS = {"sk-ant-": os.environ.get("WORKSHOP_ANTHROPIC_SMALL_MODEL", "claude-haiku-5-5")}
+# The same model as `workshop` (workshop_provider.py), through the OpenAI-compatible API of the
+# provider of your key: an Anthropic key (sk-ant-) or an OpenRouter key (sk-or-), in both modes.
+# Class mode also offers a cheaper model, for simple chatbots (base_models).
+CHEAP_MODELS = {p.small for p in PROVIDERS if p.small != p.chat}
+OPENROUTER_GUIDE = "https://github.com/Youth-AI-Lab/yal-openrouter-guide"
 ADMIN_EMAIL = os.environ.get("OPENWEBUI_ADMIN_EMAIL", "facilitator@group.local")
 
 KNOWLEDGE_NAME = "Wildfire prevention (workshop kit)"
@@ -191,20 +191,51 @@ def check_docker():
 
 
 def provider():
-    if not KEY_FILE.is_file():
+    """The saved key, its provider, and the model chosen by workshop-login."""
+    key = read_key()
+    if not key:
         fail("No key yet. First type: workshop-login")
-    key = KEY_FILE.read_text().strip()
-    for prefix, (base_url, model) in PROVIDERS.items():
-        if key.startswith(prefix):
-            return key, base_url, model
-    if key.startswith("sk-or-"):
-        fail("The saved key is an OpenRouter key: Open WebUI here needs an Anthropic key (it starts with sk-ant-).\n"
-             "Type workshop-login again with an Anthropic key.")
-    fail("The saved key is not an Anthropic key (it starts with sk-ant-). Type workshop-login again.")
+    service = provider_of(key)
+    if service is None:
+        fail("The saved key is neither an Anthropic key (it starts with sk-ant-) nor an OpenRouter key "
+             "(it starts with sk-or-).\nType workshop-login again.")
+    return key, service, chat_model(service)
 
 
-def check_same_key(key):
-    """Open WebUI keeps the key it was started with: it must still be the saved one.
+def base_models(key, model):
+    """The plain models of this Open WebUI. Class mode also offers a cheaper one."""
+    return list(dict.fromkeys([model, provider_of(key).small])) if CLASS else [model]
+
+
+def routed(params, service):
+    """The settings of a model, with the routing of OpenRouter (workshop_provider.ROUTING), and without
+    it with another provider. Open WebUI adds custom_params to the request and reads a text as JSON.
+    A text, as Advanced Params -> Custom Parameters saves it."""
+    params = dict(params)
+    custom = params.get("custom_params")
+    if service is OPENROUTER:
+        # Anything but a table cannot be added to (and Open WebUI could not read it in a chat).
+        params["custom_params"] = {**(custom if isinstance(custom, dict) else {}), "provider": json.dumps(ROUTING)}
+    elif isinstance(custom, dict) and "provider" in custom:
+        custom = {name: value for name, value in custom.items() if name != "provider"}
+        if custom:
+            params["custom_params"] = custom
+        else:
+            del params["custom_params"]
+    return params
+
+
+def offered_models(env):
+    """The plain models a running Open WebUI offers, from its settings. None when it cannot be told."""
+    try:
+        return json.loads(env["OPENAI_API_CONFIGS"])["0"]["model_ids"]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def check_same_key(key, model):
+    """Open WebUI keeps the key and the models it was started with: they must still be the saved ones.
+    A chatbot saved on a model it does not offer fails at the first question ("Model not found").
     The keys are compared here, never printed."""
     result = docker("inspect", "--format", "{{json .Config.Env}}", CONTAINER)
     if result.returncode != 0:
@@ -212,6 +243,9 @@ def check_same_key(key):
     env = dict(item.split("=", 1) for item in json.loads(result.stdout) if "=" in item)
     if env.get("OPENAI_API_KEY") != key:
         fail("Your key changed since Open WebUI started. Type openwebui start (it takes the new key),\n"
+             "then this command again.")
+    if offered_models(env) not in (None, base_models(key, model)):
+        fail("Your model changed since Open WebUI started. Type openwebui start (it takes the new model),\n"
              "then this command again.")
 
 
@@ -258,7 +292,7 @@ def fail_newer_data(newer_image="", running=False):
 
 
 def start_container():
-    key, base_url, model = provider()
+    key, service, model = provider()
     if docker("image", "inspect", IMAGE).returncode != 0:
         # v0.12.4: 1.64 GB to download on amd64, 1.48 GB on arm64 (registry, 2026-10-31).
         print(f"First time: downloading Open WebUI ({IMAGE}, about 1.6 GB, a few minutes)…", flush=True)
@@ -270,7 +304,7 @@ def start_container():
         # Ollama is off, and can wait for a name that does not exist inside the Codespace).
         "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
         "ENABLE_OPENAI_API": "true",
-        "OPENAI_API_BASE_URL": base_url,
+        "OPENAI_API_BASE_URL": service.api,
         "ENABLE_PERSISTENT_CONFIG": "false",
         # RAG: local embedding model (already in the image), 5 excerpts per question, searched
         # with the question as it is (no rewording by the model).
@@ -291,6 +325,10 @@ def start_container():
         "DO_NOT_TRACK": "true",
         "ANONYMIZED_TELEMETRY": "false",
     }
+    if service is OPENROUTER:
+        # For every chat, also with a chatbot made in Workspace -> Models after this start. Each saved
+        # model has it too (routed()): Open WebUI uses this default in the chat, not in its other calls.
+        env["DEFAULT_MODEL_PARAMS"] = json.dumps(routed({}, service))
     # Secrets are passed through the environment, never on the command line.
     hidden = {"OPENAI_API_KEY": key}
     if CLASS:
@@ -299,8 +337,7 @@ def start_container():
         env.update({
             "WEBUI_AUTH": "True",
             "WEBUI_NAME": "Group chatbots",
-            "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model] + [
-                small for prefix, small in SMALL_MODELS.items() if key.startswith(prefix)]}}),
+            "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": base_models(key, model)}}),
             # The facilitator's account, made at the first start only (on empty data).
             "WEBUI_ADMIN_EMAIL": admin["email"],
             "WEBUI_ADMIN_NAME": "Facilitator",
@@ -606,20 +643,29 @@ def set_chunks(api, size, overlap):
     api.request("POST", "/retrieval/config/update", body={"CHUNK_SIZE": size, "CHUNK_OVERLAP": overlap})
 
 
-def rag_model(model, size, knowledge):
-    """The form of a "Wildfire RAG" model: Claude + one knowledge base, classic RAG (legacy)."""
+# The words a Wildfire RAG model starts with, whichever the provider was. Anything else is someone's own.
+RAG_DESCRIPTION = re.compile(r"^(Claude|The model) \+ the workshop knowledge, by vector search \(RAG\)\.")
+
+
+def rag_description(service):
+    who = "The model" if service is OPENROUTER else "Claude"
+    return f"{who} + the workshop knowledge, by vector search (RAG)."
+
+
+def rag_model(model, size, knowledge, service):
+    """The form of a "Wildfire RAG" model: the model + one knowledge base, classic RAG (legacy)."""
     model_id, name = (RAG_ID, RAG_NAME) if size is None else (f"{RAG_ID}-{size}", f"Wildfire RAG {size}")
     what = "" if size is None else f" Excerpts of {size} characters."
     return {
         "id": model_id, "base_model_id": model, "name": name, "is_active": True,
-        "meta": {"description": "Claude + the workshop knowledge, by vector search (RAG)." + what,
+        "meta": {"description": rag_description(service) + what,
                  "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
                                 "description": knowledge.get("description", ""), "type": "collection"}],
                  # No tools: classic RAG. The excerpts enter the context before each answer.
                  "capabilities": NO_TOOLS},
         # "legacy": Open WebUI searches before each answer and adds the excerpts to the context.
         # No temperature or top_p: Claude Sonnet 5.5 refuses them.
-        "params": {"system": RAG_PROMPT, "function_calling": "legacy"},
+        "params": routed({"system": RAG_PROMPT, "function_calling": "legacy"}, service),
     }
 
 
@@ -633,13 +679,77 @@ def knowledge_files():
     return files
 
 
-def hide_base_model(api, model):
+def hide_base_model(api, model, service):
     """Hides the plain model from the list, without built-in tools: chosen by mistake, it would
     search every knowledge base with tools (agentic search), not by RAG."""
     api.save_model({"id": model, "base_model_id": None, "name": model, "is_active": True,
                     "meta": {"hidden": True, "capabilities": {**NO_TOOLS, "file_context": False,
                                                               "citations": False}},
-                    "params": {"function_calling": "legacy"}})
+                    "params": routed({"function_calling": "legacy"}, service)})
+
+
+@functools.lru_cache(maxsize=None)
+def has_tools(service, model):
+    """False when OpenRouter says this model cannot use tools. None when it cannot be told."""
+    if service is not OPENROUTER:
+        return True
+    try:
+        with urllib.request.urlopen(f"{service.api}/models", timeout=15) as resp:
+            rows = json.load(resp)["data"]
+        row = next((r for r in rows if r.get("id") == model), None)
+        return None if row is None else "tools" in (row.get("supported_parameters") or [])
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError, KeyError, TypeError,
+            AttributeError):
+        return None
+
+
+def excerpts_without_tools(name, params, meta, service, model):
+    """A chatbot searches its knowledge with tools (native), and a model without tools would fail at the
+    first question. workshop-login refuses such a model: this is a safety net. Changes params and meta."""
+    if params.get("function_calling") == "legacy" or has_tools(service, model) is not False:
+        return
+    params["function_calling"] = "legacy"
+    meta["capabilities"] = {**(meta.get("capabilities") or {}), "builtin_tools": False}
+    print(f'{model} cannot use tools, so "{name}" cannot search its knowledge by itself.\n'
+          "Open WebUI gives it excerpts before each answer instead.", flush=True)
+
+
+def realign_models(api, key, service, model):
+    """Each chatbot names its plain model. After a change of key or of model, that plain model is gone
+    from this Open WebUI and the chatbot stops working ("Model not found"). Moves every chatbot to the
+    model of today, and gives every saved model the routing of today's provider (routed()). A chatbot
+    on the cheaper model stays on the cheaper one. Saves only what changes."""
+    offered = base_models(key, model)
+    records = api.request("GET", "/models/all")
+    chatbots = {r["id"] for r in records if r.get("base_model_id")}
+    moved = {}  # the new plain model -> the chatbots moved to it
+    for record in records:
+        base, old_params, old_meta = record.get("base_model_id"), record.get("params") or {}, record.get("meta") or {}
+        if not base and record["id"] not in offered:
+            continue  # the plain model of another key: nobody can reach it here
+        new_base = base
+        if base and base not in offered and base not in chatbots:
+            new_base = offered[-1] if base in CHEAP_MODELS else model
+        params, meta = routed(old_params, service), dict(old_meta)
+        if isinstance(meta.get("description"), str):  # null for a chatbot without one, and it stays null
+            meta["description"] = RAG_DESCRIPTION.sub(rag_description(service), meta["description"])
+        if new_base != base:
+            excerpts_without_tools(record["name"], params, meta, service, new_base)
+            moved.setdefault(new_base, []).append(record["name"])
+        elif params == old_params and meta == old_meta:
+            continue
+        api.request("POST", "/models/model/update",
+                    body={"id": record["id"], "base_model_id": new_base, "name": record["name"],
+                          "is_active": record.get("is_active", True), "meta": meta, "params": params})
+    for new_base, names in moved.items():
+        print(f"Your key or your model changed: {', '.join(names)} now use{'s' if len(names) == 1 else ''} "
+              f"{new_base}.", flush=True)
+
+
+def warn_young_people(service):
+    if service is OPENROUTER:
+        print("\nWarning: with young people, turn on zero-data-retention models hosted in Europe, in your "
+              f"OpenRouter settings.\nHow to do it: {OPENROUTER_GUIDE}")
 
 
 # --- Commands -----------------------------------------------------------------------------------
@@ -661,6 +771,7 @@ def cmd_start():
     hold_lock()
     check_docker()
     model = start_container()
+    key, service, _ = provider()
     refuse_public_port()
     api = OpenWebUI().login()
     files = knowledge_files()
@@ -678,8 +789,9 @@ def cmd_start():
     if files:   # workshop 1 has no knowledge yet: an empty base finds nothing, and that is normal
         api = check_search(api, [knowledge])
         print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
-    api.save_model(rag_model(model, None, knowledge))
-    hide_base_model(api, model)
+    api.save_model(rag_model(model, None, knowledge, service))
+    hide_base_model(api, model, service)
+    realign_models(api, key, service, model)  # the other models of this instance, after a change of key
     # No "What's new" window at the first visit: it would hide the chat.
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
@@ -695,8 +807,8 @@ def cmd_sizes():
     more of 2000, and one "Wildfire RAG" model per size."""
     hold_lock()
     check_docker()
-    key, _, model = provider()
-    check_same_key(key)
+    key, service, model = provider()
+    check_same_key(key, model)
     api = OpenWebUI().login()
     if not api.collections(KNOWLEDGE_NAME):
         fail("The workshop knowledge is not loaded yet. Type: openwebui start")
@@ -721,7 +833,7 @@ def cmd_sizes():
         set_chunks(api, *DEFAULT_CHUNK)
     api = check_search(api, list(bases.values()))
     for size, knowledge in bases.items():
-        api.save_model(rag_model(model, size, knowledge))
+        api.save_model(rag_model(model, size, knowledge, service))
     print("\nTwo models, the same documents cut into excerpts of two sizes:")
     for size in SIZES:
         print(f'  "Wildfire RAG {size}"')
@@ -806,9 +918,9 @@ def cmd_chatbot(args):
     elif args:
         fail('Usage: openwebui chatbot --name "<the name of your chatbot>"')
     hold_lock()
-    key, _, model = provider()
+    key, service, model = provider()
     check_docker()
-    check_same_key(key)
+    check_same_key(key, model)
     refuse_public_port(then="type openwebui start, then this command again")
     api = OpenWebUI().login()
     # The same package as for a Claude Project or a Gemini Gem.
@@ -836,16 +948,15 @@ def cmd_chatbot(args):
     knowledge, failed = api.fill_collection(
         knowledge_name, f"Everything {name} built during the workshop.", sorted(files))
     shutil.rmtree(tmp, ignore_errors=True)
-    api.save_model({
-        "id": "chatbot-" + slug(name), "base_model_id": model, "name": f"{name} chatbot",
-        "is_active": True,
-        "meta": {"description": f"The chatbot built by {name}: their instructions and knowledge.",
-                 "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
-                                "description": knowledge.get("description", ""), "type": "collection"}],
-                 # Built-in tools on: the model searches and reads its knowledge itself (mode E).
-                 "capabilities": {**NO_TOOLS, "builtin_tools": True}},
-        "params": {"system": system, "function_calling": "native"},
-    })
+    params = routed({"system": system, "function_calling": "native"}, service)
+    meta = {"description": f"The chatbot built by {name}: their instructions and knowledge.",
+            "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
+                           "description": knowledge.get("description", ""), "type": "collection"}],
+            # Built-in tools on: the model searches and reads its knowledge itself (mode E).
+            "capabilities": {**NO_TOOLS, "builtin_tools": True}}
+    excerpts_without_tools(f"{name} chatbot", params, meta, service, model)
+    api.save_model({"id": "chatbot-" + slug(name), "base_model_id": model, "name": f"{name} chatbot",
+                    "is_active": True, "meta": meta, "params": params})
     if failed:
         fail("Some files could not be added (see above). Type the same command again.")
     # Say what went into the Instructions box: the pair cannot see it from the chat.
@@ -975,20 +1086,19 @@ def show_link():
     print("They first see a warning page from GitHub: they click Continue.")
 
 
-def base_models(key, model):
-    return [model] + [small for prefix, small in SMALL_MODELS.items() if key.startswith(prefix)]
-
-
 def cmd_class_start():
     check_docker()
     _, made_now = class_secrets()
-    start_container()
+    model = start_container()
+    key, service, _ = provider()
     api = OpenWebUI().login()
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
+    realign_models(api, key, service, model)
     admin, _ = class_secrets()
     print("\nSign-ups are " + ("OPEN: participants can join. Not in a session? Type: openwebui share close"
                                if signup_is_open() else "closed. In a session: openwebui share open"))
+    warn_young_people(service)
     # Last, in a frame: after the download, this is what the facilitator must not miss. The password is
     # shown until one start has shown it (this terminal may later be on the projector): a first start
     # that stopped halfway, after the password was made, still shows it next time.
@@ -1012,10 +1122,11 @@ def show_account(admin, with_password):
 
 def cmd_share_open():
     check_docker()
-    key, _, model = provider()
+    key, service, model = provider()
     set_signup(True)
     start_container()  # recreated with sign-ups on; sessions are kept (fixed session key)
     api = OpenWebUI().login()
+    realign_models(api, key, service, model)  # also the chatbots made in Workspace -> Models since start
     # Participants need read access to each chatbot, to the model under it and to its documents:
     # without the last one, a chatbot answers without its documents, and says nothing.
     # Active chatbots only: a chatbot switched off in Workspace -> Models stays hidden from participants.
@@ -1026,7 +1137,7 @@ def cmd_share_open():
                     body={"id": base, "name": base, "access_grants": EVERYONE})
         # The plain model stays out of the participants' list: they use your chatbots.
         api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
-                        "meta": {"hidden": True}, "params": {}})
+                        "meta": {"hidden": True}, "params": routed({}, service)})
     for bot in chatbots:
         api.request("POST", "/models/model/access/update",
                     body={"id": bot["id"], "name": bot["name"], "access_grants": EVERYONE})
@@ -1043,6 +1154,7 @@ def cmd_share_open():
         print(f"  - {bot['name']}")
     if not chatbots:
         print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
+    warn_young_people(service)
     set_port(public=True)
     show_link()
     print("Each participant signs up (a first name or a nickname, never their full name), then chats.")
@@ -1051,14 +1163,15 @@ def cmd_share_open():
 
 def cmd_share_close():
     check_docker()
-    key, _, model = provider()
+    key, service, model = provider()
     set_signup(False)
     start_container()
     api = OpenWebUI().login()
+    realign_models(api, key, service, model)  # a new container takes the model saved today
     for base in base_models(key, model):  # back in your list, to build new chatbots on it
         if api.model_exists(base):
             api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
-                            "meta": {"hidden": False}, "params": {}})
+                            "meta": {"hidden": False}, "params": routed({}, service)})
     print("\nSign-ups are closed: nobody new can create an account.")
     set_port(public=False)
     print("Your chatbots and the participants' accounts and conversations are kept.")
@@ -1205,8 +1318,9 @@ def cmd_import(path_text):
     if not path.is_file() or not zipfile.is_zipfile(path):
         fail(f"{path_text}: no such .zip file. Drag the file into the file list first, then type:\n"
              "openwebui import <its name>")
-    key, _, model = provider()
+    key, service, model = provider()
     check_docker()
+    check_same_key(key, model)
     api = OpenWebUI().login()
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
@@ -1257,8 +1371,9 @@ def cmd_import(path_text):
         print(f"Its {' and '.join(left_out)} {'stay' if len(left_out) > 1 else 'stays'} in the old Open WebUI: "
               f"add {'them' if len(left_out) > 1 else 'it'} again in Workspace -> Models.")
     meta["knowledge"] = refs
-    params = dict(info.get("params") or {"function_calling": "native"})
+    params = routed(info.get("params") or {"function_calling": "native"}, service)
     params["system"] = system
+    excerpts_without_tools(name, params, meta, service, base_model)
     model_id = info.get("id") or "chatbot-" + slug(name)
     replaced = api.model_exists(model_id)
     api.save_model({"id": model_id, "base_model_id": base_model, "name": name,
@@ -1333,6 +1448,11 @@ def main(argv):
     elif command == "check-key" and len(argv) == 1:
         provider()   # used by workshop-start 2 before it starts Open WebUI: a clear message at once
         print("Key OK for Open WebUI.")
+    elif command == "check-same-key" and len(argv) == 1:
+        # Used by replay RAG: says nothing when Open WebUI still has the saved key and model.
+        check_docker()
+        key, _, model = provider()
+        check_same_key(key, model)
     elif command == "check-private" and len(argv) == 1:
         check_docker()
         # Used by replay RAG before its first question (its output is captured: no questions asked).

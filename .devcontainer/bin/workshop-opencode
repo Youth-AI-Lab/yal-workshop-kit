@@ -29,13 +29,15 @@ Environment (the same names as `workshop`):
     WORKSHOP_AGENTS        modes A to F: follow this file instead of AGENTS.md
     WORKSHOP_GRAPHIFY_MCP  graphify's MCP server (mode F)
     WORKSHOP_DRY_RUN=1     print what would run (one JSON object, below) instead of running it
-    WORKSHOP_OPENCODE_MODEL     provider/model instead of the one saved by workshop-login (tests)
+    WORKSHOP_OPENCODE_MODEL     a model of this key's provider instead of the saved one (tests)
     WORKSHOP_OPENCODE_BASEURL   send the model requests to this URL (tests: a fake endpoint)
 Read: ~/.workshop-key (the key, never copied: the config points to the file) and
 ~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
 "model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window;
-without it, 200k for Claude models and OpenCode's catalogue for the others).
-Without that file: the provider comes from the key (sk-ant- Anthropic, sk-or- OpenRouter).
+without it, 200k for Claude models and OpenCode's catalogue for the others; optional "cost": what the
+model costs, for the cost shown: {"input": 0.1, "output": 0.3}, in $ per million tokens).
+The key chooses the provider (sk-ant- Anthropic, sk-or- OpenRouter), whatever that file says. A file for
+the other provider, or no file: the model comes from workshop_provider.py.
 
 WORKSHOP_DRY_RUN=1 prints one JSON object on stdout, then exits 0:
     {"engine": "opencode", "mode": "C", "cwd": "<folder>", "run_dir": "<oc-C-XXXXXX>",
@@ -53,7 +55,8 @@ serve (used by replay; one server per replay):
                                      Not set: a new folder inside the run folder.
     prints       one line of JSON on stdout, before the server starts:
                  {"url": "http://H:N", "directory": "<folder>", "mode": "D", "steps": 15,
-                  "run_dir": "<oc-D-XXXXXX>", "model": "anthropic/claude-sonnet-5-5"}
+                  "run_dir": "<oc-D-XXXXXX>", "model": "anthropic/claude-sonnet-5-5", "priced": true}
+                 (priced: the config gives the model's price. false: only OpenCode's catalogue can.)
                  then OpenCode's own server output (stdout and stderr): read the first line, then
                  send the rest to a file or keep reading it (a full pipe would block the server).
     clients      run with cwd=directory AND PWD=directory, the same OPENCODE_PASSWORD, and
@@ -61,6 +64,9 @@ serve (used by replay; one server per replay):
                  opencode session export --server URL <id>, opencode api --server URL get /api/mcp.
                  The MCP servers of D, E, F connect a little after the start: wait until none is
                  "pending" in /api/mcp before the first question.
+                 The server reads the key at its first model request, then keeps it: `opencode api
+                 --server URL get /api/model` makes it read the key now (never show that output: it
+                 has the key in clear). Then check that the saved key still fits the model.
     Without a key: the same message as workshop, exit 1. Stop the server with SIGTERM.
 """
 import json
@@ -77,13 +83,13 @@ import time
 from pathlib import Path
 
 import workshop_modes as modes
+import workshop_provider
 
 KIT = Path(os.environ.get("WORKSHOP_HOME") or Path.home() / "workshop")
 BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-bare")
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
-KEY_FILE = Path.home() / ".workshop-key"
-SETTINGS_FILE = Path.home() / ".workshop-opencode.json"
+KEY_FILE = workshop_provider.KEY_FILE
 
 STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text answer)
 
@@ -91,7 +97,7 @@ STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text ans
 # cache write 5 min 2.50 = 1.25 x input), from Anthropic's price table (checked 2026-10-27).
 # OpenCode's built-in catalogue puts the cache read at 0.10: the cost shown would be too low.
 ANTHROPIC_COST = {"claude-sonnet-5-5": {"input": 2, "output": 10, "cache": {"read": 0.2, "write": 2.5}}}
-DEFAULT_MODEL = {"anthropic": "anthropic/claude-sonnet-5-5", "openrouter": "openrouter/anthropic/claude-sonnet-5.5"}
+DEFAULT_MODEL = {p.name: f"{p.name}/{p.chat}" for p in workshop_provider.PROVIDERS}
 
 
 def fail(message, code=1):
@@ -104,32 +110,42 @@ def rule(action, resource, effect):
 
 
 def model_choice():
-    """(provider, provider/model, context) from workshop-login's file, else from the key."""
-    try:
-        saved = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        saved = {}
-    model = os.environ.get("WORKSHOP_OPENCODE_MODEL") or saved.get("model") or ""
-    provider = saved.get("provider") or (model.split("/", 1)[0] if "/" in model else "")
-    if not provider:
-        try:
-            with open(KEY_FILE, encoding="utf-8") as f:
-                provider = "openrouter" if f.read(6) == "sk-or-" else "anthropic"
-        except OSError:
-            provider = "anthropic"
+    """(provider, provider/model, context, cost). The key chooses the provider: a saved file or a model
+    in the environment never sends it to another company. Then the model of the file, else the default."""
+    saved = workshop_provider.saved_settings()
+    saved_model = str(saved.get("model") or "")
+    prefix = saved_model.split("/", 1)[0]
+    saved_provider = str(saved.get("provider") or (prefix if prefix in DEFAULT_MODEL else ""))
+    named = os.environ.get("WORKSHOP_OPENCODE_MODEL") or ""
+    key_provider = workshop_provider.provider_of(workshop_provider.read_key())
+    if key_provider is workshop_provider.ANTHROPIC and named.startswith(workshop_provider.OPENROUTER.name + "/"):
+        fail(f"The model {named} is an OpenRouter model, but the saved key is an Anthropic key. Nothing was sent.")
+    if key_provider is None:  # not a key of the workshop: the file decides, the request will show the problem
+        provider = saved_provider or (named.split("/", 1)[0] if "/" in named else workshop_provider.ANTHROPIC.name)
+    else:
+        provider = key_provider.name  # anthropic/... with an OpenRouter key is a model of OpenRouter
+    if saved_provider and saved_provider != provider:
+        if saved_model:
+            print(f"Warning: the saved model ({saved_model}) is not for this key: using the default model of "
+                  f"{key_provider.label}. To choose another one: workshop-login --model MODEL", file=sys.stderr)
+        saved, saved_model = {}, ""
+    model = named or saved_model
     if not model:
-        model = DEFAULT_MODEL.get(provider, "anthropic/claude-sonnet-5-5")
+        model = DEFAULT_MODEL.get(provider, DEFAULT_MODEL["anthropic"])
     elif not model.startswith(provider + "/"):
         model = f"{provider}/{model}"
+    # The window and the price in the file are those of its model.
+    facts = saved if not named or model in (saved_model, f"{provider}/{saved_model}") else {}
     # The window is only ever lowered to 200k (the gauge must move in B, as with Claude Code), never
     # raised: many OpenRouter models have less, and OpenCode would then overflow without warning.
     try:
-        context = int(saved.get("context") or 0) or None
+        context = int(facts.get("context") or 0) or None
     except (TypeError, ValueError):
         context = None
     if context is None and model.split("/", 1)[1].startswith(("claude", "anthropic/", "~anthropic/")):
         context = 200000  # every Claude model has at least 200k (Sonnet 5.5: 1M)
-    return provider, model, min(context, 200000) if context else None
+    cost = facts.get("cost")
+    return provider, model, min(context, 200000) if context else None, cost if isinstance(cost, dict) else None
 
 
 def strip_comments(text):
@@ -304,14 +320,20 @@ def tools_of(mode):
 
 def build_config(mode, instructions, perms, mcp, steps):
     """The content of OPENCODE_CONFIG_CONTENT."""
-    provider, model, context = model_choice()
+    provider, model, context, cost = model_choice()
     model_id = model.split("/", 1)[1]
+    # Always declared, even empty: OpenCode 2.1.4 silently replaces a model that is not in its catalogue
+    # by another one (measured: recursive/flint-v1.0:free).
     model_settings = {}
     if context:
         model_settings["limit"] = {"context": context}  # the gauge shows a share of 200k, as with Claude Code
     if provider == "anthropic" and model_id in ANTHROPIC_COST:
         model_settings["cost"] = ANTHROPIC_COST[model_id]
+    elif cost:
+        model_settings["cost"] = cost
     provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
+    if provider == workshop_provider.OPENROUTER.name:
+        provider_settings["provider"] = dict(workshop_provider.ROUTING)  # sent with every request
     if os.environ.get("WORKSHOP_OPENCODE_BASEURL"):
         provider_settings["baseURL"] = os.environ["WORKSHOP_OPENCODE_BASEURL"]
     return {
@@ -333,8 +355,7 @@ def build_config(mode, instructions, perms, mcp, steps):
                         "permissions": perms},
         },
         "mcp": {"servers": mcp},
-        "providers": {provider: dict({"settings": provider_settings},
-                                     **({"models": {model_id: model_settings}} if model_settings else {}))},
+        "providers": {provider: {"settings": provider_settings, "models": {model_id: model_settings}}},
     }
 
 
@@ -437,10 +458,11 @@ def main():
     if kind == "tui":
         banner(typed, agents, run, model)
     elif kind == "serve":
+        priced = any("cost" in m for p in config["providers"].values() for m in p["models"].values())
         print(json.dumps({"url": f"http://{serve_host}:{serve_port}", "directory": str(cwd), "mode": mode.name,
-                          "steps": steps, "run_dir": str(run), "model": model}), flush=True)
+                          "steps": steps, "run_dir": str(run), "model": model, "priced": priced}), flush=True)
     elif server:
-        sys.exit(ask_after_warm_up(env, run, run_flags, stdin_file))
+        sys.exit(ask_after_warm_up(env, run, run_flags, stdin_file, model))
     else:
         fd = os.open(stdin_file, os.O_RDONLY)
         os.dup2(fd, 0)
@@ -448,7 +470,7 @@ def main():
     os.execvpe("opencode", command, env)
 
 
-def ask_after_warm_up(env, run, run_flags, stdin_file):
+def ask_after_warm_up(env, run, run_flags, stdin_file, model):
     """-p with MCP servers: a private server, wait until none of them is "pending" (30 s at most),
     then the question through that server. Returns the exit code of `opencode run`."""
     with socket.socket() as s:
@@ -480,6 +502,17 @@ def ask_after_warm_up(env, run, run_flags, stdin_file):
             time.sleep(0.3)
         if proc.poll() is not None:
             fail(f"OpenCode did not start (details in {run / 'server.log'}).")
+        # The server reads the key at the first request: read it now, then check it still fits the model
+        # (a workshop-login in another terminal). This output has the key in clear: it goes nowhere.
+        try:
+            subprocess.run(["opencode", "api", "--server", url, "get", "/api/model"], env=env,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+        now = workshop_provider.provider_of(workshop_provider.read_key())
+        if now and not model.startswith(now.name + "/"):
+            fail(f"The saved key changed while OpenCode was starting: it is now a key for {now.label}. Nothing was sent. "
+                 "Ask your question again.")
         with open(stdin_file, encoding="utf-8") as question:
             client = subprocess.Popen(["opencode", "run", "--server", url] + run_flags, env=env, stdin=question)
             return client.wait()

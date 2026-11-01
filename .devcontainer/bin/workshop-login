@@ -5,26 +5,33 @@
 #   workshop-login --key -             same, without asking: reads the key from the input (for scripts)
 #   workshop-login --engine opencode   the chatbot runs in OpenCode instead of Claude Code (--engine claude: back)
 #   workshop-login --model MODEL       OpenCode only: another model than the default one
-#   workshop-login --models            lists the models OpenCode can use with the saved key
+#   workshop-login --models            lists the models you can use with the saved key
 #   workshop-login --models openrouter the models of one provider (anthropic or openrouter)
+#   workshop-login --models free       the free models of OpenRouter
 #
-# Two engines: claude (Claude Code, the default) and opencode (OpenCode). Without --engine, the
-# engine saved by the last workshop-login is kept.
-# Two kinds of keys: sk-ant-... = Anthropic (both engines), sk-or-... = OpenRouter (OpenCode only:
-# Claude Code in the workshop needs an Anthropic key).
-# The key is tested with a one-token request, then stored in ~/.workshop-key (only you can read it).
+# The key chooses the provider of every tool: sk-ant-... = Anthropic, sk-or-... = OpenRouter.
+# Two engines: claude (Claude Code, the default) and opencode (OpenCode). Claude Code in the workshop
+# needs an Anthropic key, so an OpenRouter key always runs in OpenCode. The engine comes from --engine,
+# then WORKSHOP_ENGINE (for this command only, never saved), then the key, then the last workshop-login.
+# Going back to an Anthropic key after an OpenRouter one also goes back to Claude Code, unless OpenCode
+# was chosen with --engine.
+# The key is tested with a short request, then stored in ~/.workshop-key (only you can read it). A key
+# that does not work never replaces a working key of the other provider.
+# Enter alone keeps the saved key and its model. A new key goes back to the default model, unless
+# --model names one.
 # Also written: ~/.workshop-engine (claude or opencode), ~/.claude/settings.json (Claude Code) and
-# ~/.workshop-opencode.json (OpenCode: provider and model). The key is in none of them: Claude Code
-# reads it through apiKeyHelper, OpenCode through {file:~/.workshop-key} in its configuration.
+# ~/.workshop-opencode.json (OpenCode: provider and model, and for OpenRouter the size of the model's
+# window and its price). The key is in none of them: Claude Code reads it through apiKeyHelper,
+# OpenCode through {file:~/.workshop-key} in its configuration.
 set -euo pipefail
 
 ANTHROPIC_MODEL_ID="${WORKSHOP_ANTHROPIC_MODEL:-claude-sonnet-5-5}"
-# Default OpenRouter model for OpenCode: the same model, under its OpenRouter name.
-OPENROUTER_MODEL_ID="${WORKSHOP_OPENROUTER_MODEL:-anthropic/claude-sonnet-5.5}"
+OPENROUTER_API="${WORKSHOP_OPENROUTER_API:-https://openrouter.ai/api/v1}"   # another address: a fake endpoint in the tests
+HERE="$(dirname "$(realpath "$0")")"                                       # workshop_provider.py is next to this file
 KEY_FILE="$HOME/.workshop-key"
 ENGINE_FILE="$HOME/.workshop-engine"
 OPENCODE_FILE="$HOME/.workshop-opencode.json"
-USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL]   (or: workshop-login --models [anthropic|openrouter])"
+USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL]   (or: workshop-login --models [anthropic|openrouter|free])"
 NOT_HERE='Type workshop-login alone, press Enter, then paste the key.'
 
 # Class mode (Open WebUI guide, one teacher, no facilitator): the same steps, other words.
@@ -46,7 +53,7 @@ for arg in "$@"; do
   case "$arg" in *sk-ant-*|*sk-or-*) echo "$NOT_HERE" >&2; exit 1 ;; esac      # never echo a key pasted on the line
 done
 
-key=""; key_given=0; engine=""; model=""; list_models=0; models_provider=""
+key=""; key_given=0; keep_model=0; engine=""; model=""; list_models=0; models_provider=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key)                                                    # only --key -: a key here would stay in ps and in the history
@@ -56,7 +63,7 @@ while [[ $# -gt 0 ]]; do
     --model) model="${2:?--model needs a model name}"; shift 2 ;;
     --models)
       list_models=1; shift
-      case "${1:-}" in anthropic|openrouter) models_provider="$1"; shift ;; esac ;;
+      case "${1:-}" in anthropic|openrouter|free) models_provider="$1"; shift ;; esac ;;
     -h|--help) sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; echo "$USAGE" >&2; exit 1 ;;
   esac
@@ -84,44 +91,155 @@ catalogue() {
 
 need_opencode() {
   if ! command -v opencode >/dev/null; then
-    echo "OpenCode is not installed here. Ask the facilitator, or use Claude Code: workshop-login --engine claude" >&2
+    if [[ "$key" == sk-or-* ]]; then
+      echo "OpenCode is not installed here: an OpenRouter key needs it. Ask the facilitator." >&2
+    else
+      echo "OpenCode is not installed here. Ask the facilitator, or use Claude Code: workshop-login --engine claude" >&2
+    fi
     exit 1
   fi
 }
 
+# OpenRouter's public list of models, read once and kept in a temp file until the end of this command.
+# It needs no key. It prints the models that can use tools, as openrouter/<id>, and fails if the
+# answer is not that list (no network, or the login page of a Wi-Fi network).
+models_file="$(mktemp)"
+trap 'rm -f "$models_file"' EXIT
+live_list() {
+  curl -s --max-time 20 -o "$models_file" "$OPENROUTER_API/models" 2>/dev/null || return 1
+  python3 -I -c '
+import json, sys
+models = json.load(open(sys.argv[1], encoding="utf-8"))["data"]
+ids = sorted(m["id"] for m in models if "tools" in (m.get("supported_parameters") or []))
+if not ids:
+    sys.exit(1)
+print("\n".join("openrouter/" + i for i in ids))' "$models_file" 2>/dev/null
+}
+
+# What to add to ~/.workshop-opencode.json for this model: its window, and its price in dollars per
+# million tokens. From the live list; without it, what was saved for the same model.
+model_facts() {
+  python3 -I -c '
+import json, sys
+from decimal import Decimal
+models_file, settings_file, wanted = sys.argv[1:]
+facts, found = {}, {}
+try:
+    found = next(m for m in json.load(open(models_file, encoding="utf-8"))["data"] if m.get("id") == wanted)
+    if isinstance(found.get("context_length"), int) and found["context_length"] > 0:
+        facts["context"] = found["context_length"]
+    price = found["pricing"]
+    cost = {"input": float(Decimal(price["prompt"]) * 1000000), "output": float(Decimal(price["completion"]) * 1000000)}
+    if min(cost.values()) >= 0:  # a router model says -1: its price is not known in advance
+        facts["cost"] = cost
+except Exception:
+    pass
+if not found:
+    try:
+        saved = json.load(open(settings_file, encoding="utf-8"))
+        if saved.get("model") == "openrouter/" + wanted:
+            facts = {k: saved[k] for k in ("context", "cost") if k in saved}
+    except Exception:
+        pass
+print("".join(", %s: %s" % (json.dumps(k), json.dumps(v)) for k, v in facts.items()))' \
+    "$models_file" "$OPENCODE_FILE" "$model_id" 2>/dev/null || true
+}
+
+# The models of OpenRouter, one per line, for --models: the live list, else OpenCode's catalogue.
+openrouter_models() {
+  local ids
+  if ! ids="$(live_list)"; then
+    need_opencode
+    echo "(OpenRouter's list of models could not be read: these names come from OpenCode's catalogue and may be old.)" >&2
+    ids="$(catalogue openrouter)" || return 1
+  fi
+  if [[ "${1:-}" == free ]]; then
+    grep ':free$' <<<"$ids" || true
+  else
+    printf '%s\n' "$ids"
+  fi
+}
+
+# Close names in $list, the models of THIS key's provider (a dot and a dash count as the same:
+# OpenRouter writes claude-sonnet-5.5 where Anthropic writes claude-sonnet-5-5).
+show_close_names() {
+  local wanted close
+  wanted="${oc_model##*/}"; wanted="${wanted,,}"; wanted="${wanted//./-}"
+  close="$(awk -v w="$wanted" '{ l = tolower($0); gsub(/\./, "-", l); if (index(l, w)) print "  " $0 }' \
+           <<<"$list" | head -n 10)"
+  [[ -n "$close" ]] && { echo "Close names for $provider_name:" >&2; echo "$close" >&2; }
+  echo "See all the $provider_name models: workshop-login --models $provider" >&2
+  echo "Nothing saved." >&2
+}
+
+# GET /key: what OpenRouter says of this key. The last line is the HTTP code. The body stays in the
+# variable of the caller: it is read for the free quota, never printed.
+key_info() {
+  printf 'Authorization: Bearer %s\n' "$key" | curl -sS --max-time 30 -w '\n%{http_code}' \
+    "$OPENROUTER_API/key" -H @- || true
+}
+
+# True when the input is OpenRouter's own answer: the login page of a Wi-Fi network can say 200 too.
+key_answer_ok() {
+  python3 -I -c '
+import json, sys
+sys.exit(0 if isinstance(json.load(sys.stdin).get("data"), dict) else 1)' 2>/dev/null
+}
+
+# One real request to the chosen model, with the routing of every OpenRouter call. Prints the kind of
+# failure (see Reply in workshop_provider.py), or ok, then the HTTP code. The key goes through the input.
+model_test() {
+  printf '%s' "$key" | python3 -I -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import workshop_provider
+reply = workshop_provider.ask(sys.stdin.read(), ".", ".", model=sys.argv[2], max_tokens=16, url=sys.argv[3], timeout=60)
+print(reply.kind or "ok", reply.status or 0)' "$HERE" "$model_id" "$OPENROUTER_API/chat/completions" 2>/dev/null \
+    || echo "other 0"
+}
+
+# The name of an engine, for a person.
+engine_name() {
+  if [[ "$1" == opencode ]]; then echo OpenCode; else echo "Claude Code"; fi
+}
+
+# Writes the input to the file $1 in one step: nobody can read it, and a crash leaves the old file whole.
+write_file() {
+  local tmp
+  tmp="$(mktemp "$1.XXXXXX")"
+  if cat > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$1"; then return 0; fi
+  rm -f "$tmp"
+  return 1
+}
+
 if [[ "$list_models" == 1 ]]; then
-  need_opencode
   saved="$(cat "$KEY_FILE" 2>/dev/null || true)"
   [[ -n "$models_provider" ]] && saved="$models_provider"
   case "$saved" in
-    anthropic) catalogue anthropic ;;
-    openrouter) catalogue openrouter ;;
-    sk-ant-*) catalogue anthropic ;;
-    sk-or-*) catalogue openrouter ;;
-    *) catalogue anthropic openrouter ;;
+    anthropic|sk-ant-*) need_opencode; catalogue anthropic ;;
+    openrouter|sk-or-*) openrouter_models ;;
+    free) openrouter_models free ;;
+    *) need_opencode; catalogue anthropic && openrouter_models ;;
   esac || { echo "OpenCode could not list its models. Tell the facilitator." >&2; exit 1; }
-  echo "To use one: workshop-login --engine opencode --model <name>" >&2
+  case "$saved" in
+    openrouter|sk-or-*|free) echo "To use one: workshop-login --model <name>" >&2 ;;
+    *) echo "To use one: workshop-login --engine opencode --model <name>" >&2 ;;
+  esac
   exit 0
 fi
 
-# Engine: --engine, else WORKSHOP_ENGINE, else the saved one, else claude.
-saved_engine="$(tr -d '[:space:]' 2>/dev/null < "$ENGINE_FILE" || true)"
-engine="${engine:-${WORKSHOP_ENGINE:-${saved_engine:-claude}}}"
-engine="${engine,,}"
-case "$engine" in
-  claude|opencode) ;;
-  *) echo "Unknown engine: $engine. Type: workshop-login --engine claude (or --engine opencode)" >&2; exit 1 ;;
-esac
-if [[ -n "$model" && "$engine" != opencode ]]; then
-  echo "--model works with OpenCode only: Claude Code in the workshop always uses $ANTHROPIC_MODEL_ID." >&2
-  echo "For OpenCode: workshop-login --engine opencode --model $model" >&2
-  exit 1
-fi
+# Before asking for the key: an --engine or a model name that cannot work.
+engine_option="${engine,,}"; engine_env="${WORKSHOP_ENGINE:-}"; engine_env="${engine_env,,}"
+for e in "$engine_option" "$engine_env"; do
+  case "$e" in
+    claude|opencode|"") ;;
+    *) echo "Unknown engine: $e. Type: workshop-login --engine claude (or --engine opencode)" >&2; exit 1 ;;
+  esac
+done
 if [[ -n "$model" && ! "$model" =~ ^[A-Za-z0-9._:~/@-]+$ ]]; then
   echo "This does not look like a model name: $model. See the list: workshop-login --models" >&2
   exit 1
 fi
-[[ "$engine" == opencode ]] && need_opencode
 
 if [[ "$key_given" == 1 && "$key" == "-" ]]; then
   IFS= read -r key || true                                    # --key -: one line from the input
@@ -141,6 +259,7 @@ elif [[ "$key_given" == 0 ]]; then
   echo
   if [[ -z "$(printf '%s' "$key" | tr -d '[:space:]')" && -s "$KEY_FILE" ]]; then
     key="$(cat "$KEY_FILE")"
+    keep_model=1
     echo "Nothing pasted: the saved key is kept."
   fi
 fi
@@ -157,45 +276,105 @@ fi
 
 if [[ ! "$key" =~ ^sk-(ant|or)-[A-Za-z0-9_-]+$ ]]; then
   if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
-    echo "This does not look like a key (it should start with sk-ant-). Nothing saved." >&2
+    echo "This does not look like a key (it should start with sk-ant-, or sk-or- for OpenRouter). Nothing saved." >&2
   else
     echo "This does not look like a key (it should start with sk-ant-, or sk-or- for OpenRouter with OpenCode). Nothing saved." >&2
   fi
   exit 1
 fi
-if [[ "$key" == sk-or-* && "${OPENWEBUI_MODE:-}" == class ]]; then
-  echo "This is an OpenRouter key: Open WebUI here needs an Anthropic key (it starts with sk-ant-). Nothing saved." >&2
-  exit 1
+
+# Engine: --engine, else WORKSHOP_ENGINE, else the key, else the saved one, else claude.
+saved_key="$(cat "$KEY_FILE" 2>/dev/null || true)"
+saved_engine="$(tr -d '[:space:]' 2>/dev/null < "$ENGINE_FILE" || true)"
+explicit=false                                                # OpenCode was chosen with --engine
+grep -qs '"engine_explicit": *true' "$OPENCODE_FILE" && explicit=true
+if [[ "$key" == sk-or-* ]]; then
+  from_key=opencode                                           # Claude Code never gets this key
+elif [[ "$saved_key" == sk-or-* && "$explicit" == false ]]; then
+  from_key=claude                                             # back from OpenRouter
+else
+  from_key="${saved_engine:-claude}"
+fi
+kept_engine="${engine_option:-$from_key}"                     # WORKSHOP_ENGINE is for this command only
+engine="${engine_option:-${engine_env:-$from_key}}"
+case "$engine" in
+  claude|opencode) ;;
+  *) echo "Unknown engine: $engine. Type: workshop-login --engine claude (or --engine opencode)" >&2; exit 1 ;;
+esac
+if [[ -n "$engine_option" ]]; then
+  [[ "$engine_option" == opencode ]] && explicit=true || explicit=false
+elif [[ "$kept_engine" != opencode ]]; then
+  explicit=false
 fi
 if [[ "$key" == sk-or-* && "$engine" == claude ]]; then
   echo "This is an OpenRouter key: Claude Code in the workshop needs an Anthropic key (sk-ant-…)." >&2
-  echo "OpenRouter works with OpenCode: workshop-login --engine opencode" >&2
+  if [[ -n "$engine_option" ]]; then
+    echo "OpenRouter works with OpenCode: type workshop-login without --engine claude." >&2
+  else
+    echo "OpenRouter works with OpenCode: type unset WORKSHOP_ENGINE, then workshop-login." >&2
+  fi
   echo "Nothing saved." >&2
   exit 1
 fi
+if [[ -n "$model" && "$engine" != opencode ]]; then
+  echo "--model works with OpenCode only: Claude Code in the workshop always uses $ANTHROPIC_MODEL_ID." >&2
+  echo "For OpenCode: workshop-login --engine opencode --model $model" >&2
+  exit 1
+fi
+[[ "$engine" == opencode ]] && need_opencode
 
 # Provider and model. For OpenCode, the model is "<provider>/<model id>" (as in `opencode models`).
 if [[ "$key" == sk-ant-* ]]; then
   provider="anthropic"; provider_name="Anthropic"; oc_model="anthropic/$ANTHROPIC_MODEL_ID"
 else
-  provider="openrouter"; provider_name="OpenRouter"; oc_model="openrouter/$OPENROUTER_MODEL_ID"
+  provider="openrouter"; provider_name="OpenRouter"
+  default_model="$(python3 -I -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import workshop_provider
+print(workshop_provider.OPENROUTER.chat)' "$HERE" 2>/dev/null)" || {
+    echo "workshop_provider.py is missing next to workshop-login. Tell the facilitator." >&2; exit 1; }
+  oc_model="openrouter/$default_model"
+  if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
+    REFUSED='Create a new key on openrouter.ai, then type workshop-login again.'
+    OTHER='Check that your OpenRouter account has credits and that the key is active.'
+  fi
+fi
+# Enter alone keeps the model chosen earlier. A new key does not. Claude Code has no choice of model.
+saved_model="$(python3 -I -c '
+import json, sys
+saved = json.load(open(sys.argv[1], encoding="utf-8"))
+print(saved["model"] if saved.get("provider") == sys.argv[2] else "")' "$OPENCODE_FILE" "$provider" 2>/dev/null || true)"
+if [[ "$keep_model" == 1 && "$kept_engine" == opencode && "$saved_model" == "$provider/"* && "$saved_model" =~ ^[A-Za-z0-9._:~/@-]+$ ]]; then
+  oc_model="$saved_model"
 fi
 if [[ -n "$model" ]]; then
   oc_model="$model"
   [[ "$oc_model" == "$provider/"* ]] || oc_model="$provider/$oc_model"
 fi
-if [[ "$engine" == opencode ]]; then
+if [[ "$engine" == opencode && "$provider" == openrouter ]]; then
+  if list="$(live_list)"; then
+    # A model of the company openrouter itself: --model openrouter/free is openrouter/openrouter/free.
+    if [[ -n "$model" ]] && grep -qxF -- "openrouter/$model" <<<"$list"; then oc_model="openrouter/$model"; fi
+    if ! grep -qxF -- "$oc_model" <<<"$list"; then
+      echo "OpenRouter has no model $oc_model that can use tools." >&2
+      show_close_names
+      exit 1
+    fi
+  else
+    list="$(catalogue openrouter)" || list=""
+    if grep -qxF -- "$oc_model" <<<"$list"; then
+      echo "(OpenRouter's list of models could not be read: OpenCode knows the model $oc_model, but it is not checked.)" >&2
+    else
+      echo "(OpenRouter's list of models could not be read: the model $oc_model is not checked.)" >&2
+    fi
+  fi
+  model_id="${oc_model#"$provider/"}"                          # the name the provider's API knows
+elif [[ "$engine" == opencode ]]; then
   if list="$(catalogue "$provider")" && [[ -n "$list" ]]; then
     if ! grep -qxF -- "$oc_model" <<<"$list"; then
       echo "OpenCode does not know the model $oc_model." >&2
-      # Close names in the catalogue of THIS key's provider (a dot and a dash count as the same:
-      # OpenRouter writes claude-sonnet-5.5 where Anthropic writes claude-sonnet-5-5).
-      wanted="${oc_model##*/}"; wanted="${wanted,,}"; wanted="${wanted//./-}"
-      close="$(awk -v w="$wanted" '{ l = tolower($0); gsub(/\./, "-", l); if (index(l, w)) print "  " $0 }' \
-               <<<"$list" | head -n 10)"
-      [[ -n "$close" ]] && { echo "Close names for $provider_name:" >&2; echo "$close" >&2; }
-      echo "See all the $provider_name models: workshop-login --models $provider" >&2
-      echo "Nothing saved." >&2
+      show_close_names
       exit 1
     fi
   else
@@ -215,23 +394,32 @@ if [[ "$provider" == anthropic ]]; then
     -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
     -d "{\"model\":\"$model_id\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}")" || true
 else
-  code="$(printf 'Authorization: Bearer %s\n' "$key" | curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
-    https://openrouter.ai/api/v1/chat/completions -H @- -H "content-type: application/json" \
-    -d "{\"model\":\"$model_id\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\".\"}]}")" || true
+  info="$(key_info)"; code="${info##*$'\n'}"
+  if [[ "$code" == 200 ]] && ! key_answer_ok <<<"${info%$'\n'*}"; then code=000; fi
 fi
 [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
 
 # A refused key never replaces a saved one: nothing is written. (With no saved key it is kept, and the
 # message says so: the person can type workshop-login again.)
-if [[ "$code" =~ ^(401|403)$ && -s "$KEY_FILE" && "$(cat "$KEY_FILE")" != "$key" ]]; then
+if [[ "$code" =~ ^(401|403)$ && -n "$saved_key" && "$saved_key" != "$key" ]]; then
   echo "$provider_name refuses this key (HTTP $code). Your earlier key is kept. $REFUSED" >&2
   exit 2
+fi
+# A working key of the other provider is replaced only by a key that was seen to work.
+if [[ "$code" != 200 && ( ( "$saved_key" == sk-ant-* && "$provider" != anthropic ) ||
+                          ( "$saved_key" == sk-or-* && "$provider" != openrouter ) ) ]]; then
+  if [[ "$code" == 000 ]]; then
+    echo "$provider_name could not be reached (network?). Your earlier key is kept. Type workshop-login again." >&2
+    exit 3
+  fi
+  echo "The test answered HTTP $code (model $model_id). Your earlier key is kept. $OTHER" >&2
+  exit 4
 fi
 
 umask 077
 mkdir -p "$HOME/.claude"
-printf '%s\n' "$key" > "$KEY_FILE"
-printf '%s\n' "$engine" > "$ENGINE_FILE"
+printf '%s\n' "$key" | write_file "$KEY_FILE"
+printf '%s\n' "$kept_engine" | write_file "$ENGINE_FILE"
 
 # Common settings: same version all session long, a refused key fails in seconds instead of
 # ~2 min 30 of retries, a 200k window (not 1M: the gauge must move in mode B), and no fast mode
@@ -240,35 +428,80 @@ common='"DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_MAX_RETRIES": "3", "CLAUDE_CODE
 
 if [[ "$provider" == anthropic ]]; then
   # Claude Code, written with both engines: WORKSHOP_ENGINE=claude works without a new login.
-  cat > "$HOME/.claude/settings.json" <<EOF
+  write_file "$HOME/.claude/settings.json" <<EOF
 {
   "apiKeyHelper": "cat $HOME/.workshop-key",
   "env": { "ANTHROPIC_MODEL": "$ANTHROPIC_MODEL_ID", $common }
 }
 EOF
+  facts=""
 else
   # An OpenRouter key never reaches Claude Code: no apiKeyHelper (an old one would send this key to Anthropic).
-  cat > "$HOME/.claude/settings.json" <<EOF
+  write_file "$HOME/.claude/settings.json" <<EOF
 {
   "env": { $common }
 }
 EOF
+  facts="$(model_facts)"
 fi
-# OpenCode: provider and model only, always the provider of the saved key.
-cat > "$OPENCODE_FILE" <<EOF
-{"provider": "$provider", "model": "$oc_model"}
+# OpenCode: provider and model, always the provider of the saved key.
+write_file "$OPENCODE_FILE" <<EOF
+{"provider": "$provider", "model": "$oc_model"$facts, "engine_explicit": $explicit}
 EOF
-chmod 600 "$KEY_FILE" "$ENGINE_FILE" "$OPENCODE_FILE" "$HOME/.claude/settings.json"
 
 if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
   where="$provider_name, model $model_id"  # the Open WebUI guide quotes this line
-elif [[ "$engine" == opencode ]]; then
+elif [[ "$kept_engine" == opencode ]]; then                    # what the next command uses
   where="OpenCode, $provider_name, model $oc_model"
 else
-  where="Claude Code, $provider_name, model $model_id"
+  where="Claude Code, $provider_name, model $ANTHROPIC_MODEL_ID"
 fi
+
+# Open WebUI was started with the key of that moment, and does not read this file again.
+running="$(timeout 5 docker ps --format '{{.Names}}' 2>/dev/null || true)"
+if [[ "$key" != "$saved_key" ]] && grep -qxE 'yal-kit-openwebui|yal-openwebui-class' <<<"$running"; then
+  echo "Open WebUI keeps the old key until you type: openwebui start"
+fi
+if [[ "$provider" == openrouter && "${OPENWEBUI_MODE:-}" == class ]]; then
+  echo "Warning: with young people, turn on zero-data-retention models hosted in Europe."
+fi
+
+# OpenRouter: the key works, now the model. Each failure has its own sentence.
+free_left=""
+if [[ "$provider" == openrouter && "$code" == 200 ]]; then
+  read -r kind status <<<"$(model_test)"
+  case "$kind" in
+    ok) ;;
+    credits) echo "Key saved, but this OpenRouter account has no credits left. Add credits, or choose a free model: workshop-login --models free" >&2; exit 4 ;;
+    limit) echo "Key saved, but this key has reached its spending limit. $OTHER" >&2; exit 4 ;;
+    model) echo "Key saved, but no company can serve the model $oc_model while promising not to keep the questions. Choose another model: workshop-login --models openrouter" >&2; exit 4 ;;
+    busy)
+      if [[ "$status" == 429 ]]; then
+        echo "Key saved, but the quota of the model $oc_model is reached for now (HTTP 429). Try again later, or choose another model: workshop-login --models openrouter" >&2
+      else
+        echo "Key saved, but the model $oc_model is busy (HTTP $status). Try again in a few minutes, or choose another model: workshop-login --models openrouter" >&2
+      fi
+      exit 4 ;;
+    network) echo "Key saved, but the model $oc_model could not be reached (network?). Try: $NEXT" >&2; exit 3 ;;
+    *) echo "Key saved, but the test answered HTTP $status (model $model_id). $OTHER" >&2; exit 4 ;;
+  esac
+  if [[ "$oc_model" == *:free ]]; then
+    info="$(key_info)"
+    free_left="$(printf '%s' "${info%$'\n'*}" | python3 -I -c '
+import json, sys
+left = (json.load(sys.stdin)["data"].get("free_model_daily_requests") or {}).get("remaining")
+if isinstance(left, int):
+    print("Free requests left today: %d." % left)' 2>/dev/null || true)"
+  fi
+fi
+
 case "$code" in
-  200) echo "Key OK ($where). You can start: $NEXT" ;;
+  200)
+    echo "Key OK ($where). You can start: $NEXT"
+    if [[ -n "$free_left" ]]; then echo "$free_left"; fi
+    if [[ "$engine" != "$kept_engine" && "${OPENWEBUI_MODE:-}" != class ]]; then
+      echo "WORKSHOP_ENGINE=$engine is not saved. Without it, workshop uses $(engine_name "$kept_engine"). To keep $(engine_name "$engine"): workshop-login --engine $engine"
+    fi ;;
   401|403) echo "Key saved, but $provider_name refuses it (HTTP $code). $REFUSED" >&2; exit 2 ;;
   000) echo "Key saved, but $provider_name could not be reached (network?). Try: $NEXT" >&2; exit 3 ;;
   *) echo "Key saved, but the test answered HTTP $code (model $model_id). $OTHER" >&2; exit 4 ;;
