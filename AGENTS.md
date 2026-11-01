@@ -55,4 +55,6 @@
      emergency numbers first)
      How does it protect young people? (e.g. it never asks for personal information; when
      someone says they are unwell or in danger, it sends them to an adult they trust and to the
-     emergency number: copy the last two "Never" rules of the example) -->
+     emergency number, and says that it cannot warn anyone; it gives no dose or method that
+     could hurt: copy the rules of the example, from "Never ask for personal information" to
+     the end) -->
