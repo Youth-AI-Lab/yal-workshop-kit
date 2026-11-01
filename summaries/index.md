@@ -23,7 +23,7 @@ copy `00-template.md`.
 * [France: the legal obligation to clear brush (OLD)](22-france-brush-clearing-law.md) - The French legal obligation to clear brush (OLD). (machine-confirmed)
 * [France: burning green waste is forbidden](23-france-green-waste-burning.md) - The French ban on burning green waste. (machine-confirmed)
 * [Charente-Maritime (La Rochelle): the six fire vigilance levels](30-charente-maritime-vigilance-levels.md) - The six fire vigilance levels of Charente-Maritime. (human-reviewed)
-* [Charente-Maritime (La Rochelle): what fire use is forbidden](31-charente-maritime-fire-use-rules.md) - What fire use is forbidden in Charente-Maritime, including barbecues. (human-reviewed)
+* [Charente-Maritime (La Rochelle): what fire use is forbidden](31-charente-maritime-fire-use-rules.md) - What fire use is forbidden in Charente-Maritime, including barbecues. (draft, not verified)
 * [Charente-Maritime (La Rochelle): farm work and the June 2026 amending order](32-charente-maritime-farm-work-amendment.md) - The June 2026 amending order on farm work in Charente-Maritime. (human-reviewed)
 * [Bouches-du-Rhône (Aix-en-Provence): summer access to forest massifs](40-bouches-du-rhone-massif-access.md) - Summer access to forest massifs in Bouches-du-Rhône. (machine-confirmed)
 * [Bouches-du-Rhône (Aix-en-Provence): brush-clearing rules (OLD)](41-bouches-du-rhone-brush-clearing.md) - Brush-clearing rules in Bouches-du-Rhône (order of 15 October 2025). (human-reviewed)

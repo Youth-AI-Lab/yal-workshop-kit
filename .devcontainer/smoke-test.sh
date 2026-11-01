@@ -94,10 +94,13 @@ command -v workshop-opencode || echec "workshop-opencode absent"
 etape "Mod token-weather présent"
 [[ -d /opt/workshop/claude-code-playground/claude-code/mods/token-weather ]] || echec "mod absent"
 
-etape "Sans clé, workshop le dit"
+etape "Sans clé, workshop le dit (et son aide s'affiche quand même)"
 rm -f "$HOME/.workshop-key" "$HOME/.claude/settings.json"
 if workshop bare -p hi 2>/tmp/err; then echec "workshop a démarré sans clé"; fi
 grep -q workshop-login /tmp/err || echec "message attendu : workshop-login"
+for a in help -h --help; do
+  sortie="$(workshop "$a")"; grep -q "Starts the workshop chatbot" <<< "$sortie" || echec "workshop $a : aide attendue"
+done
 
 etape "Une clé mal formée est refusée sans rien écrire"
 if workshop-login --key "not-a-key" 2>/dev/null; then echec "clé mal formée acceptée"; fi
@@ -145,6 +148,11 @@ WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore > /dev/null || eche
   || echec "wiki-explore : la racine du port ne mène pas à la carte"
 curl -sf -o /dev/null http://127.0.0.1:8799/graph.html || echec "wiki-explore : carte non servie"
 WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore stop | grep -q closed || echec "wiki-explore stop"
+# Un numéro resté dans le fichier PID (Codespace repris) ne tue pas un autre programme.
+sleep 300 & p=$!; mkdir -p "$HOME/.workshop-run"; echo "$p" > "$HOME/.workshop-run/wiki-explore-8799.pid"
+WORKSHOP_HOME="$copie" WORKSHOP_GRAPH_PORT=8799 wiki-explore stop > /dev/null
+kill -0 "$p" 2>/dev/null || echec "wiki-explore stop : un autre programme a été arrêté"
+kill "$p"
 [[ ! -e "$HOME/.claude/skills/graphify" ]] || echec "graphify a installé sa skill dans ~/.claude (fausse les modes)"
 echo "wiki-explore : OK"
 
@@ -215,6 +223,14 @@ for v in CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_FAST_MODE; do
   grep -q "\"$v\": \"1\"" "$HOME/.claude/settings.json" || echec "settings.json : $v absent (jauge sur 1M ou mode rapide)"
 done
 
+etape "Une clé refusée ne remplace pas une clé enregistrée (faux curl)"
+h=$(mktemp -d); b=$(mktemp -d); printf '#!/bin/sh\necho 401\n' > "$b/curl"; chmod +x "$b/curl"
+printf 'sk-ant-OLD0000000000\n' > "$h/.workshop-key"
+code=0; HOME="$h" PATH="$b:$PATH" workshop-login --key sk-ant-NEW0000000000 2>/tmp/err || code=$?
+[[ "$code" == 2 ]] && grep -q "earlier key is kept" /tmp/err || { cat /tmp/err; echec "clé refusée : message attendu"; }
+[[ "$(cat "$h/.workshop-key")" == sk-ant-OLD0000000000 ]] || echec "clé refusée : l'ancienne clé a été remplacée"
+rm -rf "$h" "$b"
+
 etape "Réglages de chaque mode (répétition à blanc, sans appel au modèle)"
 grep -q 'CLAUDE_CODE_AUTO_CONNECT_IDE="false"' "$(command -v workshop-claude)" || echec "workshop-claude : lien avec VS Code non coupé (outils et sélection envoyés au modèle)"
 grep -q 'CLAUDE_CODE_DISABLE_AUTO_MEMORY="1"' "$(command -v workshop-claude)" || echec "workshop-claude : mémoire automatique active (replay non indépendant)"
@@ -249,6 +265,12 @@ for m in C D E; do
   grep -q "disableAutoMode" <<< "$r" || echec "mode $m : mode auto non désactivé"
   grep -qxF -- --disallowedTools <<< "$r" && echec "mode $m : règle de refus (demande de permission à chaque cd …; grep)"
   grep -q "test-questions.md, scores.md, answers/ or examples/" <<< "$r" || echec "mode $m : consigne sur le matériel de test absente"
+  # wc, du, tree, diff et git montrent ~/.workshop-key malgré le blocage hors du dossier (--files0-from, --fromfile,
+  # --from-file, git blame --ignore-revs-file) ; docker inspect, la clé donnée à Open WebUI.
+  for c in wc du tree diff git docker; do
+    grep -qF "\"Bash($c:*)\"" <<< "$r" || echec "mode $m : règle de refus Bash($c:*) absente (la clé serait lisible)"
+    grep -qxF -- "Bash($c:*)" <<< "$r" && echec "mode $m : Bash($c:*) autorisé"
+  done
 done
 echo "C : recherche et skills ; D : + MCP ; E : + wiki (après wiki-start) ; mode auto désactivé"
 grep -q "never write tool calls" <<< "$(reglages A)" || echec "mode A : consigne « pas d'outils » absente (faux appels d'outils)"
@@ -261,6 +283,21 @@ grep -q claudeMdExcludes <<< "$r" || echec "WORKSHOP_AGENTS : AGENTS.md du kit n
 for p in liar storyteller sophist; do
   grep -q "Demo bot: this answer contains deliberate errors" "$KIT/examples/AGENTS.$p.md" || echec "AGENTS.$p.md : étiquette de démonstration absente"
 done
+# replay : une faute de frappe ne rejoue pas tout (aucune question posée) ; D à F seulement si le dépôt les a.
+code=0; replay D 8,11 > /tmp/out 2>&1 || code=$?
+[[ $code == 1 ]] && grep -q "Not a question number: 8,11" /tmp/out || { cat /tmp/out; echec "replay D 8,11 : refus attendu"; }
+code=0; replay D 99 > /tmp/out 2>&1 || code=$?
+[[ $code == 1 ]] && grep -q "No question 99" /tmp/out || { cat /tmp/out; echec "replay D 99 : refus attendu"; }
+code=0; replay Z > /tmp/out 2>&1 || code=$?
+[[ $code == 1 ]] && grep -q "Unknown mode: Z" /tmp/out || { cat /tmp/out; echec "replay Z : message attendu"; }
+d3="$(mktemp -d)"; cp -r "$KIT/." "$d3"; rm -rf "$d3/.git" "$d3/.mcp.json"
+code=0; WORKSHOP_HOME="$d3" workshop D -p hi > /tmp/out 2>&1 || code=$?
+[[ $code == 1 ]] && grep -q "Mode D comes with workshop 4" /tmp/out || { cat /tmp/out; echec "mode D sans .mcp.json : message attendu"; }
+code=0; WORKSHOP_HOME="$d3" replay D 1 > /tmp/out 2>&1 || code=$?
+[[ $code == 1 ]] && grep -q "Mode D comes with workshop 4" /tmp/out || { cat /tmp/out; echec "replay D sans .mcp.json : message attendu"; }
+sortie="$(WORKSHOP_HOME="$d3" WORKSHOP_DRY_RUN=1 workshop A 2>&1 > /dev/null)"
+grep -q "Other modes: workshop bare | A | B | C$" <<< "$sortie" || { echo "$sortie"; echec "bannière : modes de ce dépôt attendus"; }
+rm -rf "$d3"
 score --help > /dev/null || echec "score --help"
 code=0; WORKSHOP_HOME="$copie" score A > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "replay A" /tmp/err || { cat /tmp/err; echec "score sans réponses : message attendu replay A"; }
@@ -270,13 +307,20 @@ import importlib.machinery, importlib.util, sys
 l = importlib.machinery.SourceFileLoader("score", sys.argv[1]); m = importlib.util.module_from_spec(importlib.util.spec_from_loader("score", l)); l.exec_module(m)
 assert m.parse_verdict('{"score": 0, "why": "x"} {"score": 1, "why": "y"}')["score"] == "1"
 assert m.parse_verdict("rien") is None
+# Dépôts sans mcp/ (ateliers 1 à 3) : pas de message de panne à la question 8.
+import pathlib, tempfile
+m.KIT = pathlib.Path(tempfile.mkdtemp())
+assert "No live tool" in m.with_live_data("q", "x mcp/fire-danger.json")
 PY
 code=0; workshop-start > /dev/null 2>&1 || code=$?
 [[ $code == 2 ]] || echec "workshop-start sans numéro : code 2 attendu, obtenu $code"
+code=0; workshop-start 3 --from "" > /dev/null 2>&1 || code=$?
+[[ $code == 2 ]] || echec "workshop-start --from vide : code 2 attendu, obtenu $code"
 # workshop-start : ouvre le README d'un dépôt d'atelier, signale le dépôt d'un autre atelier (sans clé : rien ne démarre)
 d1="$(mktemp -d)"; cp -r "$copie"/. "$d1"/; printf '# Workshop 1 - Test\n' > "$d1/README.md"
 grep -q "Today's page: README.md" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 1)" || echec "workshop-start 1 : README de l'atelier non ouvert"
-grep -q "This repository is for workshop 1" <<< "$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 3)" || echec "workshop-start 3 dans le dépôt de l'atelier 1 : avertissement absent"
+code=0; sortie="$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 3 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "This repository is for workshop 1" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 3 dans le dépôt de l'atelier 1 : refus attendu"; }
 # Atelier 6 : son propre dépôt, sans kit. workshop-start 6 n'y prépare rien, workshop-save garde messages/,
 # et une nouvelle copie les reprend ; ailleurs, workshop-start 6 renvoie à son dépôt.
 d6="$(mktemp -d)"; printf '# Workshop 6 - Test\n' > "$d6/README.md"; printf '#!/bin/sh\n' > "$d6/sorter"
@@ -287,12 +331,18 @@ sortie="$(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-start 6)"
 grep -qF 'First command: ./sorter setup' <<< "$sortie" || { echo "$sortie"; echec "workshop-start 6 : première commande absente"; }
 [[ ! -e "$d6/AGENTS.md" ]] || echec "workshop-start 6 : un fichier du kit a été ajouté"
 printf -- '- mine\n' >> "$d6/messages/examples.md"
+printf '#!/bin/sh\n' > "$d6/messages/mine.sh"; chmod +x "$d6/messages/mine.sh"
 (cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-save > /dev/null) || echec "workshop-save (atelier 6)"
 unzip -p "$d6/my-work.zip" messages/examples.md | grep -qx -- '- mine' || echec "workshop-save : messages/ absent du .zip"
 unzip -p "$d6/my-work.zip" MANIFEST.md | grep -qx "Workshop: 6" || echec "workshop-save : « Workshop: 6 » absent du MANIFEST"
 cp "$d6/my-work.zip" "$d6b/"
 (cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from my-work.zip > /dev/null) || echec "workshop-start 6 --from"
 grep -qx -- '- mine' "$d6b/messages/examples.md" || echec "workshop-start 6 --from : messages/ non restauré"
+[[ -x "$d6b/messages/mine.sh" ]] || echec "workshop-start --from : un script ne s'exécute plus après restauration"
+# Sauvegarde abîmée : refusée avant toute écriture.
+cp "$d6/my-work.zip" "$d6b/damaged.zip"; dd if=/dev/zero of="$d6b/damaged.zip" bs=1 seek=60 count=8 conv=notrunc status=none
+code=0; sortie="$(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from damaged.zip 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "Download your save again" <<< "$sortie" || { echo "$sortie"; echec "workshop-start : sauvegarde abîmée non refusée"; }
 code=0; sortie="$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 6 2>&1)" || code=$?
 [[ $code == 1 ]] && grep -q "yal-workshop-finetune" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 6 hors de son dépôt : renvoi attendu"; }
 code=0; sortie="$(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-start 3 2>&1)" || code=$?

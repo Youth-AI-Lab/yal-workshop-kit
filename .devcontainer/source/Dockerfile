@@ -3,32 +3,43 @@
 # .github/workflows/devcontainer-publish.yml (même mécanique que IUTInfoAix/IntroPython).
 #
 # Image de base épinglée sur Python 3.12 et Debian bookworm ; elle fournit l'utilisateur
-# vscode, git, curl et sudo.
-FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm
+# vscode, git, curl et sudo. Digest de l'index multi-architecture, celui de l'image 2026.10.40 (mêmes
+# couches amd64 vérifiées le 2026-11-01) : à changer à la main pour suivre les correctifs de la base.
+FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm@sha256:5ff1ba19e3b9273b24ec101055172d0e75046bc9ec40780643c530d2df2c75e5
 
 LABEL org.opencontainers.image.source="https://github.com/Youth-AI-Lab/yal-workshop-kit" \
       org.opencontainers.image.description="Youth AI Lab workshop: Claude Code, OpenCode, MCP server and workshop commands"
 
 # Claude Code, version figée (même fichier que le script du VPS). L'installateur officiel
-# installe sous /root ; on ne garde que le binaire, dans /usr/local/bin.
+# installe sous /root ; on ne garde que le binaire, dans /usr/local/bin, vérifié par sa somme SHA-256
+# écrite ici (celle de .../claude-code-releases/2.1.303/manifest.json, à reprendre si claude-version change).
 COPY .devcontainer/claude-version /tmp/claude-version
-RUN curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/claude-version)" \
-    && install -m 755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude \
-    && rm -rf /root/.local/share/claude /root/.local/bin/claude /root/.cache /tmp/claude-version
+RUN set -eu; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) sum=375988f457756524234695cf2d8f64ace99c5f68682e47ea24862a843c191450 ;; \
+      arm64) sum=f384f49826336d4ac0484ac6ac9d8d16f64d244d186ce227cbd7cc088c03315d ;; \
+      *) exit 1 ;; esac; \
+    curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/claude-version)"; \
+    install -m 755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude; \
+    echo "$sum  /usr/local/bin/claude" | sha256sum -c -; \
+    rm -rf /root/.local/share/claude /root/.local/bin/claude /root/.cache /tmp/claude-version
 
 # OpenCode, second moteur de l'atelier (workshop-login --engine opencode), version figée elle aussi
 # (opencode-version, lu aussi par le script du VPS). Paquet npm @opencode/cli-<plateforme> pris
-# directement sur le registre et vérifié (empreinte sha512 publiée par le registre) ; on ne garde
-# que le binaire (≈ 230 Mo), sans Node ni les quatre variantes qu'installerait npm.
+# directement sur le registre et vérifié par sa somme SHA-256 écrite ici (2.1.4, à reprendre si
+# opencode-version change) ; on ne garde que le binaire (≈ 230 Mo), sans Node ni les quatre variantes
+# qu'installerait npm.
 COPY .devcontainer/opencode-version /tmp/opencode-version
 RUN set -eu; v="$(cat /tmp/opencode-version)"; \
-    case "$(dpkg --print-architecture)" in amd64) p=linux-x64 ;; arm64) p=linux-arm64 ;; *) exit 1 ;; esac; \
-    curl -fsSL "https://registry.npmjs.org/@opencode/cli-$p/$v" -o /tmp/opencode.json; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) p=linux-x64; sum=ce05abe2dce1041391c8ec8cdb8da066f640fd471e72ac846dcb089c441e11e1 ;; \
+      arm64) p=linux-arm64; sum=e9acb4e23a9ac432139693aa166455a6add8946533394cbe083459a48e788861 ;; \
+      *) exit 1 ;; esac; \
     curl -fsSL "https://registry.npmjs.org/@opencode/cli-$p/-/cli-$p-$v.tgz" -o /tmp/opencode.tgz; \
-    python3 -c 'import base64, hashlib, json, sys; a, h = json.load(open("/tmp/opencode.json"))["dist"]["integrity"].split("-", 1); sys.exit(a != "sha512" or base64.b64decode(h) != hashlib.sha512(open("/tmp/opencode.tgz", "rb").read()).digest())'; \
+    echo "$sum  /tmp/opencode.tgz" | sha256sum -c -; \
     tar -xzf /tmp/opencode.tgz -C /tmp package/bin/opencode; \
     install -m 755 /tmp/package/bin/opencode /usr/local/bin/opencode; \
-    rm -rf /tmp/opencode.json /tmp/opencode.tgz /tmp/package /tmp/opencode-version; \
+    rm -rf /tmp/opencode.tgz /tmp/package /tmp/opencode-version; \
     [ "$(opencode --version)" = "opencode v$v" ]; \
     rm -rf /root/.local/share/opencode /root/.local/state/opencode /root/.cache/opencode /root/.config/opencode
 # Pas de mise à jour automatique, pas de catalogue de modèles téléchargé à chaque lancement (celui
@@ -40,14 +51,23 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends qrencode \
     && rm -rf /var/lib/apt/lists/*
 
-# Environnement Python du serveur MCP, et mod token-weather (jauge de contexte).
-RUN python3 -m venv /opt/workshop/venv \
-    && /opt/workshop/venv/bin/pip install --no-cache-dir -q "mcp[cli]>=2,<3" \
-         "beautifulsoup4==4.12.3" "markdownify==0.13.1" "pypdf==5.4.0" "graphifyy==0.9.92" \
-    && git clone -q --depth 1 https://github.com/anthropics/claude-code-playground.git \
-         /opt/workshop/claude-code-playground \
-    && rm -rf /opt/workshop/claude-code-playground/.git \
-    && chmod -R a+rX /opt/workshop
+# Environnement Python du serveur MCP et de graphify : toutes les dépendances sont figées et vérifiées
+# par leur empreinte (mcp-kit.txt, produit comme mcp-time.txt à partir de mcp[cli], beautifulsoup4==4.12.3,
+# markdownify==0.13.1, pypdf==5.4.0 et graphifyy==0.9.92, avec les versions de l'image 2026.10.40 en
+# contraintes). Mod token-weather (jauge de contexte) : commit vérifié, le même contenu que dans cette image.
+COPY .devcontainer/source/mcp-kit.txt /tmp/mcp-kit.txt
+RUN set -eu; python3 -m venv /opt/workshop/venv; \
+    /opt/workshop/venv/bin/pip install --no-cache-dir -q --no-deps --require-hashes -r /tmp/mcp-kit.txt; \
+    /opt/workshop/venv/bin/pip check; \
+    rm /tmp/mcp-kit.txt; \
+    MOD=569c5283d9a0a7ee7938df85bb32e4f48cbb8c86; \
+    git init -q /opt/workshop/claude-code-playground; \
+    cd /opt/workshop/claude-code-playground; \
+    git fetch -q --depth 1 https://github.com/anthropics/claude-code-playground.git "$MOD"; \
+    git checkout -q FETCH_HEAD; \
+    [ "$(git rev-parse HEAD)" = "$MOD" ]; \
+    rm -rf .git; \
+    chmod -R a+rX /opt/workshop
 
 # Serveur MCP Time (atelier 4) : serveur de référence officiel (modelcontextprotocol/servers), sans
 # réseau, dans son propre environnement pour ne pas déplacer la version de mcp du serveur du kit.

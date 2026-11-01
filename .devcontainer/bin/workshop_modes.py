@@ -35,12 +35,16 @@ MODES = {m.name: m for m in (
     Mode("A", folder="kit", instructions=True, texts=("no_tools",)),
     Mode("B", folder="kit", instructions=True, texts=("preload",)),
     Mode("C", folder="kit", instructions=True, texts=("knowledge",), search=True),
-    Mode("D", folder="kit", instructions=True, texts=("knowledge",), search=True, servers=("kit",)),
+    # The repositories of workshops 1 to 3 have no .mcp.json, those of 1 to 4 no wiki.
+    Mode("D", folder="kit", instructions=True, texts=("knowledge",), search=True, servers=("kit",),
+         needs=((".mcp.json", "Mode D comes with workshop 4. This repository does not have its files."),)),
     Mode("E", folder="kit", instructions=True, texts=("wiki", "knowledge"), search=True, servers=("kit",),
-         needs=(("wiki/index.md", "No wiki yet. First type: wiki-start"),)),
+         needs=((".mcp.json", "Mode E comes with workshop 5. This repository does not have its files."),
+                ("wiki/index.md", "No wiki yet. First type: wiki-start"))),
     Mode("F", folder="kit", instructions=True, texts=("graph", "knowledge"), search=True,
          servers=("kit", "graphify"),
-         needs=(("wiki/graphify-out/graph.json", "No graph of the wiki yet. First type: wiki-start"),)),
+         needs=((".mcp.json", "Mode F comes with workshop 5. This repository does not have its files."),
+                ("wiki/graphify-out/graph.json", "No graph of the wiki yet. First type: wiki-start"))),
 )}
 
 # The kit's MCP servers (.mcp.json): their tools are allowed without asking. A server someone adds to
@@ -99,14 +103,15 @@ PRELOAD_HEADER = ("# Reference knowledge, loaded in full at startup:\n"
 
 
 UNKNOWN = "Unknown mode: {typed}. Modes: bare, A, B, C, D, E, F (workshop help)."
-BANNER = "Workshop: mode {typed}. To quit: press Ctrl+C twice. Other modes: workshop bare | A | B | C | D | E | F"
+BANNER = "Workshop: mode {typed}. To quit: press Ctrl+C twice. Other modes: workshop {modes}"
 # The demo personalities of examples/ (liar, sophist, storyteller) carry this label in their text.
 DEMO_LABEL = "Demo bot:"
 
 
-def banner(typed, agents, copy, engine_line=None):
+def banner(typed, kit, agents, copy, engine_line=None):
     """The lines both launchers print before a chat (not with -p). copy: the instructions as sent."""
-    print(BANNER.format(typed=typed), file=sys.stderr)
+    ready = [m.name for m in MODES.values() if missing(m, kit) is None]  # only what works in this repository
+    print(BANNER.format(typed=typed, modes=" | ".join(ready)), file=sys.stderr)
     if engine_line:
         print(engine_line, file=sys.stderr)
     if agents is not None:
@@ -172,8 +177,15 @@ def preload(kit):
     for folder in PRELOAD_FOLDERS:
         for f in sorted((kit / folder).glob("*.md")):
             # Not hidden files (an editor's lock or backup), as the shell's *.md; a badly encoded file
-            # is sent with its odd characters replaced, never refused.
+            # is sent with its odd characters replaced, never refused. A file name that is not UTF-8
+            # cannot be written in the text: that file is left out.
             if f.name in PRELOAD_SKIPPED or f.name.startswith(("00-", ".")) or not f.is_file():
+                continue
+            try:
+                f.name.encode("utf-8")
+            except UnicodeEncodeError:
+                print(f"Left out: {f.name.encode('utf-8', 'replace').decode()}. Its name has odd characters: "
+                      "rename it.", file=sys.stderr)
                 continue
             body += f"\n\n## Document: {f.relative_to(kit)}\n\n" + f.read_text(encoding="utf-8", errors="replace")
     return body

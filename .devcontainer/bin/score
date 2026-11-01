@@ -17,6 +17,7 @@ The judge's scores always go into scores-judge.md (for a persona: the "Judge sco
 scores-personas.md), so that you can compare. --auto writes only the judge's scores.
 """
 
+import http.client
 import json
 import os
 import re
@@ -105,7 +106,9 @@ def read_test_file():
                 rules.append(s)
             cells = split_cells(s)
             if len(cells) >= 4 and cells[0].strip().isdigit() and cells[2].strip():
-                questions[int(cells[0])] = (cells[2].strip(), " | ".join(c.strip() for c in cells[3:]))
+                # A "|" inside a cell is written "\|", as in replay.
+                questions[int(cells[0])] = (cells[2].strip().replace("\\|", "|"),
+                                            " | ".join(c.strip().replace("\\|", "|") for c in cells[3:]))
         elif s.startswith("Columns of") and ":" in s:
             paragraph = []
             for following in lines[i:]:
@@ -123,7 +126,7 @@ def answers_day(path):
     """The day the answers were given, from replay's header ("# Answers: mode D, 2026-10-31 10:15";
     saves made before 2026-10-31 say "# Answers — mode D — 2026-10-30 10:15"), or None."""
     try:
-        first = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        first = path.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
     except OSError:
         return None
     m = re.search(r"(\d{4}-\d\d-\d\d) \d\d:\d\d\s*$", first)
@@ -137,11 +140,17 @@ def with_live_data(question, expected, day=None):
     if "fire-danger.json" not in expected:
         return expected
     path = KIT / "mcp" / "fire-danger.json"
+    if not path.exists():  # workshops 1 to 3: the tool comes with workshop 4, nothing is broken
+        return expected + " [No live tool in this workshop.]"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        territories = data["territories"]
-    except (OSError, ValueError, KeyError, TypeError):
+        return with_tool_says(question, expected, day, json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):  # a file filled in by hand
         return expected + " [mcp/fire-danger.json cannot be read: the level of the day is unknown.]"
+
+
+def with_tool_says(question, expected, day, data):
+    """The expected answer plus what the tool gave, from the content of mcp/fire-danger.json."""
+    territories = data["territories"]
     # The territories named in the question ("Antwerp - Flanders, Belgium" for "in Antwerp"; older
     # files of the kit wrote the key with "—").
     named = {k: v for k, v in territories.items()
@@ -179,7 +188,9 @@ def with_live_data(question, expected, day=None):
 def find_answers(mode):
     """The latest answers/<mode>-HHhMM.md written by replay without a persona."""
     plain = re.compile(rf"^{re.escape(mode)}-\d\dh\d\d(-\d+)?\.md$", re.I)
-    files = [p for p in (KIT / "answers").glob("*.md") if plain.match(p.name) and not persona_of(p)]
+    # Not an empty file: replay stopped before its first answer, and real answers may exist.
+    files = [p for p in (KIT / "answers").glob("*.md")
+             if plain.match(p.name) and p.stat().st_size and not persona_of(p)]
     if files:
         return max(files, key=lambda p: p.stat().st_mtime)
     message = f"No answers of mode {mode} yet. First type: replay {mode}"
@@ -192,7 +203,7 @@ def find_answers(mode):
 def header_of(path):
     """The lines before the first question."""
     head = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if line.startswith("## "):
             break
         head.append(line)
@@ -249,7 +260,7 @@ def after_footer(lines, i):
 
 def read_answers(path, questions):
     """[(n, question, answer, context line, actions, error, peeked)] in the order of the file."""
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     heads = [(i, int(m.group(1)), m.group(2).strip()) for i, line in enumerate(lines)
              if (m := re.match(r"^## (\d+)\. (.*)$", line))]
     # An answer may contain its own "## 1. ..." titles. A title is a question of replay when it is
@@ -288,8 +299,8 @@ def read_answers(path, questions):
 def split_cells(line):
     s = line.strip()
     s = s[1:] if s.startswith("|") else s
-    s = s[:-1] if s.endswith("|") else s
-    return s.split("|")
+    s = s[:-1] if s.endswith("|") and not s.endswith("\\|") else s
+    return re.split(r"(?<!\\)\|", s)
 
 
 def join_cells(cells):
@@ -512,6 +523,8 @@ def ask_judge(key, rules, mode, meaning, n, question, expected, answer, actions)
         try:
             with urllib.request.urlopen(request, timeout=90) as response:
                 data = json.load(response)
+            if not isinstance(data, dict):
+                raise ValueError("its reply is not a JSON object")
         except urllib.error.HTTPError as e:
             try:
                 detail = json.load(e).get("error", {}).get("message", "")
@@ -524,7 +537,7 @@ def ask_judge(key, rules, mode, meaning, n, question, expected, answer, actions)
             if e.code == 400:  # an older judge model may not know "effort": try without it
                 body.pop("output_config", None)
             continue
-        except (urllib.error.URLError, OSError, ValueError) as e:
+        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
             result["error"] = f"no answer from the judge ({getattr(e, 'reason', e)})"
             continue
         usage = data.get("usage") or {}
@@ -838,13 +851,15 @@ def main():
     jobs = {s[0]: pool.submit(ask_judge, key, rules, mode, meaning, s[0], s[1], expected[s[0]],
                               s[2], s[4]) for s in to_judge}
     session = Session(style, human, judge, no_judge)
+    stopped = None
     try:
         for i, (n, q, answer, context, actions, error, peeked) in enumerate(sections, 1):
             if style != "auto" and not error:
                 show(path, n, i, len(sections), q, expected.get(n, no_expected), answer,
                      context, actions, n in questions and questions[n][0] != q)
             session.score(n, error, peeked, jobs.get(n))
-    except (EOFError, KeyboardInterrupt):
+    except (EOFError, KeyboardInterrupt) as e:
+        stopped = 130 if isinstance(e, KeyboardInterrupt) else 0
         print("\nStopped. The scores given so far are saved.")
         pool.shutdown(wait=False, cancel_futures=True)
         for n, job in jobs.items():  # the calls already made are paid for: count them
@@ -852,6 +867,10 @@ def main():
                 session.pay(n, job.result())
     pool.shutdown(wait=False)
     session.summary(title, path)
+    if stopped is not None:
+        # Do not wait for the judge calls still running: up to three tries of 90 s each.
+        sys.stdout.flush()
+        os._exit(stopped)
 
 
 if __name__ == "__main__":
@@ -859,4 +878,8 @@ if __name__ == "__main__":
         main()
     except Stop as e:
         print(e, file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:  # never a Python traceback for participants
+        print(f"score stopped on an unexpected error ({type(e).__name__}: {e}). "
+              "The scores given so far are saved. Ask the facilitator.", file=sys.stderr)
         sys.exit(1)

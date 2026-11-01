@@ -41,7 +41,7 @@ example a question about your territory:
 | **0** | Wrong or invented. **An invented answer is worse than "I don't know".** |
 
 > ⚠️ **Important.** **An answer marked "Warning: the model looked at the test material" gets 0**: the model opened
-> this file, `answers/` or `examples/`, and may have copied the expected answer. An answer marked
+> this file, `scores.md`, `answers/` or `examples/`, and may have copied the expected answer. An answer marked
 > **ERROR** is not scored.
 
 **To write a score**: open `scores.md` (not this file). It has one short line per question and

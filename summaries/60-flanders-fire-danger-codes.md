@@ -12,7 +12,7 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
-review_note: "Not yet verified by a human reader of Dutch; check requested from Digitale Wolven."
+review_note: "Not yet verified by a human reader of Dutch; check requested from Digitale Wolven. The two sentences added on 2026-11-01 had the quote check only, not the cross-review."
 ---
 # Flanders (Antwerp): the four fire danger colour codes
 
@@ -26,7 +26,9 @@ The codes are set per province and apply to all ANB nature and forest areas in t
 Green means little danger; the fire brigade responds at normal strength.
 Yellow means danger; do not smoke in nature and forest areas and do not make fire.
 Orange means high danger; do not leave children unsupervised in the area.
+At orange too, do not smoke in nature and forest areas and do not make fire.
 Red means acute high danger; going into nature and forest areas is discouraged.
+At red, do not smoke and do not make fire in or near nature and forest areas.
 At red, fire towers are staffed permanently during the day, unless the ANB and the fire services agree otherwise because of local conditions.
 Heathland and coniferous forests are the most fire-sensitive areas in Flanders.
 In nature and forest areas, making fire or throwing cigarette butts on the ground is always forbidden.

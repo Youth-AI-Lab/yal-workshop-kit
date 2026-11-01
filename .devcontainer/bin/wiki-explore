@@ -23,7 +23,13 @@ PID_FILE="$RUN_DIR/wiki-explore-$PORT.pid"
 export GRAPHIFY_NO_AUTO_REFRESH=1
 
 stop_map() {
-  if [[ -f "$PID_FILE" ]] && kill "$(cat "$PID_FILE")" 2>/dev/null; then echo "The map is closed."; fi
+  # After a Codespace restart, the number in the file may belong to another program: check it is the map.
+  local pid
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline" | grep -qE "^python3 - .* $PORT \$" \
+      && kill "$pid" 2>/dev/null; then
+    echo "The map is closed."
+  fi
   rm -f "$PID_FILE"
 }
 

@@ -47,14 +47,26 @@ DEMO_LABEL = "⚠️ Demo bot: this answer contains deliberate errors."
 HAS_LABEL = re.compile(r"demo bot: this answer contains deliberate errors", re.I)
 
 
-def read_questions():
-    """Rows of the table in test-questions.md: | no. | category | question | ... |"""
-    questions = []
+def read_rows():
+    """Rows of the table in test-questions.md: | no. | category | question | expected answer |
+    (the question may be empty: question 12 before workshop 1). A "|" inside a cell is written "\\|";
+    a plain one would cut the question without a word, so the file is refused."""
+    rows = []
     for line in (KIT / "test-questions.md").read_text(encoding="utf-8").splitlines():
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 3 and cells[0].isdigit() and cells[2]:
-            questions.append((int(cells[0]), cells[2]))
-    return questions
+        s = line.strip().removeprefix("|")
+        s = s[:-1] if s.endswith("|") and not s.endswith("\\|") else s
+        cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", s)]
+        if len(cells) >= 3 and cells[0].isdigit():
+            if len(cells) > 4:
+                raise SystemExit(f"Question {cells[0]} in test-questions.md has a | in its text. "
+                                 "Write \\| instead, or use another word.")
+            rows.append((int(cells[0]), cells[2]))
+    return rows
+
+
+def read_questions():
+    """The rows with a question."""
+    return [(n, q) for n, q in read_rows() if q]
 
 
 def persona_name(path):
@@ -85,7 +97,7 @@ def engine():
     name = os.environ.get("WORKSHOP_ENGINE", "")
     if not name:
         try:
-            name = "".join((Path.home() / ".workshop-engine").read_text(encoding="utf-8").split())
+            name = "".join((Path.home() / ".workshop-engine").read_text(encoding="utf-8", errors="replace").split())
         except OSError:
             name = ""
     return name or "claude"
@@ -104,8 +116,8 @@ def ask(mode, question, agents=None, server=None):
     if agents:
         env["WORKSHOP_AGENTS"] = str(agents)
     try:
-        run = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
-                             stdin=subprocess.DEVNULL, env=env)
+        run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=300, stdin=subprocess.DEVNULL, env=env)
     except subprocess.TimeoutExpired:
         return "", 0, [], 0.0, "no answer after 5 minutes", False
     answer, context, actions, cost, error, peeked = None, 0, [], 0.0, None, False
@@ -113,6 +125,8 @@ def ask(mode, question, agents=None, server=None):
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(d, dict):
             continue
         if d.get("type") == "assistant":
             u = d["message"].get("usage") or {}
@@ -503,11 +517,14 @@ class OpenWebUIRag:
 
 
 def stop_on_signal(signum, frame):
-    raise SystemExit(128 + signum)  # so that the server is stopped (finally) on kill or hang-up
+    # So that the server is stopped and an empty answers file removed (finally) on kill or hang-up.
+    raise SystemExit(128 + signum)
 
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1].lower() not in MODES:
+        if len(sys.argv) > 1 and sys.argv[1].lower() not in ("help", "-h", "--help"):
+            print(f"Unknown mode: {sys.argv[1]}. Modes: bare, A, B, C, D, E, F, RAG.\n")
         print(__doc__.strip())
         sys.exit(1)
     mode = MODES[sys.argv[1].lower()]
@@ -537,14 +554,27 @@ def main():
             print("The RAG chatbot has its own instructions (made by openwebui start): --agents only works "
                   "with modes A to F.")
             sys.exit(1)
-    if mode in ("E", "F") and not (KIT / "wiki" / "index.md").is_file():
-        print("No wiki yet. First type: wiki-start")
-        sys.exit(1)
+    # Here and not at the top: the smoke test loads this file with python -I, without its folder.
+    import workshop_modes
+    if mode in workshop_modes.MODES:
+        message = workshop_modes.missing(workshop_modes.MODES[mode], KIT)
+        if message:  # before the first question, not three errors later
+            print(message)
+            sys.exit(1)
     unknown = [a for a in rest if a.startswith("-")]
     if unknown:
         print(f"Unknown option: {' '.join(unknown)}. The only option is --agents <file>.")
         sys.exit(1)
-    numbers = {int(n) for n in rest if n.isdigit()}
+    # A typing mistake must not replay (and pay for) all the questions.
+    wrong = [a for a in rest if not a.isdecimal()]
+    if wrong:
+        print(f"Not a question number: {wrong[0]}. Example: replay {sys.argv[1]} 8 11")
+        sys.exit(1)
+    numbers = {int(n) for n in rest}
+    absent = sorted(numbers - {n for n, _ in read_rows()})
+    if absent:
+        print(f"No question {', '.join(map(str, absent))} in test-questions.md.")
+        sys.exit(1)
     questions = [(n, q) for n, q in read_questions() if not numbers or n in numbers]
     if not questions:
         print("No question found: fill in the Question column of test-questions.md.")
@@ -558,9 +588,9 @@ def main():
             print(f"Unknown engine: {name} (claude or opencode). Type: workshop-login")
             sys.exit(1)
         if name == "opencode":
-            signal.signal(signal.SIGTERM, stop_on_signal)
-            signal.signal(signal.SIGHUP, stop_on_signal)
             server = OpenCode(mode, agents)
+    signal.signal(signal.SIGTERM, stop_on_signal)
+    signal.signal(signal.SIGHUP, stop_on_signal)
     try:
         if server:
             print("Checking Open WebUI…" if mode == "RAG" else "Starting OpenCode…", flush=True)
@@ -599,6 +629,9 @@ def write_answers(mode, agents, questions, server=None):
         lines[2:2] = [server.engine_line(), ""]
     try:
         run(mode, agents, questions, out, shown_out, labelled, lines, server)
+    except KeyboardInterrupt:
+        print("\nStopped." + (f" The answers so far are in {shown_out}." if out.stat().st_size else ""))
+        sys.exit(130)
     finally:
         if out.stat().st_size == 0:
             out.unlink()  # stopped before the first answer: no empty file left behind
@@ -634,7 +667,7 @@ def run(mode, agents, questions, out, shown_out, labelled, lines, server=None):
             if actions:
                 lines += ["*What the model did:* " + " · ".join(actions)]
             lines += [""]
-        out.write_text("\n".join(lines), encoding="utf-8")  # written as we go
+        out.write_text("\n".join(lines), encoding="utf-8", errors="replace")  # written as we go
         if in_a_row == 3:
             print("Three errors in a row: stopping. Check the key (workshop-login" +
                   (", then openwebui start" if mode == "RAG" else "") + ") and the network.")
@@ -650,4 +683,11 @@ def run(mode, agents, questions, out, shown_out, labelled, lines, server=None):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:                     # before the first question
+        print("\nStopped.")
+        sys.exit(130)
+    except Exception as e:                        # never a Python traceback for participants
+        sys.exit(f"replay stopped on an unexpected error ({type(e).__name__}: {e}). "
+                 "The answers given so far stay in answers/. Ask the facilitator.")

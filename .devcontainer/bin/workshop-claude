@@ -29,14 +29,25 @@ SEARCH_TOOLS = "Read,Bash,Edit,Write,Skill"
 # Read-only commands allowed without confirmation. No rg: "rg --pre <program>" runs a program, and a
 # Bash(rg:*) rule would let it through. No Read() deny rule for the test material: with one, Claude
 # Code asks permission for every "cd …; grep …", and nobody can answer during replay.
-READ_ONLY = ("Bash(ls:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(wc:*)", "Bash(find:*)")
+READ_ONLY = ("Bash(ls:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(find:*)")
+# Commands never run, because they would show ~/.workshop-key. Claude Code runs them without asking and
+# checks the file of "wc file", not of "wc --files0-from=<key>", "du --files0-from=<key>",
+# "tree --fromfile <key>", "diff --from-file=<key> x" or "git blame --ignore-revs-file=<key> x" (in a real
+# repository), which print its content. "docker inspect" shows the key given to Open WebUI (OPENAI_API_KEY).
+# Measured with Claude Code 2.1.303 and forced calls: these rules stop them (abbreviated, quoted, after
+# timeout or command) and "cd …; grep …" runs without a question, while a Read(~/.workshop-key) rule stops
+# none of them and refuses "cd …; grep …". The price: "grep … | wc -l" is refused, the model counts with
+# grep -c; the chatbot has no use for git or docker.
+NEVER = ("Bash(wc:*)", "Bash(du:*)", "Bash(tree:*)", "Bash(diff:*)", "Bash(git:*)", "Bash(docker:*)")
 # Only the kit's MCP servers can be loaded. Permission mode "manual" (not the default "auto"): Claude
 # Code asks before it writes a file. The auto and bypass modes are switched off, so a permission prompt
 # cannot offer "switch to auto mode". No skills bundled with Claude Code (code review, charts,
 # configuration…): the list of skills sent to the model is capped, and with them the workshop's own
 # skills lost their descriptions, so they did not trigger (measured with Claude Code 2.1.303,
 # facilitator/ATELIER-3-OUTILS.md).
-SETTINGS = '{"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable"}, "disableBundledSkills": true}'
+SETTINGS = json.dumps({"permissions": {"disableAutoMode": "disable", "disableBypassPermissionsMode": "disable",
+                                       "deny": list(NEVER)},
+                       "disableBundledSkills": True})
 
 
 def fail(message, code=1):
@@ -147,7 +158,7 @@ def main():
 
     # Banner, except when a question is asked directly (-p): the output must stay clean.
     if "-p" not in argv and "--print" not in argv:
-        modes.banner(typed, agents, folder / "CLAUDE.md" if folder else None)
+        modes.banner(typed, KIT, agents, folder / "CLAUDE.md" if folder else None)
     if os.environ.get("WORKSHOP_DRY_RUN"):
         print("\n".join([f"cwd={cwd}", *args, *argv]))
         return

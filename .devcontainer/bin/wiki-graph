@@ -173,6 +173,12 @@ def read_wiki(wiki):
     for path in sorted(wiki.glob("*.md")):
         if path.name.lower() in RESERVED:
             continue
+        try:
+            path.name.encode("utf-8")
+        except UnicodeEncodeError:
+            print(f"Left out: {path.name.encode('utf-8', 'replace').decode()}. Its name has odd characters: "
+                  "rename it.", file=sys.stderr)
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         header, body = read_header(text)
         page = {"title": path.stem, "sources": set(), "links": set(), "header": bool(header)}
@@ -211,7 +217,8 @@ def label(text):
 
 
 def node_id(prefix, name):
-    return prefix + re.sub(r"[^A-Za-z0-9]", "_", name)
+    """An identifier for Mermaid: two different names never get the same one."""
+    return prefix + re.sub(r"[^A-Za-z0-9]", lambda m: f"_{ord(m.group()):x}_", name)
 
 
 def matches(source, wanted):

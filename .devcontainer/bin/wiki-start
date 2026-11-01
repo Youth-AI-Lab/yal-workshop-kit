@@ -15,7 +15,7 @@ case "${1:-}" in
   -h|--help|help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 if [[ ! -f "$PACK" ]]; then
-  echo "Wiki pack not found ($PACK). Ask the facilitator." >&2
+  echo "The wiki comes with workshop 5. This repository does not have its files." >&2
   exit 1
 fi
 if [[ -f "$KIT/wiki/index.md" ]]; then

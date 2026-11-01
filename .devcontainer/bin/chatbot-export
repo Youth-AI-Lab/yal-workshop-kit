@@ -62,11 +62,11 @@ workshop (`scores.md`). The tool changes; the test does not.
 
 def slug(text):
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "my-chatbot"
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60].strip("-") or "my-chatbot"
 
 
 def instructions(kit):
-    text = (kit / "AGENTS.md").read_text(encoding="utf-8")
+    text = (kit / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)          # hints for you, not for the model
     text = re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
     filled = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
@@ -82,10 +82,25 @@ def knowledge(kit):
         for path in sorted((kit / folder).glob("*.md")):
             # Catalogues and instructions are not knowledge: the same files left out as in workshop B and
             # openwebui (indexes, READMEs, templates), plus the wiki's own files (schema, log, map).
-            if path.name in NOT_KNOWLEDGE or path.name.startswith("00-"):
+            if path.name in NOT_KNOWLEDGE or path.name.startswith("00-") or path.is_symlink():
+                continue
+            try:
+                path.name.encode("utf-8")
+            except UnicodeEncodeError:
+                print(f"! Left out: {path.name.encode('utf-8', 'replace').decode()}. "
+                      "Its name has odd characters: rename it.")
                 continue
             files.append((f"knowledge/{prefix}__{path.name}", path))
     return files
+
+
+def is_save(path):
+    """True if this zip is a save of workshop-save (it has a MANIFEST.md)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return "MANIFEST.md" in archive.namelist()
+    except (OSError, zipfile.BadZipFile):
+        return False
 
 
 def main():
@@ -96,18 +111,29 @@ def main():
     args = parser.parse_args()
     if not (KIT / "AGENTS.md").is_file():
         sys.exit(f"No AGENTS.md in {KIT}: run this command in the workshop.")
+    if (KIT / "AGENTS.md").is_symlink():  # a link can point anywhere, even to the key
+        sys.exit("AGENTS.md is a link, not a file. Make it a normal file, then type chatbot-export again.")
 
     text, filled = instructions(KIT)
     files = knowledge(KIT)
     name = args.name.strip() or "my-chatbot"
     out = KIT / f"{slug(name)}.zip"
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("README.md", HOW_TO.format(name=name, date=datetime.date.today().isoformat(),
-                                                    count=len(files)))
-        archive.writestr("instructions.md", text)
-        archive.writestr("chatbot-name.txt", name + "\n")
-        for arcname, path in files:
-            archive.write(path, arcname)
+    if is_save(out):
+        sys.exit(f"{out.name} already exists and is a save of your work (from workshop-save).\n"
+                 f'Choose another name, for example: chatbot-export --name "{name} chatbot"')
+    # Through a temporary file, like workshop-save: an error never leaves half an export.
+    tmp = out.with_name(f".{out.name}.tmp")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("README.md", HOW_TO.format(name=name, date=datetime.date.today().isoformat(),
+                                                        count=len(files)))
+            archive.writestr("instructions.md", text)
+            archive.writestr("chatbot-name.txt", name + "\n")
+            for arcname, path in files:
+                archive.write(path, arcname)
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
 
     counts = {p: sum(1 for a, _ in files if a.startswith(f"knowledge/{p}__")) for p in ("summaries", "wiki", "corpus-text")}
     print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
@@ -120,4 +146,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:                        # never a Python traceback for participants
+        sys.exit(f"chatbot-export stopped on an unexpected error ({type(e).__name__}: {e}). "
+                 "Ask the facilitator.")

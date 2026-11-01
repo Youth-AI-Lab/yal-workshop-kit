@@ -25,6 +25,10 @@
 # What each mode puts in the model's context, for both engines: workshop_modes.py (next to this file).
 set -euo pipefail
 
+case "${1:-}" in
+  help|-h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
 mode="D"
 if [[ $# -gt 0 && "$1" != -* ]]; then mode="$1"; shift; fi
 
@@ -35,27 +39,20 @@ if [[ -z "$engine" && -f "$HOME/.workshop-engine" ]]; then
 fi
 engine="${engine:-claude}"
 
-if [[ "$mode" != help && "$mode" != -h && "$mode" != --help ]]; then
-  case "$engine" in
-    claude) grep -qs '"apiKeyHelper"' "$HOME/.claude/settings.json" && key=yes || key="" ;;
-    opencode) [[ -s "$HOME/.workshop-key" ]] && key=yes || key="" ;;
-    *) echo "Unknown engine: $engine (claude or opencode). Type: workshop-login" >&2; exit 1 ;;
-  esac
-  if [[ -z "$key" && "$engine" == claude ]] && head -c 6 "$HOME/.workshop-key" 2>/dev/null | grep -qx 'sk-or-'; then
-    # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it.
-    echo "The saved key is an OpenRouter key: it works with OpenCode only (workshop-login --engine opencode)." >&2
-    echo "For Claude Code, type workshop-login and paste an Anthropic key (it starts with sk-ant-)." >&2
-    exit 1
-  fi
-  if [[ -z "$key" ]]; then
-    echo "No API key yet. Type: workshop-login" >&2
-    exit 1
-  fi
+case "$engine" in
+  claude) grep -qs '"apiKeyHelper"' "$HOME/.claude/settings.json" && key=yes || key="" ;;
+  opencode) [[ -s "$HOME/.workshop-key" ]] && key=yes || key="" ;;
+  *) echo "Unknown engine: $engine (claude or opencode). Type: workshop-login" >&2; exit 1 ;;
+esac
+if [[ -z "$key" && "$engine" == claude ]] && head -c 6 "$HOME/.workshop-key" 2>/dev/null | grep -qx 'sk-or-'; then
+  # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it.
+  echo "The saved key is an OpenRouter key: it works with OpenCode only (workshop-login --engine opencode)." >&2
+  echo "For Claude Code, type workshop-login and paste an Anthropic key (it starts with sk-ant-)." >&2
+  exit 1
 fi
-
-if [[ "$mode" == help || "$mode" == -h || "$mode" == --help ]]; then
-  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
+if [[ -z "$key" ]]; then
+  echo "No API key yet. Type: workshop-login" >&2
+  exit 1
 fi
 
 # The modes are described once, in workshop_modes.py: workshop-claude turns them into Claude Code's

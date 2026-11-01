@@ -185,7 +185,7 @@ vignes situés en bordures de parcelles agricoles.
 
 2.5. Massifs à risque feux de forêt
 
-Sont considérés comme « massifs à risque » les massifs boisés de plus de Tha (bois, landes,
+Sont considérés comme « massifs à risque » les massifs boisés de plus de 1 ha (bois, landes,
 plantations forestières, reboisements, garrigues ainsi que les terrains à boiser du fait d'une
 obligation légale ou conventionnelle) situés dans les communes énumérées dans l'arrêté ministériel
 du 6 février 2024 portant classement des massifs forestiers à risque feux de forêt et dont la liste est
@@ -582,7 +582,7 @@ service départemental de l'office français de la biodiversité, sont chargés,
 concerne, de l'exécution du présent arrêté qui sera publié au recueil des actes administratifs et
 affiché dans toutes les mairies pendant deux mois.
 
-La Rochelle, le 3 0 AVR. 2076
+La Rochelle, le 3 0 AVR. 2026
 
 Le préfet,
 
@@ -691,7 +691,7 @@ Fouras-les-Bains, Gripperie-Saint-Symphorien (La), Gua (Le), Houmeau (L'}, Jarne
 Lagord, Loire-les-Marais, Loix, Marennes-Hiers-Brouage, Marsilly, Mathes (Les), Médlis,
 Meschers-sur-Gironde, Moëze, Mornac-sur-Seudre, Nancras, Nieul-sur-Mer, Nieulle-sur-
 Seudre, Périgny, Pont-l'Abbé-d'Arnoult, Portes-en-Ré (Les), Puilboreau, Rivedoux-Plage,
-Rochefort, Rocheile (La), Royan, Sablonceaux, Saint-Agnant, Saint-Augustin, Saint-
+Rochefort, Rochelle (La), Royan, Sablonceaux, Saint-Agnant, Saint-Augustin, Saint-
 Clément-des-Baleines, Saint-Denis-d'Oléron, Saint-Froult, Sainte-Gemme, Saint-
 Georges-de-Didonne, Saint-Georges-d'Oléron, Saint-Hippolyte, Saint-Jean-d'Angle,
 Saint-Just-Luzac, Saint-Laurent-de-la-Prée, Sainte-Marie-de-Ré, Saint-Martin-de-Ré,

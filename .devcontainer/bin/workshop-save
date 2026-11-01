@@ -32,6 +32,7 @@ import sys
 import tarfile
 import unicodedata
 import zipfile
+import zlib
 
 KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
 PACK = ".workshop/wiki-pack.tar.gz"
@@ -56,6 +57,7 @@ ADDED = re.compile(r"^8[0-9]-")                             # numbers given by c
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LIST_ITEM = re.compile(r"\s*[*+-] \[")                     # "* [Title](…)", "- [Title](…)"
 DRAFTS_LABEL = "Your other instructions (.md files, examples/)"
+told = set()                                               # the file names bad_name() already reported
 
 CATEGORIES = (                                   # (prefix of the path in the zip, label)
     ("AGENTS.md", "Your chatbot's instructions (AGENTS.md)"),
@@ -114,7 +116,7 @@ def link_target(line):
 
 
 class Original:
-    """The kit as it was given: git (HEAD of the kit's repository) for the files of the kit,
+    """The kit as it was given: git (the commit the pair started from) for the files of the kit,
     the wiki pack for wiki/ and its skills. Without git, `known()` is False for kit files."""
 
     def __init__(self, kit):
@@ -125,11 +127,16 @@ class Original:
                 for member in tar.getmembers():
                     if member.isfile():
                         self.pack[member.name.removeprefix("./")] = tar.extractfile(member).read()
-        except (OSError, tarfile.TarError):
+        except (OSError, tarfile.TarError, EOFError, zlib.error):
             pass
         self.tree, self.algo = {}, hashlib.sha1
         try:
-            run = subprocess.run(["git", "-C", str(kit), "ls-tree", "-r", "-z", "HEAD", "."],
+            # The commit the pair was given, not HEAD: what they committed themselves (Source
+            # Control tab) is their work. Without a remote: HEAD.
+            base = subprocess.run(["git", "-C", str(kit), "merge-base", "HEAD", "origin/HEAD"],
+                                  capture_output=True, text=True, timeout=30)
+            commit = base.stdout.strip() if base.returncode == 0 and base.stdout.strip() else "HEAD"
+            run = subprocess.run(["git", "-C", str(kit), "ls-tree", "-r", "-z", commit, "."],
                                  capture_output=True, timeout=30)
             if run.returncode == 0:
                 for entry in run.stdout.split(b"\0"):
@@ -179,19 +186,31 @@ def unknown_but_yours(rel):
     return rel.startswith(".claude/skills/") and len(parts) > 3 and parts[2] not in KIT_SKILLS
 
 
+def bad_name(rel):
+    """True if this file name is not UTF-8: it cannot go into a zip. One line for the pair, once."""
+    try:
+        rel.encode("utf-8")
+        return False
+    except UnicodeEncodeError:
+        if rel not in told:
+            told.add(rel)
+            print(f"! Not saved: {rel.encode('utf-8', 'replace').decode()}. Its name has odd characters: rename it.")
+        return True
+
+
 def collect(kit=KIT):
     """Everything the pair made or changed, as a list of Item."""
     original = Original(kit)
     items = []
 
     agents = kit / "AGENTS.md"
-    if agents.is_file() and has_content(agents.read_text(encoding="utf-8", errors="replace")):
+    if agents.is_file() and not agents.is_symlink() and has_content(agents.read_text(encoding="utf-8", errors="replace")):
         items.append(Item("AGENTS.md", agents.read_bytes()))
 
     singles = list(SINGLE_FILES) + sorted(p.name for p in kit.glob("scores*.md"))
     for rel in singles:
         path = kit / rel
-        if not path.is_file() or path.is_symlink():
+        if not path.is_file() or path.is_symlink() or bad_name(rel):
             continue
         data = path.read_bytes()
         if not original.known(rel):
@@ -203,7 +222,7 @@ def collect(kit=KIT):
     drafts = sorted(kit.glob("*.md")) + sorted((kit / "examples").glob("*.md"))
     for path in drafts:
         rel = path.relative_to(kit).as_posix()
-        if not path.is_file() or path.is_symlink() or not is_draft(rel):
+        if not path.is_file() or path.is_symlink() or not is_draft(rel) or bad_name(rel):
             continue
         data = path.read_bytes()
         if original.known(rel):
@@ -219,7 +238,8 @@ def collect(kit=KIT):
         for path in sorted(base.rglob("*")):
             rel = path.relative_to(kit).as_posix()
             if (not path.is_file() or path.is_symlink() or rel in INDEXES
-                    or SKIP_PARTS.intersection(rel.split("/")) or path.name.startswith(".corpus-add-")):
+                    or SKIP_PARTS.intersection(rel.split("/")) or path.name.startswith(".corpus-add-")
+                    or bad_name(rel)):
                 continue
             data = path.read_bytes()
             if original.known(rel):
@@ -266,7 +286,7 @@ def zip_fingerprint(path):
             if "MANIFEST.md" not in names:
                 return None
             return fingerprint({n: archive.read(n) for n in names if n != "MANIFEST.md"})
-    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError):
+    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError, EOFError, zlib.error):
         return None
 
 
@@ -325,7 +345,12 @@ def write_zip(items, out, name):
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("MANIFEST.md", manifest(items, name))
         for item in items:
-            archive.writestr(item.arcname, item.data)
+            # With its permissions: a script of a skill must still run after a restore.
+            info = zipfile.ZipInfo(item.arcname, datetime.datetime.now().timetuple()[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            path = KIT / item.arcname
+            info.external_attr = ((path.stat().st_mode & 0o777) if path.is_file() else 0o644) << 16
+            archive.writestr(info, item.data)
     os.replace(tmp, out)
 
 

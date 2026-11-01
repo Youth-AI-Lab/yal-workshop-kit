@@ -13,6 +13,7 @@ verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
 stale_after: 2027-06-01T00:00:00Z
+review_note: "The two sentences added on 2026-11-01 had the quote check only, not the cross-review."
 ---
 # France: the "Météo des forêts" fire danger forecast
 
@@ -22,6 +23,8 @@ The level is based on weather forecasts and on how dry the vegetation is.
 It is given per département, for the next day and the day after.
 It has 4 levels: low (faible, green), moderate (modéré, yellow), high (élevé, orange) and very high (très élevé, red).
 The very high, high and moderate levels compare the risk with normal summer conditions.
+At the high level, the risk can be locally very high.
+At the moderate level, the risk can be locally high.
 At the low level, the forecast weather and recent rain reduce the risk.
 The Météo des forêts does not report fires in progress or upcoming fires.
 A low level does not mean there is no fire risk in the département.

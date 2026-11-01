@@ -164,7 +164,7 @@ you score only some questions: compare these rows, not the totals. `replay` stil
 questions: read the other answers too, a change can make one of them worse.
 
 > ⚠️ **Important.** **If an answer says "Warning: the model looked at the test material", score it 0.** The model
-> opened `test-questions.md`, `answers/` or `examples/`: it may have copied the expected answer.
+> opened `test-questions.md`, `scores.md`, `answers/` or `examples/`: it may have copied the expected answer.
 > An answer marked **ERROR** is not scored at all.
 
 > 💡 **Tip.** **The reflex of the whole series**: after each answer, ask yourselves **"What

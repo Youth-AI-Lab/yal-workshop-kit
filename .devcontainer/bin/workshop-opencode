@@ -228,7 +228,7 @@ def write_instructions(mode, agents, run):
     if not mode.instructions:
         return instructions
     source = agents or KIT / "AGENTS.md"
-    add("AGENTS.md", strip_comments(source.read_text(encoding="utf-8")) if source.is_file() else "")
+    add("AGENTS.md", strip_comments(source.read_text(encoding="utf-8", errors="replace")) if source.is_file() else "")
     if "preload" in mode.texts:
         add("knowledge-in-context.md", modes.preload(KIT))
     elif mode.texts == ("no_tools",):
@@ -516,7 +516,7 @@ def stop_group(proc):
 
 def banner(mode, agents, run, model):
     """The banner of workshop_modes.py, plus the engine."""
-    modes.banner(mode, agents, run / "AGENTS.md", f"Engine: OpenCode (model {model})")
+    modes.banner(mode, KIT, agents, run / "AGENTS.md", f"Engine: OpenCode (model {model})")
 
 
 if __name__ == "__main__":
