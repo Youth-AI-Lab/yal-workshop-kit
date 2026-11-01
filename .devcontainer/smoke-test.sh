@@ -103,11 +103,19 @@ for a in help -h --help; do
 done
 
 etape "Une clé mal formée est refusée sans rien écrire"
-if workshop-login --key "not-a-key" 2>/dev/null; then echec "clé mal formée acceptée"; fi
+if printf '%s\n' "not-a-key" | workshop-login --key - 2>/dev/null; then echec "clé mal formée acceptée"; fi
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé mal formée enregistrée"
+for a in "--key sk-ant-api03-SMOKETEST0000000000" sk-ant-api03-SMOKETEST0000000000 --key=sk-ant-api03-SMOKETEST0000000000 \
+         "--engine sk-ant-api03-SMOKETEST0000000000" "--model sk-or-v1-SMOKETEST0000000000"; do
+  # shellcheck disable=SC2086
+  if workshop-login $a 2>/tmp/err; then echec "clé sur la ligne acceptée ($a)"; fi
+  grep -q "Type workshop-login alone" /tmp/err || { cat /tmp/err; echec "clé sur la ligne : message attendu"; }
+  if grep -q SMOKETEST /tmp/err; then echec "clé affichée par workshop-login"; fi
+done
+[[ ! -f "$HOME/.workshop-key" ]] || echec "clé sur la ligne enregistrée"
 
 etape "Une clé OpenRouter est refusée avec Claude Code (OpenRouter : OpenCode seulement)"
-code=0; workshop-login --key sk-or-v1-SMOKETEST0000000000 2>/tmp/err || code=$?
+code=0; printf '%s\n' sk-or-v1-SMOKETEST0000000000 | workshop-login --key - 2>/tmp/err || code=$?
 [[ "$code" == 1 ]] || echec "clé OpenRouter avec Claude Code : code attendu 1, obtenu $code"
 grep -q -- "--engine opencode" /tmp/err || echec "clé OpenRouter : message vers OpenCode attendu"
 [[ ! -f "$HOME/.workshop-key" ]] || echec "clé OpenRouter enregistrée avec Claude Code"
@@ -217,7 +225,7 @@ shutil.rmtree(o.tmp)
 print('OpenCode de replay : OK')" || echec "replay ne prépare plus son serveur OpenCode"
 
 etape "Fausse clé Anthropic : enregistrée, testée, refusée"
-code=0; workshop-login --key sk-ant-api03-SMOKETEST0000000000 || code=$?
+code=0; printf '%s\n' sk-ant-api03-SMOKETEST0000000000 | workshop-login --key - || code=$?
 [[ "$code" == 2 ]] || echec "code attendu 2 (clé refusée), obtenu $code"
 for v in CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_FAST_MODE; do
   grep -q "\"$v\": \"1\"" "$HOME/.claude/settings.json" || echec "settings.json : $v absent (jauge sur 1M ou mode rapide)"
@@ -226,7 +234,7 @@ done
 etape "Une clé refusée ne remplace pas une clé enregistrée (faux curl)"
 h=$(mktemp -d); b=$(mktemp -d); printf '#!/bin/sh\necho 401\n' > "$b/curl"; chmod +x "$b/curl"
 printf 'sk-ant-OLD0000000000\n' > "$h/.workshop-key"
-code=0; HOME="$h" PATH="$b:$PATH" workshop-login --key sk-ant-NEW0000000000 2>/tmp/err || code=$?
+code=0; printf '%s\n' sk-ant-NEW0000000000 | HOME="$h" PATH="$b:$PATH" workshop-login --key - 2>/tmp/err || code=$?
 [[ "$code" == 2 ]] && grep -q "earlier key is kept" /tmp/err || { cat /tmp/err; echec "clé refusée : message attendu"; }
 [[ "$(cat "$h/.workshop-key")" == sk-ant-OLD0000000000 ]] || echec "clé refusée : l'ancienne clé a été remplacée"
 rm -rf "$h" "$b"
@@ -324,6 +332,7 @@ code=0; sortie="$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-s
 # Atelier 6 : son propre dépôt, sans kit. workshop-start 6 n'y prépare rien, workshop-save garde messages/,
 # et une nouvelle copie les reprend ; ailleurs, workshop-start 6 renvoie à son dépôt.
 d6="$(mktemp -d)"; printf '# Workshop 6 - Test\n' > "$d6/README.md"; printf '#!/bin/sh\n' > "$d6/sorter"
+printf 's\n' > "$d6/SETUP.md"; printf 's\n' > "$d6/sheet.md"; mkdir "$d6/tools"; printf 'x = 1\n' > "$d6/tools/sorter.py"
 mkdir "$d6/messages"; printf '## topic\n- a\n' > "$d6/messages/examples.md"; printf '## topic\n- b\n' > "$d6/messages/test.md"
 git -C "$d6" init -q; git -C "$d6" add -A; git -C "$d6" -c user.name=t -c user.email=t@t commit -qm depart
 d6b="$(mktemp -d)"; cp -r "$d6"/. "$d6b"/
@@ -343,6 +352,63 @@ grep -qx -- '- mine' "$d6b/messages/examples.md" || echec "workshop-start 6 --fr
 cp "$d6/my-work.zip" "$d6b/damaged.zip"; dd if=/dev/zero of="$d6b/damaged.zip" bs=1 seek=60 count=8 conv=notrunc status=none
 code=0; sortie="$(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from damaged.zip 2>&1)" || code=$?
 [[ $code == 1 ]] && grep -q "Download your save again" <<< "$sortie" || { echo "$sortie"; echec "workshop-start : sauvegarde abîmée non refusée"; }
+# Atelier 6 : le MANIFEST et la sortie donnent workshop-start 6 ; les fichiers du dépôt ne sont pas gardés, et c'est dit.
+d6c="$(mktemp -d)"; cp -r "$d6"/. "$d6c"/; rm -f "${d6c:?}"/*.zip
+printf 'x\n' >> "$d6c/sheet.md"; printf 'x = 2\n' > "$d6c/tools/sorter.py"; printf -- '- saved\n' >> "$d6c/messages/test.md"
+sortie="$(cd "$d6c" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6c" workshop-save)" || { echo "$sortie"; echec "workshop-save (fichiers du dépôt)"; }
+grep -qF '! Changed but not saved: sheet.md, tools/sorter.py.' <<< "$sortie" || { echo "$sortie"; echec "workshop-save : fichiers du dépôt non signalés"; }
+grep -qF 'workshop-start 6 --from my-work.zip' <<< "$sortie" || { echo "$sortie"; echec "workshop-save : commande de reprise de l'atelier 6 absente"; }
+grep -qF 'workshop-start 6 --from my-work.zip' <<< "$(unzip -p "$d6c/my-work.zip" MANIFEST.md)" || echec "workshop-save : commande de reprise de l'atelier 6 absente du MANIFEST"
+if unzip -Z1 "$d6c/my-work.zip" | grep -qxE 'sheet\.md|tools/sorter\.py'; then echec "workshop-save : fichier du dépôt dans le .zip"; fi
+# Disque plein (ulimit) : l'ancienne sauvegarde ne bouge pas, et aucune restauration à moitié.
+empreinte="$(sha256sum < "$d6c/my-work.zip")"; head -c 40000 /dev/urandom > "$d6c/messages/zz.bin"
+code=0; sortie="$(cd "$d6c" && ulimit -f 8 && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6c" workshop-save 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "do not download a .zip yet" <<< "$sortie" || { echo "$sortie"; echec "workshop-save disque plein : message attendu"; }
+[[ "$(sha256sum < "$d6c/my-work.zip")" == "$empreinte" ]] || echec "workshop-save disque plein : l'ancienne sauvegarde a bougé"
+[[ -z "$(find "$d6c" -maxdepth 1 \( -name '.*.tmp' -o -name 'my-work-*.zip' \))" ]] || echec "workshop-save disque plein : fichiers laissés"
+(cd "$d6c" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6c" workshop-save > /dev/null) || echec "workshop-save après disque plein"
+d6d="$(mktemp -d)"; cp -r "$d6b"/. "$d6d"/; rm -f "${d6d:?}"/*.zip; cp "$d6c/my-work.zip" "$d6d/"; printf -- '- here\n' >> "$d6d/messages/test.md"
+code=0; sortie="$(cd "$d6d" && ulimit -f 8 && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6d" workshop-start 6 --from my-work.zip 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "Nothing was restored" <<< "$sortie" || { echo "$sortie"; echec "workshop-start disque plein : message attendu"; }
+grep -qx -- '- here' "$d6d/messages/test.md" && ! grep -qx -- '- saved' "$d6d/messages/test.md" && [[ ! -e "$d6d/messages/zz.bin" ]] || echec "workshop-start disque plein : restauration à moitié"
+[[ -z "$(find "$d6d" -name '.workshop-start-*')" ]] || echec "workshop-start disque plein : fichier temporaire laissé"
+# Atelier 6 sans git : messages/ est gardé, SETUP.md et sheet.md ne le sont pas, un démarrage simple n'écrit aucune sauvegarde.
+d6n="$(mktemp -d)"; cp -r "$d6"/. "$d6n"/; rm -rf "${d6n:?}/.git" "${d6n:?}"/*.zip
+(cd "$d6n" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6n" workshop-save > /dev/null) || echec "workshop-save sans git (atelier 6)"
+grep -qx -- '- mine' <<< "$(unzip -p "$d6n/my-work.zip" messages/examples.md)" || echec "workshop-save sans git : messages/ absent du .zip"
+if unzip -Z1 "$d6n/my-work.zip" | grep -qxE 'SETUP\.md|sheet\.md'; then echec "workshop-save sans git : page du dépôt dans le .zip"; fi
+rm "$d6n/my-work.zip"; (cd "$d6n" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6n" workshop-start 6 > /dev/null) || echec "workshop-start 6 sans git"
+[[ -z "$(find "$d6n" -maxdepth 1 -name '*.zip')" ]] || echec "workshop-start 6 sans git : sauvegarde inutile"
+# MANIFEST.md : lu sur son premier Mio, compté dans la limite ; répertoire central abîmé, fin du fichier intacte : refus en clair.
+/opt/workshop/venv/bin/python - "$d6b" <<'PY' || echec "sauvegardes de test non écrites"
+import sys, zipfile
+d = sys.argv[1]
+top = "# Workshop save: x\n\nSaved on: 2026-10-30 10:00\nWorkshop: 6\n"
+for name, size in (("long", 2 * 2**20), ("huge", 401 * 2**20)):
+    with zipfile.ZipFile(f"{d}/{name}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("MANIFEST.md", top + "x" * size)
+        z.writestr("messages/from-long.md", "x\n")
+raw = bytearray(open(f"{d}/my-work.zip", "rb").read()); start = zipfile.ZipFile(f"{d}/my-work.zip").start_dir
+raw[start:start + 4] = b"XXXX"
+open(f"{d}/directory.zip", "wb").write(raw)
+PY
+sortie="$(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from long.zip 2>&1)" || { echo "$sortie"; echec "workshop-start : long MANIFEST"; }
+grep -qF 'saved on 2026-10-30 10:00' <<< "$sortie" || { echo "$sortie"; echec "workshop-start : date du MANIFEST non lue"; }
+code=0; sortie="$(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from huge.zip 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "too large" <<< "$sortie" || { echo "$sortie"; echec "workshop-start : MANIFEST énorme non refusé"; }
+code=0; sortie="$(cd "$d6b" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6b" workshop-start 6 --from directory.zip 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "Download your save again" <<< "$sortie" && ! grep -q "unexpected error" <<< "$sortie" || { echo "$sortie"; echec "workshop-start : .zip abîmé, refus en clair attendu"; }
+# MANIFEST abîmé dans la sauvegarde déjà là : workshop-save garde l'ancienne et écrit la nouvelle (sinon plus aucune sauvegarde possible).
+d6e="$(mktemp -d)"; cp -r "$d6"/. "$d6e"/; printf -- '- later\n' >> "$d6e/messages/test.md"
+dd if=/dev/zero of="$d6e/my-work.zip" bs=1 seek=60 count=8 conv=notrunc status=none
+sortie="$(cd "$d6e" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6e" workshop-save 2>&1)" || { echo "$sortie"; echec "workshop-save : MANIFEST abîmé dans l'ancienne sauvegarde"; }
+grep -q "is kept as" <<< "$sortie" || { echo "$sortie"; echec "workshop-save : ancienne sauvegarde abîmée non gardée"; }
+# Un dossier à la place d'un fichier : refus avant toute écriture, pas d'arrêt au milieu.
+d6f="$(mktemp -d)"; cp -r "$d6b"/. "$d6f"/; git -C "$d6f" checkout -q -- messages; rm -f "$d6f/messages/mine.sh"; mkdir "$d6f/messages/mine.sh"
+code=0; sortie="$(cd "$d6f" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6f" workshop-start 6 --from my-work.zip 2>&1)" || code=$?
+[[ $code == 1 ]] && grep -q "a file and a folder have the same name" <<< "$sortie" || { echo "$sortie"; echec "workshop-start : dossier à la place d'un fichier, refus attendu"; }
+if grep -qx -- '- mine' "$d6f/messages/examples.md"; then echec "workshop-start : restauration à moitié (dossier à la place d'un fichier)"; fi
+rm -rf "$d6c" "$d6d" "$d6e" "$d6f" "$d6n"
 code=0; sortie="$(cd "$d1" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d1" workshop-start 6 2>&1)" || code=$?
 [[ $code == 1 ]] && grep -q "yal-workshop-finetune" <<< "$sortie" || { echo "$sortie"; echec "workshop-start 6 hors de son dépôt : renvoi attendu"; }
 code=0; sortie="$(cd "$d6" && HOME="$(mktemp -d)" WORKSHOP_HOME="$d6" workshop-start 3 2>&1)" || code=$?

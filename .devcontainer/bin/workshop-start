@@ -168,13 +168,17 @@ def allowed(rel, save):
 
 
 def check_zip(path, save):
-    """Opens a save and checks every name in it. Returns (zip, files to restore, skipped names)."""
+    """Opens a save and checks every name and every file in it.
+    Returns (zip, files to restore, skipped names)."""
     if not path.is_file():
         raise Refused(f"File not found: {path.name}. Drag your .zip into the file list (left panel), "
                       f'then type its name, between quotes if it has spaces: --from "{path.name}"')
     if not zipfile.is_zipfile(path):
         raise Refused(f"{path.name} is not a .zip file (or it is damaged). Download your save again.")
-    archive = zipfile.ZipFile(path)
+    try:
+        archive = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, NotImplementedError, ValueError):   # the end of the file looks right, the rest does not
+        raise Refused(f"{path.name} is not a .zip file (or it is damaged). Download your save again.") from None
     names = archive.namelist()
     if "MANIFEST.md" not in names:
         archive.close()
@@ -183,6 +187,7 @@ def check_zip(path, save):
     files, skipped, total = [], [], 0
     for info in archive.infolist():
         name = info.filename
+        total += info.file_size
         if name.endswith("/") or name == "MANIFEST.md":
             continue
         parts = name.split("/")
@@ -192,7 +197,6 @@ def check_zip(path, save):
             archive.close()
             raise Refused(f"{path.name} contains a file with a dangerous path ({clean(name)}). "
                           "Nothing was restored. Ask the facilitator.")
-        total += info.file_size
         (files if allowed(name, save) else skipped).append(info)
     if total > MAX_RESTORE:
         archive.close()
@@ -200,7 +204,7 @@ def check_zip(path, save):
     # The content too, before anything changes: a damaged save would stop the restore halfway.
     try:
         damaged = archive.testzip()
-    except (OSError, EOFError, RuntimeError, NotImplementedError, zipfile.BadZipFile, zlib.error):
+    except (OSError, EOFError, RuntimeError, ValueError, zipfile.BadZipFile, zlib.error):
         damaged = path.name  # RuntimeError: locked with a password
     if damaged:
         archive.close()
@@ -213,11 +217,9 @@ def manifest_fields(path):
     """{"Saved on": …, "Workshop": …} from the MANIFEST.md of a save; {} if it is not one."""
     try:
         with zipfile.ZipFile(path) as archive:
-            info = archive.getinfo("MANIFEST.md")
-            if info.file_size > 2**20:
-                return {}
-            text = archive.read(info).decode("utf-8", "replace")
-    except (OSError, KeyError, zipfile.BadZipFile, RuntimeError, EOFError, zlib.error):
+            with archive.open("MANIFEST.md") as manifest:     # the top is enough, whatever its size
+                text = manifest.read(2**20).decode("utf-8", "replace")
+    except (OSError, KeyError, zipfile.BadZipFile, RuntimeError, EOFError, ValueError, zlib.error):
         return {}
     if not text.startswith("# Workshop save:"):
         return {}
@@ -259,25 +261,37 @@ def inside_kit(target):
     return resolved == root or root in resolved.parents
 
 
-def write_file(target, data, executable=False):
-    """Writes through a temporary file, with the usual permissions (mkstemp gives 600).
-    Returns False if the content was already the same."""
+def stage_file(target, data, executable=False):
+    """Writes the content in a temporary file next to target, with the usual permissions (mkstemp
+    gives 600). Returns its path, or None if target already has this content."""
     if target.is_symlink() or not inside_kit(target):
         raise Refused(f"Refused to write {target}: it points outside the kit. Ask the facilitator.")
     if target.is_file() and target.read_bytes() == data:
-        return False
+        return None
     target.parent.mkdir(parents=True, exist_ok=True)
     if not inside_kit(target.parent):
         raise Refused(f"Refused to write {target}: it points outside the kit. Ask the facilitator.")
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".workshop-start-")
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
-        os.fchmod(f.fileno(), (0o777 if executable else 0o666) & ~UMASK)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            os.fchmod(f.fileno(), (0o777 if executable else 0o666) & ~UMASK)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+    return tmp
+
+
+def write_file(target, data, executable=False):
+    """Writes through a temporary file. Returns False if the content was already the same."""
+    tmp = stage_file(target, data, executable)
+    if tmp is None:
+        return False
     os.replace(tmp, target)
     return True
 
 
-def merge_index(rel, saved_lines, save):
+def merge_index(rel, saved_lines, save, write=write_file):
     """Adds the saved lines to corpus/index.md or summaries/index.md. A line that links to the
     same file replaces the old one; an identical line is left alone. Returns the number changed."""
     path = KIT / rel
@@ -296,19 +310,25 @@ def merge_index(rel, saved_lines, save):
             lines.append(line)
         changed += 1
     if changed:
-        write_file(path, ("\n".join(lines) + "\n").encode("utf-8"))
+        write(path, ("\n".join(lines) + "\n").encode("utf-8"))
     return changed
 
 
 def check_targets(files):
     """Every place is checked before anything is written: no file may land outside the kit,
-    even through a link (a folder of the kit that points elsewhere)."""
+    even through a link (a folder of the kit that points elsewhere), or where a folder has its
+    name, or under a file (the last renames would stop halfway)."""
+    names = {info.filename.removeprefix("index-lines/") for info in files}
     for info in files:
         target = KIT / info.filename.removeprefix("index-lines/")
         if not inside_kit(target) or any(p.is_symlink() for p in [target, *target.parents]
                                          if p != KIT and KIT in p.parents):
             raise Refused(f"Refused to restore {clean(info.filename)}: in this kit, it would land outside the "
                           "kit (through a link). Nothing was restored. Ask the facilitator.")
+        if target.is_dir() or any(p.is_file() or p.relative_to(KIT).as_posix() in names
+                                  for p in target.parents if KIT in p.parents):
+            raise Refused(f"Could not restore {clean(info.filename)}: a file and a folder have the same name. "
+                          "Nothing was restored. Ask the facilitator.")
 
 
 def restore(path, save):
@@ -317,7 +337,6 @@ def restore(path, save):
     archive, files, skipped = check_zip(path, save)
     with archive:
         check_targets(files)
-        saved_on = re.search(r"^Saved on: (.+)$", archive.read("MANIFEST.md").decode("utf-8", "replace"), re.M)
         # Wiki pages and the ingest/lint skills are saved as changes to the wiki pack: unpack the
         # pack first, then put the changes over it.
         if any(i.filename.startswith(("wiki/", ".claude/skills/ingest/", ".claude/skills/lint/")) for i in files) \
@@ -325,18 +344,38 @@ def restore(path, save):
             code, out = run([tool("wiki-start")])
             if code != 0:
                 raise Refused(f"Could not unpack the wiki before restoring your pages:\n{out}")
-        changed, unchanged, lines = [], [], {}
-        for info in files:
-            data = archive.read(info)
-            name = info.filename
-            if name.startswith("index-lines/"):
-                rel = name[len("index-lines/"):]
-                lines[rel] = merge_index(rel, data.decode("utf-8", "replace").splitlines(), save)
-            elif write_file(KIT / name, data, executable=bool((info.external_attr >> 16) & 0o100)):
-                changed.append(name)
-            else:
-                unchanged.append(name)
-    return (saved_on.group(1) if saved_on else "unknown date"), changed, unchanged, skipped, lines
+        changed, unchanged, lines, staged = [], [], {}, []
+
+        def stage(target, data, executable=False):
+            tmp = stage_file(target, data, executable)
+            if tmp:
+                staged.append((tmp, target))
+            return tmp is not None
+
+        # Every file is written next to its place first, and only then moved into it: a full disk
+        # or Ctrl+C while writing changes nothing.
+        try:
+            try:
+                for info in files:
+                    data = archive.read(info)
+                    name = info.filename
+                    if name.startswith("index-lines/"):
+                        rel = name[len("index-lines/"):]
+                        lines[rel] = merge_index(rel, data.decode("utf-8", "replace").splitlines(), save, stage)
+                    elif stage(KIT / name, data, executable=bool((info.external_attr >> 16) & 0o100)):
+                        changed.append(name)
+                    else:
+                        unchanged.append(name)
+            except OSError as e:
+                raise Refused(f"Could not restore {path.name} ({e.strerror or e}). Nothing was restored. "
+                              "If the disk is full, free some space, then type the same command again.") from None
+            for tmp, target in staged:
+                os.replace(tmp, target)
+        finally:
+            for tmp, _ in staged:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+    return manifest_fields(path).get("Saved on", "unknown date"), changed, unchanged, skipped, lines
 
 
 def number_clashes():

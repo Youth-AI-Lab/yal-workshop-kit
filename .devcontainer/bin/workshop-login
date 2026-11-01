@@ -2,7 +2,7 @@
 # Saves the API key of this pair and configures the engine of the workshop chatbot.
 #
 #   workshop-login                     asks for the key (one * per character while you paste it)
-#   workshop-login --key KEY           same, without asking (--key - reads it from the input: used by the server script)
+#   workshop-login --key -             same, without asking: reads the key from the input (for scripts)
 #   workshop-login --engine opencode   the chatbot runs in OpenCode instead of Claude Code (--engine claude: back)
 #   workshop-login --model MODEL       OpenCode only: another model than the default one
 #   workshop-login --models            lists the models OpenCode can use with the saved key
@@ -24,7 +24,8 @@ OPENROUTER_MODEL_ID="${WORKSHOP_OPENROUTER_MODEL:-anthropic/claude-sonnet-5.5}"
 KEY_FILE="$HOME/.workshop-key"
 ENGINE_FILE="$HOME/.workshop-engine"
 OPENCODE_FILE="$HOME/.workshop-opencode.json"
-USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL] [--key KEY]   (or: workshop-login --models [anthropic|openrouter])"
+USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL]   (or: workshop-login --models [anthropic|openrouter])"
+NOT_HERE='Type workshop-login alone, press Enter, then paste the key.'
 
 # Class mode (Open WebUI guide, one teacher, no facilitator): the same steps, other words.
 if [[ "${OPENWEBUI_MODE:-}" == class ]]; then
@@ -40,10 +41,17 @@ else
   OTHER='Tell the facilitator.'
 fi
 
+# Before anything reads the options: --engine and --model repeat their value in their messages.
+for arg in "$@"; do
+  case "$arg" in *sk-ant-*|*sk-or-*) echo "$NOT_HERE" >&2; exit 1 ;; esac      # never echo a key pasted on the line
+done
+
 key=""; key_given=0; engine=""; model=""; list_models=0; models_provider=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --key) key="${2:?--key needs a value}"; key_given=1; shift 2 ;;
+    --key)                                                    # only --key -: a key here would stay in ps and in the history
+      [[ "${2:-}" == "-" ]] || { echo "$NOT_HERE" >&2; exit 1; }
+      key="-"; key_given=1; shift 2 ;;
     --engine) engine="${2:?--engine needs a value: claude or opencode}"; shift 2 ;;
     --model) model="${2:?--model needs a model name}"; shift 2 ;;
     --models)

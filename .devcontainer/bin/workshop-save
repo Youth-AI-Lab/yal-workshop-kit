@@ -13,7 +13,8 @@ What goes in the file: only what you made or changed. Your AGENTS.md, your other
 test questions, your scores, your answers (answers/), your own skills, your summaries and their
 checks, the documents you added (corpus/ 80 to 89), today's fire danger data, your wiki pages;
 in workshop 6, your examples and your test (messages/), not the fine-tuned model. A file
-MANIFEST.md inside lists them.
+MANIFEST.md inside lists them. The workshop's own files stay out (SETUP.md, sheet.md,
+tools/sorter.py): if you changed one, the command tells you.
 
 If a save with the same name is already here and holds something else, it is kept under another
 name (with its date): saving never deletes an earlier save.
@@ -44,16 +45,21 @@ KIT_SKILLS = {"source-note", "summarize", "validate-summary"}
 KIT_EXAMPLES = {"AGENTS.feurisson.md", "AGENTS.liar.md", "AGENTS.overcautious.md",
                 "AGENTS.sophist.md", "AGENTS.storyteller.md"}
 # .md files at the top of the kit that are not other instructions (scores*.md are scores).
-NOT_DRAFTS = {"README.md", "CLAUDE.md", "AGENTS.md", "MANIFEST.md", "test-questions.md"}
+NOT_DRAFTS = {"README.md", "SETUP.md", "sheet.md", "CLAUDE.md", "AGENTS.md", "MANIFEST.md", "test-questions.md"}
 DRAFT = re.compile(r"(examples/)?[^./\\][^/\\]*\.md")    # "My bot.md", "examples/AGENTS.mine.md"
 # Single files of the kit that the pair may change.
 SINGLE_FILES = ("test-questions.md", "mcp/fire-danger.json")
+# Files of the workshop that a pair may change but a save must not carry: a restore would put them
+# over the next workshop's own version. workshop-save only says so.
+NOT_KEPT = ("SETUP.md", "sheet.md", "tools/sorter.py")
 # Folders where the pair's work lands. corpus/index.md and summaries/index.md are kept line by
 # line (index-lines/ in the zip), so that a restore adds lines instead of replacing the index.
 FOLDERS = ("answers", ".claude/skills", "summaries", "corpus", "wiki", "messages")
 INDEXES = ("corpus/index.md", "summaries/index.md")
 SKIP_PARTS = {"__pycache__", "graphify-out", ".DS_Store"}   # rebuilt, or not yours
 ADDED = re.compile(r"^8[0-9]-")                             # numbers given by corpus-add
+# What a damaged .zip can raise (ValueError: a name that is not UTF-8; RuntimeError: a password).
+BAD_ZIP = (OSError, zipfile.BadZipFile, KeyError, RuntimeError, EOFError, ValueError, zlib.error)
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LIST_ITEM = re.compile(r"\s*[*+-] \[")                     # "* [Title](…)", "- [Title](…)"
 DRAFTS_LABEL = "Your other instructions (.md files, examples/)"
@@ -198,9 +204,9 @@ def bad_name(rel):
         return True
 
 
-def collect(kit=KIT):
+def collect(kit=KIT, original=None):
     """Everything the pair made or changed, as a list of Item."""
-    original = Original(kit)
+    original = original or Original(kit)
     items = []
 
     agents = kit / "AGENTS.md"
@@ -238,7 +244,7 @@ def collect(kit=KIT):
         for path in sorted(base.rglob("*")):
             rel = path.relative_to(kit).as_posix()
             if (not path.is_file() or path.is_symlink() or rel in INDEXES
-                    or SKIP_PARTS.intersection(rel.split("/")) or path.name.startswith(".corpus-add-")
+                    or SKIP_PARTS.intersection(rel.split("/")) or path.name.startswith((".corpus-add-", ".workshop-start-"))
                     or bad_name(rel)):
                 continue
             data = path.read_bytes()
@@ -247,6 +253,8 @@ def collect(kit=KIT):
                     items.append(Item(rel, data))
             elif unknown_but_yours(rel):
                 items.append(Item(rel, data))
+            elif folder == "messages":
+                items.append(Item(rel, data, certain=False))   # no git: kept anyway, to be safe
 
     for rel in INDEXES:
         path = kit / rel
@@ -264,6 +272,16 @@ def collect(kit=KIT):
         if mine:
             items.append(Item(f"index-lines/{rel}", ("\n".join(mine) + "\n").encode("utf-8")))
     return items
+
+
+def left_out(original):
+    """Files of NOT_KEPT that the pair changed. Without git, nothing can be told."""
+    changed = []
+    for rel in NOT_KEPT if original.git else ():
+        path = original.kit / rel
+        if path.is_file() and not path.is_symlink() and not original.same(rel, path.read_bytes()):
+            changed.append(rel)
+    return changed
 
 
 def fingerprint(entries):
@@ -286,7 +304,7 @@ def zip_fingerprint(path):
             if "MANIFEST.md" not in names:
                 return None
             return fingerprint({n: archive.read(n) for n in names if n != "MANIFEST.md"})
-    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError, EOFError, zlib.error):
+    except BAD_ZIP:
         return None
 
 
@@ -327,31 +345,45 @@ def manifest(items, name):
         lines += ["> ℹ️ **Note.** Some files were kept without being compared with the original kit",
                   "> (no git in this workspace): " + ", ".join(f"`{i.arcname}`" for i in items if not i.certain) + ".",
                   ""]
-    lines += ["## How to restore", "",
-              "1. Open a new Codespace for the next workshop.",
+    if n == 6:                                   # the last workshop: this save only goes back there
+        open_it, type_it = "1. Open a new Codespace of workshop 6.", ["3. In the terminal, type this:", ""]
+        number, after = 6, ["`workshop-start` puts every file back in its place.", ""]
+    else:
+        open_it, number = "1. Open a new Codespace for the next workshop.", "<n>"
+        type_it = ["3. In the terminal, type this, with the number of the workshop instead of `<n>`",
+                   "   (for example `workshop-start 2 --from …` for workshop 2):", ""]
+        after = ["`workshop-start` puts every file back in its place. The lines of `index-lines/` are",
+                 "added to `corpus/index.md` and `summaries/index.md`.", ""]
+    lines += ["## How to restore", "", open_it,
               "2. Drag this .zip file into the file list (left panel), next to `README.md`.",
-              "3. In the terminal, type this, with the number of the workshop instead of `<n>`",
-              "   (for example `workshop-start 2 --from …` for workshop 2):", "",
+              *type_it,
               "   ```bash",
-              f"   workshop-start <n> --from {name}.zip",
-              "   ```", "",
-              "`workshop-start` puts every file back in its place. The lines of `index-lines/` are",
-              "added to `corpus/index.md` and `summaries/index.md`.", ""]
+              f"   workshop-start {number} --from {name}.zip",
+              "   ```", "", *after]
     return "\n".join(lines)
 
 
-def write_zip(items, out, name):
+def write_tmp(items, out, name):
+    """Writes the whole save next to out and returns its path. If that fails, removes it."""
     tmp = out.with_name(f".{out.name}.tmp")
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("MANIFEST.md", manifest(items, name))
-        for item in items:
-            # With its permissions: a script of a skill must still run after a restore.
-            info = zipfile.ZipInfo(item.arcname, datetime.datetime.now().timetuple()[:6])
-            info.compress_type = zipfile.ZIP_DEFLATED
-            path = KIT / item.arcname
-            info.external_attr = ((path.stat().st_mode & 0o777) if path.is_file() else 0o644) << 16
-            archive.writestr(info, item.data)
-    os.replace(tmp, out)
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("MANIFEST.md", manifest(items, name))
+            for item in items:
+                # With its permissions: a script of a skill must still run after a restore.
+                info = zipfile.ZipInfo(item.arcname, datetime.datetime.now().timetuple()[:6])
+                info.compress_type = zipfile.ZIP_DEFLATED
+                path = KIT / item.arcname
+                info.external_attr = ((path.stat().st_mode & 0o777) if path.is_file() else 0o644) << 16
+                archive.writestr(info, item.data)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp
+
+
+def write_zip(items, out, name):
+    os.replace(write_tmp(items, out, name), out)
 
 
 def keep_previous(out, items):
@@ -361,8 +393,12 @@ def keep_previous(out, items):
         return None
     with zipfile.ZipFile(out) as archive:
         names = [n for n in archive.namelist() if not n.endswith("/") and n != "MANIFEST.md"]
-        saved_on = re.search(r"^Saved on: (.+)$",
-                             archive.read("MANIFEST.md").decode("utf-8", "replace"), re.M)
+        try:
+            with archive.open("MANIFEST.md") as manifest_file:     # the top is enough, whatever its size
+                top = manifest_file.read(2**20).decode("utf-8", "replace")
+        except BAD_ZIP:                           # damaged: it is still kept, with the date of the file
+            top = ""
+    saved_on = re.search(r"^Saved on: (.+)$", top, re.M)
     stamp = slug(saved_on.group(1)) if saved_on else ""
     if not stamp:
         stamp = datetime.datetime.fromtimestamp(out.stat().st_mtime).strftime("%Y-%m-%d-%H%M")
@@ -401,15 +437,29 @@ def main():
         sys.exit(f"{out.name} already exists and is not a save of your work (from chatbot-export?).\n"
                  f'Choose another name, for example: workshop-save --name "{name}-work"')
 
-    items = collect(KIT)
+    original = Original(KIT)
+    items = collect(KIT, original)
+    changed = left_out(original)
+    not_saved = (f"! Changed but not saved: {', '.join(changed)}. A save keeps your work, not the workshop's "
+                 f'own files.\n  To keep a change, download that file too (right-click on it, then "Download...").')
     if not items:
-        print("Nothing to save yet: AGENTS.md is still empty and nothing else was made or changed."
-              if (KIT / "AGENTS.md").is_file() else "Nothing to save yet: nothing was made or changed.")
+        if changed:
+            print(not_saved)
+        else:
+            print("Nothing to save yet: AGENTS.md is still empty and nothing else was made or changed."
+                  if (KIT / "AGENTS.md").is_file() else "Nothing to save yet: nothing was made or changed.")
         return
-    previous = keep_previous(out, items)
-    write_zip(items, out, name)
+    tmp = write_tmp(items, out, name)             # the old save moves only once the new one is whole
+    try:
+        previous = keep_previous(out, items)
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
+    number = 6 if workshop_number() == 6 else "<number of the workshop>"
     print(f"Saved {len(items)} file{'s' if len(items) > 1 else ''} in {out.name}:")
     print("\n".join(summary_lines([i.arcname for i in items])))
+    if changed:
+        print(not_saved)
     if previous:
         kept, missing = previous
         print(f"Your earlier {out.name} is kept as {kept}, just in case. The newest is {out.name}.")
@@ -419,11 +469,12 @@ def main():
             print(f"! It has {len(missing)} file{'s' if many else ''} that {'are' if many else 'is'} not in "
                   f"the new save: {shown}.\n"
                   f"  If you forgot to bring it back with workshop-start, type:\n"
-                  f"    workshop-start <number of the workshop> --from {kept}\n"
+                  f"    workshop-start {number} --from {kept}\n"
                   f"  then workshop-save again.")
     print(f'To keep it: right-click on {out.name} in the file list, then "Download...".')
-    print(f"Next workshop, in a new Codespace: drag {out.name} into the file list, then type:")
-    print(f"  workshop-start <number of the workshop> --from {out.name}")
+    print(f"To go on later, in a new Codespace of workshop 6: drag {out.name} into the file list, then type:"
+          if number == 6 else f"Next workshop, in a new Codespace: drag {out.name} into the file list, then type:")
+    print(f"  workshop-start {number} --from {out.name}")
 
 
 if __name__ == "__main__":
@@ -433,4 +484,5 @@ if __name__ == "__main__":
         sys.exit(130)
     except Exception as e:                        # never a Python traceback for participants
         sys.exit(f"workshop-save stopped on an unexpected error ({type(e).__name__}: {e}). "
-                 "Nothing was changed in the kit. Ask the facilitator.")
+                 "This save may not be finished: do not download a .zip yet. "
+                 "Your work and your earlier saves are still here. Ask the facilitator.")
