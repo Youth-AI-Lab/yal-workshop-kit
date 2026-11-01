@@ -38,7 +38,8 @@ All six workshops answer **the same question**:
 
 > **What enters the model's context, when, and who decides?**
 
-The **model** is the program that writes the answers (here: Claude, made by Anthropic). The
+The **model** is the program that writes the answers (here: Claude, made by Anthropic, or another
+model with an OpenRouter key, see [SETUP.md](SETUP.md#your-environment)). The
 **context** is everything the model reads before it answers: your question, its instructions,
 and any document it was given. The model knows nothing else about your situation.
 
@@ -49,7 +50,7 @@ and any document it was given. The model knows nothing else about your situation
 | 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
 | 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
-| 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | When is it worth teaching a small model, instead of asking a big one? | your examples and your test; a small fine-tuned model; its comparison with Claude |
+| 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | When is it worth teaching a small model, instead of asking a big one? | your examples and your test; a small fine-tuned model; its comparison with a general chat model |
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
@@ -211,6 +212,7 @@ The workshops show one way to build a chatbot. Other guides of the project show 
 | Build one chatbot per topic, activity or project, and share it with a group during a session | [Open WebUI guide](https://github.com/Youth-AI-Lab/yal-openwebui-guide) | workshop 2 (instructions and knowledge) | you, then the young people of your group |
 | Keep the questions of your group on a computer of your organisation | [Local AI guide](https://github.com/Youth-AI-Lab/yal-local-ai-guide) | workshop 2, with the Open WebUI guide | your organisation; parts 1 to 3 and the start of part 6 need someone confident with a terminal |
 | Build a chatbot of your own with OpenCode, and choose how you pay for the model | [OpenCode guide](https://github.com/Youth-AI-Lab/yal-opencode-guide) | workshop 4 (instructions, documents, skills and a tool) | you, the adult: never for use with young people |
+| Use one OpenRouter key for every tool, without Claude, and try other models | [OpenRouter guide](https://github.com/Youth-AI-Lab/yal-openrouter-guide) | any workshop, before you start it | you, the adult; with young people, turn on zero-data-retention models hosted in Europe |
 | Get help to prepare your sessions, from an assistant that remembers you | [Hermes guide](https://github.com/Youth-AI-Lab/yal-hermes-guide) | workshop 4 (memory, skills and a tool) | you, the adult: never for use with young people |
 | Run the workshops and the guides on your own computer, without a Codespace | [Dev containers guide](https://github.com/Youth-AI-Lab/yal-devcontainer-guide) | any workshop, before you start it | you, or the colleague who helps you with your computer |
 
