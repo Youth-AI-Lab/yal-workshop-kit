@@ -227,6 +227,9 @@ See also [How this connects to WikiYouthBot](#how-this-connects-to-wikiyouthbot)
 To look up a word: the [glossary of the series](https://youth-ai-lab.github.io/yal-workshop/glossary.html),
 in plain language, with links to where each word is explained.
 
+To see what happens inside a model: [How a language model works](https://github.com/Youth-AI-Lab/yal-local-ai-guide/blob/main/how-an-llm-works.md), in the local AI
+guide: tokens, the context window and temperature, with pictures.
+
 And the two standards the series uses:
 
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).
