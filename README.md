@@ -224,6 +224,9 @@ Next, with young people (12–15): the **WikiYouthBot** activity.
 
 See also [How this connects to WikiYouthBot](#how-this-connects-to-wikiyouthbot).
 
+To look up a word: the [glossary of the series](https://youth-ai-lab.github.io/yal-workshop/glossary.html),
+in plain language, with links to where each word is explained.
+
 And the two standards the series uses:
 
 - [Model Context Protocol](https://modelcontextprotocol.io): the official site of MCP (workshop 4).
