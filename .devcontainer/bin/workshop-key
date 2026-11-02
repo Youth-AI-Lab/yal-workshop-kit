@@ -22,7 +22,7 @@ SETTINGS="$HOME/.claude/settings.json"
 can_sudo() { sudo -n true > /dev/null 2>&1; }
 
 # Écrit l'entrée dans un fichier neuf à root, en 0400 dès sa création, puis le renomme sur la clé.
-# noclobber : le fichier temporaire est créé avec O_EXCL, qui ne suit jamais un lien ; un lien ou un
+# mktemp : le fichier temporaire est créé avec O_EXCL, qui ne suit jamais un lien ; un lien ou un
 # fichier déjà là à ce nom fait échouer l'écriture, sans rien toucher. Le renommage remplace le nom
 # ~/.workshop-key lui-même (même si c'est un lien), jamais ce vers quoi il pointe. Une panne laisse
 # l'ancienne clé entière, une entrée vide aussi. Le chemin passe en argument : rien du dossier n'est
@@ -30,10 +30,13 @@ can_sudo() { sudo -n true > /dev/null 2>&1; }
 # exec : aucun processus de ce compte ne garde ouvert le tuyau qui porte la clé pendant que root la lit (un
 # processus de ce compte peut ouvrir /proc/<pid>/fd/0 d'un autre et vider le tuyau : mesuré).
 save_as_root() {
+  # mktemp crée le fichier en 0600 avec O_EXCL : sous une ACL par défaut (/tmp et /workspaces d'un
+  # Codespace), l'umask est ignoré mais le mode demandé à la création compte encore. Un « cat > » crée
+  # en 0666 et sortait en 646 (mesuré dans un vrai Codespace, 2026-11-02) ; d'où mktemp, puis 0400 explicite.
   ( exec sudo -n bash -c 'set -euo pipefail
-    umask 277; set -C
-    t="$1.$(od -An -N8 -tx1 /dev/urandom | tr -d " \n")"
-    if cat > "$t" && [ -s "$t" ] && mv -fT -- "$t" "$1"; then exit 0; fi
+    umask 277
+    t="$(mktemp -- "$1.XXXXXXXX")"
+    if cat >> "$t" && [ -s "$t" ] && chmod 400 -- "$t" && mv -fT -- "$t" "$1"; then exit 0; fi
     rm -f -- "$t"; exit 1' bash "$KEY_FILE" 2> /dev/null )
 }
 
