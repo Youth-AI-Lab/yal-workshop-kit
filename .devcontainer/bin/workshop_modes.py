@@ -202,8 +202,10 @@ def preload(kit):
 
 def mode_b_fits(kit, context):
     """False when the whole kit cannot fit in a window of this many tokens; True when no window is known.
-    Claude's gauge showed 100.7k tokens for these 232,844 characters, about 2.3 a token. No count exists for
-    another model, and OpenCode adds its own text: 2 keeps a margin."""
+    count_tokens (claude-sonnet-5-5, 2026-11-02) gives 99,621 tokens for these 234,096 characters, about 2.35 a
+    token (facilitator/workshops/measures/2026-11-02-mode-b-tokens/; Claude's gauge showed 100.7k on the text
+    before the 2026-11-01 corrections). No count exists for another model, and OpenCode adds its own text:
+    2 keeps a margin."""
     return not context or len(preload(kit)) // 2 < context
 
 
