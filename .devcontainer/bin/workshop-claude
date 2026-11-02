@@ -42,18 +42,23 @@ READ_ONLY = ("Bash(ls:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(
 # 2026-11-01-cle/) : la clé est désormais à root (workshop-key), et c'est sudo qui la protège. sudo et ce qui
 # en tient lieu rendraient la clé : refusés ici sans question, même si une personne dirait oui. Le chemin
 # complet, env, exec et un shell de plus étaient seulement demandés (mesuré, 2.1.303).
-# find -exec/-execdir/-ok/-okdir (find est autorisé, mais Claude Code demande pour ces actions), find par son
-# chemin complet, $(…) et ${…} (« can't be checked ») étaient encore demandés : refusés ici, mesuré avec
-# 2.1.303 en modes C et D (facilitator/workshops/measures/2026-11-02-regles-find/) ; les 44 commandes
-# ordinaires du banc passent toujours sans question. Prix : « find … -exec grep … » et « grep x $(ls …) » sont
-# refusés au lieu d'être demandés. La règle porte sur le texte : -e"xec", -\exec ou -o'k' restent demandés.
+# find -exec/-execdir/-ok/-okdir (find est autorisé, mais Claude Code demande pour ces actions), $(…) et ${…}
+# (« can't be checked ») sont demandés : une personne pourrait dire oui. Règles ciblées : refusés ici seulement
+# quand sudo ou workshop-key suit dans le texte (find aussi par son chemin complet, \find, command find ; le
+# chemin de la clé contient workshop-key). Les mêmes commandes sans ces mots (« find … -exec grep … »,
+# « grep x $(ls …) », « echo ${HOME} ») restent demandées, comme avant. Mesuré avec 2.1.303 en modes C et D
+# (facilitator/workshops/measures/2026-11-02-regles-ciblees/) : 39 formes refusées, les 45 cas ordinaires du
+# banc inchangés (44 sans question). La règle porte sur le texte : -e"xec", -\exec, -o'k', $(echo su""do) avec
+# le chemin de la clé coupé (.work''shop-key) restent demandés. Prix : « find … -exec grep -l sudo … » et
+# « grep 'find -exec sudo' … » sont refusés.
 NEVER = ("Bash(wc:*)", "Bash(du:*)", "Bash(tree:*)", "Bash(diff:*)", "Bash(git:*)", "Bash(docker:*)",
          "Bash(sudo:*)", "Bash(sudoedit:*)", "Bash(su:*)", "Bash(pkexec:*)", "Bash(workshop-key:*)",
          "Bash(/usr/bin/sudo:*)", "Bash(/bin/sudo:*)", "Bash(/usr/bin/sudoedit:*)", "Bash(/usr/bin/su:*)",
          "Bash(/bin/su:*)", "Bash(/usr/local/bin/workshop-key:*)", "Bash(env:*)", "Bash(exec:*)",
          "Bash(sh:*)", "Bash(bash:*)", "Bash(zsh:*)", "Bash(dash:*)",
-         "Bash(find *-exec*)", "Bash(find *-ok*)", "Bash(/usr/bin/find:*)", "Bash(/bin/find:*)",
-         "Bash(*$(*)", "Bash(*${*)")
+         "Bash(*find *-exec*sudo*)", "Bash(*find *-exec*workshop-key*)", "Bash(*find *-ok*sudo*)",
+         "Bash(*find *-ok*workshop-key*)", "Bash(*$(*sudo*)", "Bash(*$(*workshop-key*)", "Bash(*${*sudo*)",
+         "Bash(*${*workshop-key*)")
 # Only the kit's MCP servers can be loaded. Permission mode "manual" (not the default "auto"): Claude
 # Code asks before it writes a file. The auto and bypass modes are switched off, so a permission prompt
 # cannot offer "switch to auto mode". No skills bundled with Claude Code (code review, charts,
