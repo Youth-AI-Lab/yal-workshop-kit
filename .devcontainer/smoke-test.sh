@@ -18,7 +18,7 @@ claude --version
 [[ "$(claude --version)" == "$attendu "* ]] || echec "version attendue : $attendu"
 
 etape "Commandes de l'atelier"
-for c in workshop workshop-claude workshop-opencode replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start; do command -v "$c" || echec "$c absent"; done
+for c in workshop workshop-claude workshop-opencode replay workshop-login corpus-add wiki-start wiki-graph wiki-explore chatbot-export openwebui score workshop-save workshop-start workshop-key; do command -v "$c" || echec "$c absent"; done
 
 etape "zsh et oh-my-zsh pour vscode (shell par défaut des terminaux, réglage dans les métadonnées de l'image)"
 command -v zsh || echec "zsh absent"
@@ -239,6 +239,77 @@ for v in CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_FAST_MODE; do
   grep -q "\"$v\": \"1\"" "$HOME/.claude/settings.json" || echec "settings.json : $v absent (jauge sur 1M ou mode rapide)"
 done
 
+etape "La clé est à root, en 0400 : workshop-key et apiKeyHelper la lisent, ce compte non"
+CLE=sk-ant-api03-SMOKETEST0000000000
+sudo -n true 2>/dev/null || echec "pas de sudo sans mot de passe : la clé resterait lisible par le modèle"
+[[ "$(stat -c '%U %a' "$HOME/.workshop-key")" == "root 400" ]] || echec "clé : $(stat -c '%U %a' "$HOME/.workshop-key"), root 400 attendu"
+[[ "$(workshop-key status)" == locked ]] || echec "workshop-key status : locked attendu"
+if cat "$HOME/.workshop-key" > /dev/null 2>&1; then echec "clé lisible sans sudo"; fi
+[[ "$(workshop-key read)" == "$CLE" ]] || echec "workshop-key read"
+code=0; script -qec "workshop-key read" /dev/null > /tmp/out 2>&1 || code=$?
+{ [[ $code != 0 ]] && ! grep -q SMOKETEST /tmp/out; } || echec "workshop-key read a écrit la clé dans un terminal"
+grep -qF "\"apiKeyHelper\": \"sudo -n cat $HOME/.workshop-key 2>/dev/null\"" "$HOME/.claude/settings.json" || echec "apiKeyHelper : sudo attendu"
+[[ "$(sh -c "$(workshop-key helper)")" == "$CLE" ]] || echec "apiKeyHelper ne rend pas la clé"
+[[ -z "$(find "$HOME" -maxdepth 1 -name '.workshop-key?*')" ]] || echec "fichier temporaire de clé laissé"
+/opt/workshop/venv/bin/python -I -c "
+import sys; sys.path.insert(0, '$(dirname "$(realpath "$(command -v workshop-login)")")')
+import workshop_provider as p
+assert p.read_key() == '$CLE', 'read_key'" || echec "workshop_provider.read_key : la clé à root n'est pas relue"
+# Entrée seule : la clé gardée, toujours à root.
+code=0; printf '\n' | script -qec "workshop-login" /dev/null > /tmp/out 2>&1 || code=$?
+grep -q "the saved key is kept" /tmp/out || { cat /tmp/out; echec "Entrée seule : clé gardée attendue"; }
+if grep -q SMOKETEST /tmp/out; then echec "Entrée seule : clé affichée"; fi
+[[ "$(stat -c '%U %a' "$HOME/.workshop-key")" == "root 400" && "$(workshop-key read)" == "$CLE" ]] || echec "Entrée seule : clé changée"
+# Un lien à la place de la clé : jamais suivi par root.
+mv "$HOME/.workshop-key" "$HOME/.workshop-key.vraie"; ln -s /etc/hostname "$HOME/.workshop-key"
+if workshop-key read > /tmp/out 2>&1; then echec "workshop-key read a suivi un lien"; fi
+[[ -z "$(/opt/workshop/venv/bin/python -I -c "import sys; sys.path.insert(0, '$(dirname "$(realpath "$(command -v workshop-login)")")'); import workshop_provider as p; print(p.read_key())")" ]] || echec "read_key a suivi un lien"
+rm "$HOME/.workshop-key"; mv "$HOME/.workshop-key.vraie" "$HOME/.workshop-key"
+
+etape "Une ancienne clé en 600 passe à root sans se perdre, une seule fois, et apiKeyHelper suit"
+h=$(mktemp -d); mkdir "$h/.claude"
+(umask 077; printf 'sk-ant-OLD0000000000\n' > "$h/.workshop-key")
+printf '{\n  "apiKeyHelper": "cat %s/.workshop-key",\n  "env": { "ANTHROPIC_MODEL": "claude-sonnet-5-5" }\n}\n' "$h" > "$h/.claude/settings.json"
+for i in 1 2; do
+  HOME="$h" workshop-key lock || echec "workshop-key lock ($i)"
+  [[ "$(stat -c '%U %a' "$h/.workshop-key")" == "root 400" ]] || echec "clé en 600 non passée à root ($i)"
+  [[ "$(HOME="$h" workshop-key read)" == sk-ant-OLD0000000000 ]] || echec "clé perdue au passage à root ($i)"
+  grep -qF "\"apiKeyHelper\": \"sudo -n cat $h/.workshop-key 2>/dev/null\"" "$h/.claude/settings.json" || echec "apiKeyHelper non remis d'accord ($i)"
+  grep -qF '"ANTHROPIC_MODEL": "claude-sonnet-5-5"' "$h/.claude/settings.json" || echec "settings.json : réglage perdu ($i)"
+done
+# workshop le fait lui-même au démarrage.
+(umask 077; rm -f "$h/.workshop-key"; printf 'sk-ant-OLD1111111111\n' > "$h/.workshop-key")
+printf '{\n  "apiKeyHelper": "cat %s/.workshop-key"\n}\n' "$h" > "$h/.claude/settings.json"
+HOME="$h" WORKSHOP_DRY_RUN=1 workshop C -p hi > /dev/null 2>&1 || true
+[[ "$(stat -c '%U %a' "$h/.workshop-key")" == "root 400" && "$(HOME="$h" workshop-key read)" == sk-ant-OLD1111111111 ]] || echec "workshop : ancienne clé non passée à root"
+grep -qF "sudo -n cat $h/.workshop-key" "$h/.claude/settings.json" || echec "workshop : apiKeyHelper non remis d'accord"
+# Une clé refusée ne remplace pas une clé à root (faux curl).
+b=$(mktemp -d); printf '#!/bin/sh\ncat > /dev/null; echo 401\n' > "$b/curl"; chmod +x "$b/curl"
+code=0; printf '%s\n' sk-ant-NEW0000000000 | HOME="$h" PATH="$b:$PATH" workshop-login --key - 2>/tmp/err || code=$?
+[[ "$code" == 2 ]] && grep -q "earlier key is kept" /tmp/err || { cat /tmp/err; echec "clé refusée (clé à root) : message attendu"; }
+[[ "$(HOME="$h" workshop-key read)" == sk-ant-OLD1111111111 ]] || echec "clé refusée : la clé à root a été remplacée"
+# Remplacée par une clé qui marche (faux curl à 200) : à root, et aucun fichier temporaire.
+printf '#!/bin/sh\ncat > /dev/null; printf 200\n' > "$b/curl"
+printf '%s\n' sk-ant-NEW2222222222 | HOME="$h" PATH="$b:$PATH" workshop-login --key - > /tmp/out 2>&1 || { cat /tmp/out; echec "nouvelle clé (faux curl 200)"; }
+if grep -q NEW2222 /tmp/out; then echec "nouvelle clé : affichée en entier"; fi
+[[ "$(stat -c '%U %a' "$h/.workshop-key")" == "root 400" && "$(HOME="$h" workshop-key read)" == sk-ant-NEW2222222222 ]] || echec "nouvelle clé : non enregistrée à root"
+[[ -z "$(find "$h" -maxdepth 1 -name '.workshop-key?*')" ]] || echec "nouvelle clé : fichier temporaire laissé"
+rm -rf "$h" "$b"
+
+etape "Sans sudo sans mot de passe : clé en 600, un message, rien de cassé (faux sudo)"
+h=$(mktemp -d); b=$(mktemp -d); mkdir "$h/.claude"
+printf '#!/bin/sh\necho "sudo: a password is required" >&2; exit 1\n' > "$b/sudo"; chmod +x "$b/sudo"
+printf '#!/bin/sh\ncat > /dev/null; printf 200\n' > "$b/curl"; chmod +x "$b/curl"
+printf '%s\n' sk-ant-NOSUDO000000 | HOME="$h" PATH="$b:$PATH" workshop-login --key - > /tmp/out 2>&1 || { cat /tmp/out; echec "sans sudo : workshop-login"; }
+[[ "$(grep -c "cannot be locked away" /tmp/out)" == 1 ]] || { cat /tmp/out; echec "sans sudo : un message attendu, une fois"; }
+[[ "$(stat -c '%U %a' "$h/.workshop-key")" == "$(id -un) 600" ]] || echec "sans sudo : clé en 600 attendue"
+[[ "$(HOME="$h" PATH="$b:$PATH" workshop-key read)" == sk-ant-NOSUDO000000 ]] || echec "sans sudo : workshop-key read"
+grep -qF "\"apiKeyHelper\": \"cat $h/.workshop-key\"" "$h/.claude/settings.json" || echec "sans sudo : apiKeyHelper cat attendu"
+HOME="$h" PATH="$b:$PATH" WORKSHOP_DRY_RUN=1 workshop C -p hi > /tmp/out 2>&1 || { cat /tmp/out; echec "sans sudo : workshop ne démarre pas"; }
+if grep -q "cannot be locked" /tmp/out; then echec "sans sudo : message répété au démarrage"; fi
+[[ "$(stat -c '%U %a' "$h/.workshop-key")" == "$(id -un) 600" ]] || echec "sans sudo : workshop a changé la clé"
+rm -rf "$h" "$b"
+
 etape "Une clé refusée ne remplace pas une clé enregistrée (faux curl)"
 h=$(mktemp -d); b=$(mktemp -d); printf '#!/bin/sh\necho 401\n' > "$b/curl"; chmod +x "$b/curl"
 printf 'sk-ant-OLD0000000000\n' > "$h/.workshop-key"
@@ -302,6 +373,7 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         corps = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         with open(journal, "a") as f: f.write(json.dumps(corps) + "\n")
+        with open(journal + "-cle", "a") as f: f.write(str(self.headers.get("authorization")) + "\n")
         if "only" in corps.get("provider", {}) and (corps["model"] == "test/hors-europe"
                                                     or (corps["model"] == europeen and os.path.exists(refus + "-europeen"))):
             return self.rend(404, {"error": {"message": "No allowed providers are available for the selected model."}})
@@ -328,7 +400,7 @@ connexion() { # la clé (vide : Entrée seule), puis les options de workshop-log
   printf '%s\n' "$k" | HOME="$h" PATH="$b:$PATH" WORKSHOP_OPENROUTER_API=http://127.0.0.1:8797/api/v1 workshop-login "$@"
 }
 etat() { # clé attendue, moteur attendu, modèle attendu pour OpenCode
-  [[ "$(cat "$h/.workshop-key")" == "$1" ]] || echec "clé enregistrée : attendu ${1:0:7}…"
+  [[ "$(HOME="$h" workshop-key read)" == "$1" ]] || echec "clé enregistrée : attendu ${1:0:7}…"
   [[ "$(cat "$h/.workshop-engine")" == "$2" ]] || echec "moteur enregistré : attendu $2"
   grep -qF "\"model\": \"$3\"" "$h/.workshop-opencode.json" || { cat "$h/.workshop-opencode.json"; echec "modèle enregistré : attendu $3"; }
 }
@@ -397,6 +469,10 @@ assert "matches" in reponse and "ripgrep execution failed" not in reponse, repon
 print("deux requêtes, modèle par défaut, routage dans chacune, recherche :", reponse.split(chr(10))[0])
 PY
 [[ -z "$(find "$h" -type f -name rg)" ]] || echec "OpenCode a téléchargé son propre rg alors qu'il y en a un sur le PATH"
+# La clé, à root, arrive quand même au point d'accès (par une variable de la seule session d'OpenCode).
+[[ "$(stat -c '%U' "$h/.workshop-key")" == root ]] || echec "clé OpenRouter : pas à root"
+[[ "$(tail -1 "$b/journal-cle")" == "Bearer $OR" ]] || { tail -2 "$b/journal-cle"; echec "OpenCode n'a pas envoyé la clé enregistrée"; }
+if grep -rqs SMOKETEST "$h/.workshop-run" "$h/.local" "$h/.cache" "$h/.config"; then echec "la clé est restée dans un fichier d'OpenCode"; fi
 
 etape "workshop-login --europe : enregistré, gardé, retiré, perdu au changement de fournisseur, refusé avec une clé Anthropic"
 fichier="$h/.workshop-opencode.json"
@@ -471,10 +547,11 @@ sortie="$(OPENWEBUI_MODE=class connexion "" 2>&1)" || { echo "$sortie"; echec "-
 if grep -q "young people" <<< "$sortie"; then echo "$sortie"; echec "--europe en mode classe : pas d'avertissement attendu"; fi
 grep -qF "Key OK (OpenRouter, model $europeen, hosted in Europe). You can start: openwebui start" <<< "$sortie" || { echo "$sortie"; echec "--europe en mode classe : Key OK attendu"; }
 # Clé Anthropic : rien n'est enregistré.
-avant="$(cat "$h/.workshop-key" "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json" | sha256sum)"
+lu() { { HOME="$h" workshop-key read; cat "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json"; } | sha256sum; }
+avant="$(lu)"
 code=0; connexion "$ANT" --europe > /dev/null 2>/tmp/err || code=$?
 { [[ "$code" == 1 ]] && grep -qF -- "--europe needs an OpenRouter key" /tmp/err && grep -q "Nothing saved" /tmp/err; } || { cat /tmp/err; echec "--europe avec une clé Anthropic : refus attendu, code $code"; }
-[[ "$avant" == "$(cat "$h/.workshop-key" "$h/.workshop-engine" "$fichier" "$h/.claude/settings.json" | sha256sum)" ]] || echec "--europe avec une clé Anthropic : quelque chose a été enregistré"
+[[ "$avant" == "$(lu)" ]] || echec "--europe avec une clé Anthropic : quelque chose a été enregistré"
 # --no-europe : le modèle reste, la règle et la fenêtre reviennent, l'avertissement aussi.
 sortie="$(OPENWEBUI_MODE=class connexion "" --no-europe 2>&1)" || { echo "$sortie"; echec "--no-europe"; }
 if grep -q '"europe"' "$fichier"; then cat "$fichier"; echec "--no-europe : réglage resté"; fi
@@ -645,6 +722,11 @@ attendus="$(( $(find "$KIT/summaries" -maxdepth 1 -name '[1-9]*.md' | wc -l) + $
 charges="$(grep -cE '^## Document: (summaries|corpus/text)/[1-9]' "$fichier")"
 [[ "$charges" == "$attendus" ]] || echec "mode B : $charges documents chargés sur $attendus"
 echo "B : $charges documents (résumés et copies lisibles du corpus) chargés au démarrage"
+# Un lien dans summaries/ n'entre jamais dans les instructions (il mènerait à la clé ou à /proc/self/environ).
+ln -s "$HOME/.workshop-key" "$copie/summaries/98-lien.md"
+fichier="$(a_la_suite "$(WORKSHOP_HOME="$copie" reglages B)" --append-system-prompt-file)"
+if grep -q "summaries/98-lien.md" "$fichier"; then echec "mode B : un lien a été chargé"; fi
+rm "$copie/summaries/98-lien.md"
 r="$(reglages C)"
 [[ "$(a_la_suite "$r" --tools)" == "Read,Bash,Edit,Write,Skill" ]] || echec "mode C : outils inattendus"
 grep -qxF -- --mcp-config <<< "$r" && echec "mode C : serveur MCP chargé"
@@ -661,7 +743,8 @@ for m in C D E; do
   grep -q "test-questions.md, scores.md, answers/ or examples/" <<< "$r" || echec "mode $m : consigne sur le matériel de test absente"
   # wc, du, tree, diff et git montrent ~/.workshop-key malgré le blocage hors du dossier (--files0-from, --fromfile,
   # --from-file, git blame --ignore-revs-file) ; docker inspect, la clé donnée à Open WebUI.
-  for c in wc du tree diff git docker; do
+  # sudo et ce qui en tient lieu, workshop-key : ils rendraient la clé, à root.
+  for c in wc du tree diff git docker sudo sudoedit su pkexec workshop-key /usr/bin/sudo env exec sh bash; do
     grep -qF "\"Bash($c:*)\"" <<< "$r" || echec "mode $m : règle de refus Bash($c:*) absente (la clé serait lisible)"
     grep -qxF -- "Bash($c:*)" <<< "$r" && echec "mode $m : Bash($c:*) autorisé"
   done
@@ -873,6 +956,13 @@ for m in "bare A B C D E F".split():
         # "cat ~/.workshop-key" (OpenCode matches the whole line). And never the key file.
         assert not [p for p in perms if p["action"] == "shell" and p["effect"] == "allow"], f"{m}: shell allowed"
         assert {"action": "read", "resource": "*workshop-key*", "effect": "deny"} in perms, f"{m}: key readable"
+        # La clé est dans l'environnement d'OpenCode : /proc et /dev jamais, même sur approbation ; sudo jamais.
+        for place in ("/proc", "/proc/*", "/dev", "/dev/*"):
+            for action in ("read", "external_directory"):
+                assert {"action": action, "resource": place, "effect": "deny"} in perms, f"{m}: {action} {place}"
+        for line in ("*sudo*", "env", "*printenv*", "*environ*"):
+            assert {"action": "shell", "resource": line, "effect": "deny"} in perms, f"{m}: shell {line}"
+    assert c["providers"][next(iter(c["providers"]))]["settings"]["apiKey"] == "{env:WORKSHOP_OPENCODE_KEY}", f"{m}: apiKey"
     assert ("fire-danger" in servers) == (m in "DEF"), f"{m}: MCP fire-danger"
     assert ("time" in servers) == (m in "DEF"), f"{m}: MCP time"
     if m in "DEF":
@@ -880,6 +970,12 @@ for m in "bare A B C D E F".split():
     assert ("graphify" in servers) == (m == "F"), f"{m}: MCP graphify"
 print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP (fire-danger, time), F graphify ; aucune clé dans la configuration")
 PY
+# Un lien vers l'extérieur du dossier : OpenCode ne démarre pas en C (read y lirait /proc/self/environ).
+ln -s /proc/self/environ "$copie/inbox/lien-dehors.md"
+code=0; oc C > /tmp/out 2>&1 || code=$?
+{ [[ $code == 1 ]] && grep -q "leads outside it: inbox/lien-dehors.md" /tmp/out; } || { cat /tmp/out; echec "OpenCode : lien vers l'extérieur non refusé"; }
+oc A > /dev/null || echec "OpenCode, mode A : sans outils, un lien ne gêne pas"
+rm "$copie/inbox/lien-dehors.md"
 WORKSHOP_WEATHER=1 oc D > /tmp/oc-weather.json || echec "OpenCode, WORKSHOP_WEATHER=1 : configuration non produite"
 /opt/workshop/venv/bin/python - <<'PY' || echec "OpenCode, WORKSHOP_WEATHER=1 : configuration inattendue"
 import json

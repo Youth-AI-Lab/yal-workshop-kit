@@ -181,7 +181,9 @@ def preload(kit):
             # Not hidden files (an editor's lock or backup), as the shell's *.md; a badly encoded file
             # is sent with its odd characters replaced, never refused. A file name that is not UTF-8
             # cannot be written in the text: that file is left out.
-            if f.name in PRELOAD_SKIPPED or f.name.startswith(("00-", ".")) or not f.is_file():
+            # Jamais un lien : il mènerait n'importe où (la clé, /proc/self/environ) et son contenu partirait
+            # dans les instructions du modèle.
+            if f.name in PRELOAD_SKIPPED or f.name.startswith(("00-", ".")) or f.is_symlink() or not f.is_file():
                 continue
             try:
                 f.name.encode("utf-8")
@@ -189,7 +191,12 @@ def preload(kit):
                 print(f"Left out: {f.name.encode('utf-8', 'replace').decode()}. Its name has odd characters: "
                       "rename it.", file=sys.stderr)
                 continue
-            body += f"\n\n## Document: {f.relative_to(kit)}\n\n" + f.read_text(encoding="utf-8", errors="replace")
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                print(f"Left out: {f.name}. It cannot be read.", file=sys.stderr)
+                continue
+            body += f"\n\n## Document: {f.relative_to(kit)}\n\n" + text
     return body
 
 

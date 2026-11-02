@@ -31,8 +31,8 @@ Environment (the same names as `workshop`):
     WORKSHOP_DRY_RUN=1     print what would run (one JSON object, below) instead of running it
     WORKSHOP_OPENCODE_MODEL     a model of this key's provider instead of the saved one (tests)
     WORKSHOP_OPENCODE_BASEURL   send the model requests to this URL (tests: a fake endpoint)
-Read: ~/.workshop-key (the key, never copied: the config points to the file) and
-~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
+Read: ~/.workshop-key (through workshop_provider.read_key(): the key reaches OpenCode in the variable
+KEY_VAR below, never in the config) and ~/.workshop-opencode.json, written by workshop-login: {"provider": "anthropic",
 "model": "anthropic/claude-sonnet-5-5"} (optional "context": the size of the model's window;
 without it, 200k for Claude models and OpenCode's catalogue for the others; optional "cost": what the
 model costs, for the cost shown: {"input": 0.1, "output": 0.3}, in $ per million tokens; optional
@@ -70,6 +70,7 @@ serve (used by replay; one server per replay):
                  has the key in clear). Then check that the saved key still fits the model.
     Without a key: the same message as workshop, exit 1. Stop the server with SIGTERM.
 """
+import functools
 import json
 import os
 import re
@@ -91,6 +92,12 @@ BARE_DIR = Path(os.environ.get("WORKSHOP_BARE_DIR") or Path.home() / ".workshop-
 RUN_DIR = Path(os.environ.get("WORKSHOP_RUN_DIR") or Path.home() / ".workshop-run")
 GRAPHIFY_MCP = os.environ.get("WORKSHOP_GRAPHIFY_MCP", "/opt/workshop/venv/bin/graphify-mcp")
 KEY_FILE = workshop_provider.KEY_FILE
+# La clé est à root (workshop-key) : OpenCode, qui ne passe pas par sudo, ne peut plus la lire par
+# {file:...}. Elle lui arrive par cette variable, dans l'environnement de son seul processus (jamais
+# dans la configuration, ni chez les clients de --server). Le modèle n'a pas de shell sans demande, et
+# read, grep et glob ne vont jamais dans /proc ni /dev (tools_of) ; un lien du dossier vers l'extérieur
+# empêche de démarrer (check_links).
+KEY_VAR = "WORKSHOP_OPENCODE_KEY"
 
 MAX_OUTPUT = 8192  # OpenRouter: the longest answer of one step
 STEPS = 15  # like `replay`'s --max-turns 15 (the last step is a forced text answer)
@@ -107,6 +114,13 @@ def fail(message, code=1):
     sys.exit(code)
 
 
+@functools.cache
+def the_key():
+    """La clé, lue une seule fois : celle qui choisit le fournisseur est celle qu'OpenCode reçoit (un
+    workshop-login dans un autre terminal ne peut pas envoyer une clé d'une entreprise à l'autre)."""
+    return workshop_provider.read_key()
+
+
 def rule(action, resource, effect):
     return {"action": action, "resource": resource, "effect": effect}
 
@@ -119,7 +133,7 @@ def model_choice():
     prefix = saved_model.split("/", 1)[0]
     saved_provider = str(saved.get("provider") or (prefix if prefix in DEFAULT_MODEL else ""))
     named = os.environ.get("WORKSHOP_OPENCODE_MODEL") or ""
-    key_provider = workshop_provider.provider_of(workshop_provider.read_key())
+    key_provider = workshop_provider.provider_of(the_key())
     if key_provider is workshop_provider.ANTHROPIC and named.startswith(workshop_provider.OPENROUTER.name + "/"):
         fail(f"The model {named} is an OpenRouter model, but the saved key is an Anthropic key. Nothing was sent.")
     if key_provider is None:  # not a key of the workshop: the file decides, the request will show the problem
@@ -223,6 +237,24 @@ def check_wiki(mode):
         fail("This wiki has no wiki/AGENTS.md (it comes from an older kit). Ask the facilitator.")
 
 
+def check_links():
+    """Un lien du dossier vers l'extérieur (vers /proc/self/environ, ou vers un dossier qui y mène) donnerait
+    la clé à read, grep et skill, qui suivent un lien sans regarder où il va. Aucun au démarrage : le modèle
+    n'en crée pas (pas de shell sans demande), une personne ou un fichier restauré peut en apporter un."""
+    root = KIT.resolve()
+    for folder, dirs, files in os.walk(KIT):
+        for name in dirs + files:
+            path = Path(folder) / name
+            if path.is_symlink():
+                try:
+                    inside = path.resolve().is_relative_to(root)
+                except (OSError, RuntimeError):  # une boucle de liens
+                    inside = False
+                if not inside:
+                    fail(f"This folder has a link that leads outside it: {path.relative_to(KIT)}\n"
+                         "Remove it (rm, in the terminal), then start the chatbot again.")
+
+
 def new_run_dir(mode):
     """A new run folder at each start (two sessions never share one); those older than a day go."""
     RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -285,12 +317,27 @@ def tools_of(mode):
                   # (external_directory does not apply to shell commands). grep, glob and read search the kit.
                   rule("edit", "*", "ask"), rule("shell", "*", "ask"),
                   # "opencode api get /api/model" prints the key in clear (OpenCode 2.1.4): never.
-                  rule("shell", "opencode*", "deny"), rule("shell", "*opencode *", "deny")]
+                  rule("shell", "opencode*", "deny"), rule("shell", "*opencode *", "deny"),
+                  # sudo et ce qui en tient lieu rendraient la clé (à root) : jamais, même si une personne dirait oui.
+                  rule("shell", "*sudo*", "deny"), rule("shell", "su", "deny"), rule("shell", "su *", "deny"),
+                  rule("shell", "*pkexec*", "deny"), rule("shell", "*workshop-key*", "deny"),
+                  # Le shell hérite de la clé (KEY_VAR) : les commandes qui montrent l'environnement, jamais, même
+                  # si une personne dirait oui à ce qui paraît anodin. (Un programme qui lit son environnement
+                  # reste possible sur approbation : python3 -c, node -e… La personne voit la commande.)
+                  rule("shell", "env", "deny"), rule("shell", "env *", "deny"), rule("shell", "*printenv*", "deny"),
+                  rule("shell", "*environ*", "deny"), rule("shell", "*OPENCODE_KEY*", "deny"),
+                  rule("shell", "set", "deny"), rule("shell", "export", "deny"), rule("shell", "export -p", "deny"),
+                  rule("shell", "declare*", "deny"), rule("shell", "typeset*", "deny"), rule("shell", "*/proc/*", "deny")]
         # Outside the kit: never without asking (OpenCode's default is to allow).
         perms += [rule("external_directory", "*", "ask")]
         # The pair's key: the read tool can never open it. (grep is matched on its pattern, not on its
         # path: if a person approves a folder outside the kit, grep could still find it. Never approve one.)
         perms += [rule("read", "*workshop-key*", "deny")]
+        # La clé est dans l'environnement du processus d'OpenCode (KEY_VAR), que /proc/<pid>/environ montre,
+        # et /dev/fd, /dev/stdin… mènent dans /proc : jamais, même sur approbation.
+        for place in ("/proc", "/dev"):
+            perms += [rule("external_directory", place, "deny"), rule("external_directory", place + "/*", "deny"),
+                      rule("read", place, "deny"), rule("read", place + "/*", "deny")]
     if "kit" in mode.servers:
         # The kit's MCP servers, as described in .mcp.json for Claude Code (fire-danger and time), so
         # both engines get the same tools.
@@ -345,7 +392,7 @@ def build_config(mode, instructions, perms, mcp, steps):
         model_settings["cost"] = ANTHROPIC_COST[model_id]
     elif cost:
         model_settings["cost"] = cost
-    provider_settings = {"apiKey": "{file:" + str(KEY_FILE) + "}"}  # the key itself never enters the config
+    provider_settings = {"apiKey": "{env:" + KEY_VAR + "}"}  # the key itself never enters the config
     if provider == workshop_provider.OPENROUTER.name:
         # Sent with every request, and read only here: workshop-login warns, and replay stops, if it changes.
         provider_settings["provider"] = workshop_provider.routing()
@@ -397,6 +444,8 @@ def main():
     if kind == "serve":
         serve_host, serve_port = serve_flags(extra)
     check_wiki(mode)
+    if mode.search:
+        check_links()
     agents, problem = modes.agents_file(mode, KIT)
     if problem:
         fail(problem)
@@ -469,6 +518,10 @@ def main():
     if not shutil.which("opencode", path=env.get("PATH")):
         shutil.rmtree(run, ignore_errors=True)  # nobody else knows this folder: do not leave it behind
         fail("OpenCode is not installed here (command opencode not found). Ask the facilitator.")
+    env[KEY_VAR] = the_key()
+    if not env[KEY_VAR]:
+        shutil.rmtree(run, ignore_errors=True)
+        fail("The saved key cannot be read. Type: workshop-login")
     if mode.folder == "bare":
         BARE_DIR.mkdir(parents=True, exist_ok=True)
     data.mkdir(parents=True, exist_ok=True)
@@ -496,6 +549,7 @@ def ask_after_warm_up(env, run, run_flags, stdin_file, model):
         port = s.getsockname()[1]
     url = f"http://127.0.0.1:{port}"
     env = dict(env, OPENCODE_PASSWORD=secrets.token_urlsafe(24))
+    client_env = {k: v for k, v in env.items() if k != KEY_VAR}  # seul le serveur a besoin de la clé
     # SIGTERM or SIGHUP (timeout, kill, a script): exit through `finally`, which stops the server, its
     # MCP servers and the client (Python's default would leave them all running).
     for sig in (signal.SIGTERM, signal.SIGHUP):
@@ -510,7 +564,7 @@ def ask_after_warm_up(env, run, run_flags, stdin_file, model):
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline and proc.poll() is None:
             try:
-                out = subprocess.run(["opencode", "api", "--server", url, "get", "/api/mcp"], env=env,
+                out = subprocess.run(["opencode", "api", "--server", url, "get", "/api/mcp"], env=client_env,
                                      capture_output=True, text=True, timeout=10)
                 states = [m["status"]["status"] for m in json.loads(out.stdout).get("data", [])]
                 if states and "pending" not in states:  # empty at first, while the kit loads
@@ -523,7 +577,7 @@ def ask_after_warm_up(env, run, run_flags, stdin_file, model):
         # The server reads the key at the first request: read it now, then check it still fits the model
         # (a workshop-login in another terminal). This output has the key in clear: it goes nowhere.
         try:
-            subprocess.run(["opencode", "api", "--server", url, "get", "/api/model"], env=env,
+            subprocess.run(["opencode", "api", "--server", url, "get", "/api/model"], env=client_env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
         except subprocess.TimeoutExpired:
             pass
@@ -532,7 +586,7 @@ def ask_after_warm_up(env, run, run_flags, stdin_file, model):
             fail(f"The saved key changed while OpenCode was starting: it is now a key for {now.label}. Nothing was sent. "
                  "Ask your question again.")
         with open(stdin_file, encoding="utf-8") as question:
-            client = subprocess.Popen(["opencode", "run", "--server", url] + run_flags, env=env, stdin=question)
+            client = subprocess.Popen(["opencode", "run", "--server", url] + run_flags, env=client_env, stdin=question)
             return client.wait()
     except KeyboardInterrupt:
         return 130

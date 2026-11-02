@@ -135,7 +135,7 @@ RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/workshop-claude /usr/local/
     /usr/local/bin/workshop-login /usr/local/bin/corpus-add \
     /usr/local/bin/wiki-start /usr/local/bin/wiki-graph /usr/local/bin/wiki-explore \
     /usr/local/bin/chatbot-export /usr/local/bin/openwebui \
-    /usr/local/bin/score /usr/local/bin/workshop-save /usr/local/bin/workshop-start
+    /usr/local/bin/score /usr/local/bin/workshop-save /usr/local/bin/workshop-start /usr/local/bin/workshop-key
 
 # Message d'accueil de chaque nouveau terminal. Un dépôt peut le remplacer par la variable
 # WORKSHOP_WELCOME (remoteEnv de son devcontainer.json ; vide : aucun message) : le guide OpenCode,

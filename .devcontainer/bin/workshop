@@ -39,12 +39,17 @@ if [[ -z "$engine" && -f "$HOME/.workshop-engine" ]]; then
 fi
 engine="${engine:-claude}"
 
+here="$(dirname "$(realpath "$0")")"
+# Une clé enregistrée par une image plus ancienne (lisible par ce compte) passe à root avant que le
+# modèle ne démarre, et apiKeyHelper suit (workshop-key). Une panne n'empêche pas de démarrer.
+"$here/workshop-key" lock 2>/dev/null || true
+
 case "$engine" in
   claude) grep -qs '"apiKeyHelper"' "$HOME/.claude/settings.json" && key=yes || key="" ;;
   opencode) [[ -s "$HOME/.workshop-key" ]] && key=yes || key="" ;;
   *) echo "Unknown engine: $engine (claude or opencode). Type: workshop-login" >&2; exit 1 ;;
 esac
-if [[ -z "$key" && "$engine" == claude ]] && head -c 6 "$HOME/.workshop-key" 2>/dev/null | grep -qx 'sk-or-'; then
+if [[ -z "$key" && "$engine" == claude ]] && { "$here/workshop-key" read 2>/dev/null || true; } | head -c 6 | grep -qx 'sk-or-'; then
   # A key is saved, but an OpenRouter one: Claude Code in the workshop never gets it. An OpenRouter key
   # saves the engine opencode, so only WORKSHOP_ENGINE=claude leads here.
   echo "The saved key is an OpenRouter key: it works with OpenCode only. Type this command without WORKSHOP_ENGINE=claude." >&2
@@ -58,7 +63,6 @@ fi
 
 # The modes are described once, in workshop_modes.py: workshop-claude turns them into Claude Code's
 # flags, workshop-opencode into an OpenCode config (the same context and the same tools).
-here="$(dirname "$(realpath "$0")")"
 launcher="workshop-$engine"
 [[ -x "$here/$launcher" ]] && launcher="$here/$launcher"
 exec "$launcher" "$mode" "$@"

@@ -11,6 +11,7 @@ ask() makes one request and never retries: the caller decides what to do with Re
 import http.client
 import json
 import os
+import subprocess
 import urllib.error
 import urllib.request
 from collections import namedtuple
@@ -70,10 +71,22 @@ def provider_of(key):
 
 def read_key():
     """The saved key, or "" when there is none."""
+    # workshop-login donne la clé à root quand il le peut (workshop-key) : le modèle ne peut plus l'ouvrir.
+    # Elle se relit alors par sudo, comme le fait l'apiKeyHelper de Claude Code. Jamais par un lien.
+    if KEY_FILE.is_symlink():
+        return ""
     try:
         return KEY_FILE.read_text(encoding="utf-8").strip()
+    except PermissionError:
+        pass
     except OSError:
         return ""
+    try:
+        done = subprocess.run(["sudo", "-n", "cat", "--", str(KEY_FILE)], capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
 
 
 def saved_settings():

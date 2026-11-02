@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# The key of the pair, for the workshop commands only (a person types workshop-login, never this).
+#
+#   workshop-key save     replaces the saved key by the line read from the input
+#   workshop-key read     writes the saved key to the output, never to the screen (exit 1 without a key)
+#   workshop-key lock     a key saved by an older image is locked away, and Claude Code follows
+#   workshop-key helper   the apiKeyHelper command of Claude Code for the saved key
+#   workshop-key status   locked, open (readable by this account) or none
+#
+# Pourquoi : aucune règle de refus de Claude Code ne ferme toutes les façons de lire un fichier de
+# l'utilisateur (facilitator/workshops/measures/2026-11-01-cle/). Le système de fichiers, si :
+# ~/.workshop-key appartient à root, en 0400, et ne se relit que par `sudo -n cat`, que le modèle n'a
+# jamais sans demande (Bash(sudo:*) refusé par workshop-claude, shell toujours demandé par OpenCode).
+# Sans sudo sans mot de passe (une machine sans droits), la clé reste en 600 au compte de l'utilisateur,
+# comme avant, et save le dit une fois.
+# La clé ne passe jamais sur une ligne de commande (ps, /proc/<pid>/cmdline) : toujours par un tuyau.
+set -euo pipefail
+
+KEY_FILE="$HOME/.workshop-key"
+SETTINGS="$HOME/.claude/settings.json"
+
+can_sudo() { sudo -n true > /dev/null 2>&1; }
+
+# Écrit l'entrée dans un fichier neuf à root, en 0400 dès sa création, puis le renomme sur la clé.
+# noclobber : le fichier temporaire est créé avec O_EXCL, qui ne suit jamais un lien ; un lien ou un
+# fichier déjà là à ce nom fait échouer l'écriture, sans rien toucher. Le renommage remplace le nom
+# ~/.workshop-key lui-même (même si c'est un lien), jamais ce vers quoi il pointe. Une panne laisse
+# l'ancienne clé entière, une entrée vide aussi. Le chemin passe en argument : rien du dossier n'est
+# interprété par le shell de root.
+# exec : aucun processus de ce compte ne garde ouvert le tuyau qui porte la clé pendant que root la lit (un
+# processus de ce compte peut ouvrir /proc/<pid>/fd/0 d'un autre et vider le tuyau : mesuré).
+save_as_root() {
+  ( exec sudo -n bash -c 'set -euo pipefail
+    umask 277; set -C
+    t="$1.$(od -An -N8 -tx1 /dev/urandom | tr -d " \n")"
+    if cat > "$t" && [ -s "$t" ] && mv -fT -- "$t" "$1"; then exit 0; fi
+    rm -f -- "$t"; exit 1' bash "$KEY_FILE" 2> /dev/null )
+}
+
+# La même chose sans sudo : un fichier neuf en 600, au compte de l'utilisateur.
+save_as_user() {
+  local tmp
+  tmp="$(mktemp "$KEY_FILE.XXXXXX")"                    # mktemp crée le fichier en 600
+  if cat > "$tmp" && [[ -s "$tmp" ]] && chmod 600 "$tmp" && mv -fT -- "$tmp" "$KEY_FILE"; then return 0; fi
+  rm -f -- "$tmp"
+  return 1
+}
+
+# Lisible par ce compte : un fichier ordinaire à lui. Sinon, à root : par sudo. Jamais par un lien.
+read_key() {
+  [[ -f "$KEY_FILE" && ! -L "$KEY_FILE" ]] || return 1
+  if [[ -O "$KEY_FILE" ]]; then cat -- "$KEY_FILE"; else sudo -n cat -- "$KEY_FILE" 2> /dev/null; fi
+}
+
+helper() {
+  if [[ -e "$KEY_FILE" && ! -O "$KEY_FILE" ]]; then
+    # stderr écarté : sudo peut y écrire « unable to resolve host » tout en réussissant.
+    printf 'sudo -n cat %s 2>/dev/null\n' "$KEY_FILE"
+  else
+    printf 'cat %s\n' "$KEY_FILE"
+  fi
+}
+
+# apiKeyHelper d'accord avec la clé : seulement s'il y en a un (une clé OpenRouter n'en a pas, exprès).
+fix_helper() {
+  [[ -f "$SETTINGS" ]] || return 0
+  local want
+  want="$(helper)"
+  grep -qF "\"apiKeyHelper\": \"$want\"" "$SETTINGS" && return 0
+  grep -q '"apiKeyHelper": "' "$SETTINGS" || return 0
+  python3 -I - "$SETTINGS" "$want" <<'PY'
+import json, os, sys, tempfile
+path, want = sys.argv[1:]
+with open(path, encoding="utf-8") as f:
+    settings = json.load(f)
+settings["apiKeyHelper"] = want
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".settings.")
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+PY
+}
+
+case "${1:-}" in
+  save)
+    # Une ligne, lue une fois, puis l'entrée fermée : le tuyau de l'appelant ne reste pas ouvert ici.
+    key=""
+    IFS= read -r key || true
+    exec 0< /dev/null
+    [[ -n "$key" ]] || { echo "No key on the input: nothing saved." >&2; exit 1; }
+    if can_sudo; then
+      # Jamais de repli en 600 quand sudo marche : une écriture par root qui échoue laisse l'ancienne clé.
+      printf '%s\n' "$key" | save_as_root || { echo "The key could not be locked away: nothing saved." >&2; exit 1; }
+      fix_helper
+      exit 0
+    fi
+    printf '%s\n' "$key" | save_as_user                   # printf est interne à bash : aucune ligne de commande
+    fix_helper
+    echo "Note: on this computer the key cannot be locked away from the chatbot (sudo asks for a password here). It is saved for your account only." >&2
+    ;;
+  read)
+    if [[ -t 1 ]]; then
+      echo "workshop-key read is for the workshop commands: it never shows the key on the screen." >&2
+      exit 2
+    fi
+    read_key || exit 1
+    ;;
+  lock)
+    # Une clé d'une image plus ancienne (en 600, à l'utilisateur) passe à root, sans se perdre : elle est
+    # recopiée, jamais déplacée. Sans sudo : rien ne change, et rien n'est dit (save l'a déjà dit).
+    if [[ -s "$KEY_FILE" && -f "$KEY_FILE" && ! -L "$KEY_FILE" && -O "$KEY_FILE" ]] && can_sudo; then
+      save_as_root < "$KEY_FILE" || true               # ouvert ici, par ce compte ; root n'écrit que la copie
+    fi
+    fix_helper || true
+    ;;
+  helper)
+    helper
+    ;;
+  status)
+    if [[ ! -e "$KEY_FILE" ]]; then echo none
+    elif [[ -O "$KEY_FILE" ]]; then echo open
+    else echo locked
+    fi
+    ;;
+  *)
+    echo "Usage: workshop-key save|read|lock|helper|status (for the workshop commands; people type workshop-login)" >&2
+    exit 2
+    ;;
+esac

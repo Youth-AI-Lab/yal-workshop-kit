@@ -38,7 +38,16 @@ READ_ONLY = ("Bash(ls:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(
 # timeout or command) and "cd …; grep …" runs without a question, while a Read(~/.workshop-key) rule stops
 # none of them and refuses "cd …; grep …". The price: "grep … | wc -l" is refused, the model counts with
 # grep -c; the chatbot has no use for git or docker.
-NEVER = ("Bash(wc:*)", "Bash(du:*)", "Bash(tree:*)", "Bash(diff:*)", "Bash(git:*)", "Bash(docker:*)")
+# Ces règles ne suffisent pas (d'autres formes lisaient la clé sans demande, facilitator/workshops/measures/
+# 2026-11-01-cle/) : la clé est désormais à root (workshop-key), et c'est sudo qui la protège. sudo et ce qui
+# en tient lieu rendraient la clé : refusés ici sans question, même si une personne dirait oui. Le chemin
+# complet, env, exec et un shell de plus étaient seulement demandés (mesuré, 2.1.303) ; find -exec sudo l'est
+# encore (find est autorisé) : à refuser à la main.
+NEVER = ("Bash(wc:*)", "Bash(du:*)", "Bash(tree:*)", "Bash(diff:*)", "Bash(git:*)", "Bash(docker:*)",
+         "Bash(sudo:*)", "Bash(sudoedit:*)", "Bash(su:*)", "Bash(pkexec:*)", "Bash(workshop-key:*)",
+         "Bash(/usr/bin/sudo:*)", "Bash(/bin/sudo:*)", "Bash(/usr/bin/sudoedit:*)", "Bash(/usr/bin/su:*)",
+         "Bash(/bin/su:*)", "Bash(/usr/local/bin/workshop-key:*)", "Bash(env:*)", "Bash(exec:*)",
+         "Bash(sh:*)", "Bash(bash:*)", "Bash(zsh:*)", "Bash(dash:*)")
 # Only the kit's MCP servers can be loaded. Permission mode "manual" (not the default "auto"): Claude
 # Code asks before it writes a file. The auto and bypass modes are switched off, so a permission prompt
 # cannot offer "switch to auto mode". No skills bundled with Claude Code (code review, charts,

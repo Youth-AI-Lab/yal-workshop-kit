@@ -20,8 +20,9 @@
 # then WORKSHOP_ENGINE (for this command only, never saved), then the key, then the last workshop-login.
 # Going back to an Anthropic key after an OpenRouter one also goes back to Claude Code, unless OpenCode
 # was chosen with --engine.
-# The key is tested with a short request, then stored in ~/.workshop-key (only you can read it). A key
-# that does not work never replaces a working key of the other provider.
+# The key is tested with a short request, then stored in ~/.workshop-key, locked away from the chatbot:
+# only the workshop commands open it, through workshop-key (next to this file). A key that does not
+# work never replaces a working key of the other provider.
 # Enter alone keeps the saved key and its model. A new key goes back to the default model, unless
 # --model names one.
 # --europe is saved with the provider: later logins with OpenRouter keep it, --no-europe removes it, a key of
@@ -34,13 +35,14 @@
 # Also written: ~/.workshop-engine (claude or opencode), ~/.claude/settings.json (Claude Code) and
 # ~/.workshop-opencode.json (OpenCode: provider and model, and for OpenRouter the size of the model's
 # window, its price and "europe"). The key is in none of them: Claude Code reads it through apiKeyHelper,
-# OpenCode through {file:~/.workshop-key} in its configuration.
+# OpenCode receives it from workshop-opencode when it starts.
 set -euo pipefail
 
 ANTHROPIC_MODEL_ID="${WORKSHOP_ANTHROPIC_MODEL:-claude-sonnet-5-5}"
 OPENROUTER_API="${WORKSHOP_OPENROUTER_API:-https://openrouter.ai/api/v1}"   # another address: a fake endpoint in the tests
 HERE="$(dirname "$(realpath "$0")")"                                       # workshop_provider.py is next to this file
 KEY_FILE="$HOME/.workshop-key"
+KEY_TOOL="$HERE/workshop-key"      # écrit et relit la clé : à root en 0400, ou en 600 sans sudo
 ENGINE_FILE="$HOME/.workshop-engine"
 OPENCODE_FILE="$HOME/.workshop-opencode.json"
 USAGE="Usage: workshop-login [--engine claude|opencode] [--model MODEL] [--europe|--no-europe]   (or: workshop-login --models [anthropic|openrouter|free])"
@@ -244,7 +246,7 @@ write_file() {
 }
 
 if [[ "$list_models" == 1 ]]; then
-  saved="$(cat "$KEY_FILE" 2>/dev/null || true)"
+  saved="$("$KEY_TOOL" read 2>/dev/null || true)"
   [[ -n "$models_provider" ]] && saved="$models_provider"
   case "$saved" in
     anthropic|sk-ant-*) need_opencode; catalogue anthropic ;;
@@ -289,7 +291,11 @@ elif [[ "$key_given" == 0 ]]; then
   done
   echo
   if [[ -z "$(printf '%s' "$key" | tr -d '[:space:]')" && -s "$KEY_FILE" ]]; then
-    key="$(cat "$KEY_FILE")"
+    key="$("$KEY_TOOL" read 2>/dev/null || true)"
+    if [[ -z "$key" ]]; then
+      echo "The saved key cannot be read. Paste the key again: workshop-login" >&2
+      exit 1
+    fi
     keep_model=1
     echo "Nothing pasted: the saved key is kept."
   fi
@@ -321,7 +327,7 @@ if [[ "$key" == sk-ant-* && "$europe_option" == on ]]; then
 fi
 
 # Engine: --engine, else WORKSHOP_ENGINE, else the key, else the saved one, else claude.
-saved_key="$(cat "$KEY_FILE" 2>/dev/null || true)"
+saved_key="$("$KEY_TOOL" read 2>/dev/null || true)"
 saved_engine="$(tr -d '[:space:]' 2>/dev/null < "$ENGINE_FILE" || true)"
 explicit=false                                                # OpenCode was chosen with --engine
 grep -qs '"engine_explicit": *true' "$OPENCODE_FILE" && explicit=true
@@ -466,7 +472,8 @@ fi
 
 umask 077
 mkdir -p "$HOME/.claude"
-printf '%s\n' "$key" | write_file "$KEY_FILE"
+# Par un tuyau : printf est interne à bash, la clé ne passe sur aucune ligne de commande.
+printf '%s\n' "$key" | "$KEY_TOOL" save || { echo "The key could not be saved. $OTHER" >&2; exit 1; }
 printf '%s\n' "$kept_engine" | write_file "$ENGINE_FILE"
 
 # Common settings: same version all session long, a refused key fails in seconds instead of
@@ -478,7 +485,7 @@ if [[ "$provider" == anthropic ]]; then
   # Claude Code, written with both engines: WORKSHOP_ENGINE=claude works without a new login.
   write_file "$HOME/.claude/settings.json" <<EOF
 {
-  "apiKeyHelper": "cat $HOME/.workshop-key",
+  "apiKeyHelper": "$("$KEY_TOOL" helper)",
   "env": { "ANTHROPIC_MODEL": "$ANTHROPIC_MODEL_ID", $common }
 }
 EOF
