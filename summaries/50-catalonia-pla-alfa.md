@@ -4,7 +4,7 @@ title: "Catalonia (Barcelona): the Pla Alfa fire danger levels"
 description: "The Pla Alfa fire danger levels in Catalonia."
 resource: https://interior.gencat.cat/ca/arees_dactuacio/agents-rurals/pla-alfa/index.html
 tags: [catalonia, fire-danger-index]
-status: draft
+status: stable
 language: en
 sources:
   - { id: source, resource: ../corpus/50-catalunya-pla-alfa.html }
@@ -12,7 +12,8 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
-review_note: "Not yet verified by a human reader of Catalan; check requested from UAB."
+  - { by: human:uab, at: 2026-10-22T00:00:00Z }
+review_note: "Checked by UAB during the workshop of 2026-10-22."
 ---
 # Catalonia (Barcelona): the Pla Alfa fire danger levels
 

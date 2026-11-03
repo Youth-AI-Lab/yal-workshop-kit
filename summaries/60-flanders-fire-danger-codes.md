@@ -12,7 +12,7 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
-review_note: "Not yet verified by a human reader of Dutch; check requested from Digitale Wolven. The two sentences added on 2026-11-01 had the quote check only, not the cross-review."
+review_note: "Checked by Digitale Wolven during the workshop of 2026-10-22, on the version of that day. The two sentences added on 2026-11-01 (\"At orange too, ...\" and \"At red, do not smoke ...\") had the quote check only, and no person has read them yet."
 ---
 # Flanders (Antwerp): the four fire danger colour codes
 

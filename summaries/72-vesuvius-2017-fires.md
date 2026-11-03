@@ -4,7 +4,7 @@ title: "Campania (Naples): the 2017 fires in the Vesuvius National Park"
 description: "The 2017 fires in the Vesuvius National Park."
 resource: https://www.parconazionaledelvesuvio.it/wp-content/uploads/2019/01/PNV-29-gen-slides.docx
 tags: [campania, statistics]
-status: draft
+status: stable
 language: en
 sources:
   - { id: source, resource: ../corpus/72-vesuvio-incendi-2017.docx }
@@ -12,7 +12,8 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
-review_note: "Not yet verified by a human reader of Italian; check requested from Perlatecnica."
+  - { by: human:perlatecnica, at: 2026-10-22T00:00:00Z }
+review_note: "Checked by Perlatecnica during the workshop of 2026-10-22."
 ---
 # Campania (Naples): the 2017 fires in the Vesuvius National Park
 

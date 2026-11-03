@@ -30,14 +30,14 @@ copy `00-template.md`.
 
 # Catalonia
 
-* [Catalonia (Barcelona): the Pla Alfa fire danger levels](50-catalonia-pla-alfa.md) - The Pla Alfa fire danger levels in Catalonia. (machine-confirmed)
+* [Catalonia (Barcelona): the Pla Alfa fire danger levels](50-catalonia-pla-alfa.md) - The Pla Alfa fire danger levels in Catalonia. (human-reviewed)
 
 # Flanders
 
-* [Flanders (Antwerp): the four fire danger colour codes](60-flanders-fire-danger-codes.md) - The four Flemish fire danger colour codes. (machine-confirmed)
+* [Flanders (Antwerp): the four fire danger colour codes](60-flanders-fire-danger-codes.md) - The four Flemish fire danger colour codes. (machine-confirmed; checked by Digitale Wolven, except two sentences added on 2026-11-01)
 
 # Italy
 
-* [Italy (Naples): what to do in case of a forest fire](70-italy-what-to-do.md) - What to do in Italy in case of a forest fire. (machine-confirmed)
-* [Campania: the 2026 period of serious fire danger](71-campania-2026-fire-danger-period.md) - The 2026 period of serious fire danger in Campania (Montoro ordinance). (machine-confirmed)
-* [Campania (Naples): the 2017 fires in the Vesuvius National Park](72-vesuvius-2017-fires.md) - The 2017 fires in the Vesuvius National Park. (machine-confirmed)
+* [Italy (Naples): what to do in case of a forest fire](70-italy-what-to-do.md) - What to do in Italy in case of a forest fire. (human-reviewed)
+* [Campania: the 2026 period of serious fire danger](71-campania-2026-fire-danger-period.md) - The 2026 period of serious fire danger in Campania (Montoro ordinance). (human-reviewed)
+* [Campania (Naples): the 2017 fires in the Vesuvius National Park](72-vesuvius-2017-fires.md) - The 2017 fires in the Vesuvius National Park. (human-reviewed)

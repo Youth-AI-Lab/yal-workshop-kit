@@ -4,7 +4,7 @@ title: "Campania: the 2026 period of serious fire danger"
 description: "The 2026 period of serious fire danger in Campania (Montoro ordinance)."
 resource: https://montoro-api.municipiumapp.it/s3/20111/allegati/uffici-e-servizi/settore-vigilianza-comando-polizia-locale-e-protezione-civile/ordinanza-n-78-del-12-06-2026.pdf
 tags: [campania, regulation]
-status: draft
+status: stable
 language: en
 sources:
   - { id: source, resource: ../corpus/71-montoro-ordinanza-78-2026.pdf }
@@ -12,8 +12,9 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
+  - { by: human:perlatecnica, at: 2026-10-22T00:00:00Z }
 stale_after: 2027-06-01T00:00:00Z
-review_note: "Not yet verified by a human reader of Italian; check requested from Perlatecnica. The sentences changed on 2026-11-01 had the quote check only, not the cross-review."
+review_note: "Checked by Perlatecnica during the workshop of 2026-10-22. On 2026-11-01, one sentence was added and three were reworded to name the Montoro ordinance as the source; the facts did not change."
 ---
 # Campania: the 2026 period of serious fire danger
 

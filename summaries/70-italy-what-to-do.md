@@ -4,7 +4,7 @@ title: "Italy (Naples): what to do in case of a forest fire"
 description: "What to do in Italy in case of a forest fire."
 resource: https://www.protezionecivile.gov.it/it/approfondimento/in-caso-di-incendio-boschivo/
 tags: [italy, what-to-do]
-status: draft
+status: stable
 language: en
 sources:
   - { id: source, resource: ../corpus/70-italia-in-caso-di-incendio.html }
@@ -12,7 +12,8 @@ generated: { by: claude_code/claude-opus-5-5, at: 2026-10-20T00:00:00Z }
 verified:
   - { by: process:quote-check, at: 2026-10-20T00:00:00Z }
   - { by: process:cross-review-codex-agy-copilot, at: 2026-10-20T00:00:00Z }
-review_note: "Not yet verified by a human reader of Italian; check requested from Perlatecnica."
+  - { by: human:perlatecnica, at: 2026-10-22T00:00:00Z }
+review_note: "Checked by Perlatecnica during the workshop of 2026-10-22."
 ---
 # Italy (Naples): what to do in case of a forest fire
 
