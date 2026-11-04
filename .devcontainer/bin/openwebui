@@ -803,6 +803,14 @@ def realign_models(api, key, service, model):
     if trimmed:
         print(f"{', '.join(trimmed)}: only the tools that search and read {'its' if len(trimmed) == 1 else 'their'} "
               "knowledge now (no notes, skills, tasks or other tools).", flush=True)
+    reload_models(api)
+
+
+def reload_models(api):
+    """A chat uses the copy of each model Open WebUI made when its model list was last read (by a page, or
+    here), not what was just saved: without this, a running Open WebUI kept a chatbot's old tools until
+    the page was reloaded (measured, 0.12.4)."""
+    api.request("GET", "/api/models")
 
 
 def warn_young_people(service):
@@ -1027,6 +1035,7 @@ def cmd_chatbot(args):
     excerpts_without_tools(f"{name} chatbot", params, meta, service, model)
     api.save_model({"id": "chatbot-" + slug(name), "base_model_id": model, "name": f"{name} chatbot",
                     "is_active": True, "meta": meta, "params": params})
+    reload_models(api)
     if failed:
         fail("Some files could not be added (see above). Type the same command again.")
     # Say what went into the Instructions box: the pair cannot see it from the chat.
@@ -1453,6 +1462,7 @@ def cmd_import(path_text):
     replaced = api.model_exists(model_id)
     api.save_model({"id": model_id, "base_model_id": base_model, "name": name,
                     "is_active": info.get("is_active", True), "meta": meta, "params": params})
+    reload_models(api)
     if failed:
         fail("Some documents could not be added (see above). Type the same command again.")
     print(f'\n{"Replaced" if replaced else "Imported"}: "{name}", with {sum(len(g.get("files", [])) for g in groups)} '
