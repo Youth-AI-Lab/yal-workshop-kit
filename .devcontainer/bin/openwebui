@@ -2,7 +2,8 @@
 """Open WebUI in your Codespace: the RAG demo, then your own chatbot in a real chatbot tool.
 
     openwebui start                  starts Open WebUI and loads the workshop knowledge
-                                     (the first time, it downloads Open WebUI: about 1.6 GB)
+                                     (the first time, it downloads Open WebUI: about 1.6 GB);
+                                     from workshop 4, also the live tool of mcp/ (fire-danger)
     openwebui query "<question>"     shows the 5 excerpts the RAG would give the model
     openwebui sizes                  adds a second knowledge base, cut into excerpts of 2000
                                      characters, and the models "Wildfire RAG 1000" and "2000"
@@ -30,7 +31,8 @@ In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG 1000" and "Wildfire RAG 2000" (after openwebui sizes): the same, with excerpts
     of 1000 or 2000 characters (1000 is the same base as "Wildfire RAG (workshop kit)").
   - "<name> chatbot": your AGENTS.md, your knowledge and your skills; the model searches the knowledge
-    itself, as in mode E.
+    itself, as in mode E. From workshop 4, it also has the live tool fire_danger, as in mode D (read-only:
+    it reads mcp/fire-danger.json). Your wiki (workshop 5) comes with its map, wiki__index.md.
   - "<name> chatbot (RAG)" (after openwebui chatbot --rag): the same instructions, knowledge and skills,
     but Open WebUI picks the excerpts before each answer, as for "Wildfire RAG". You can have both.
 
@@ -210,6 +212,33 @@ Provide a clear and direct response to the user's query, including inline citati
 # fingerprint (start_container), so openwebui start makes it again on the same data.
 HARDENED["RAG_TEMPLATE"] = RAG_TEMPLATE
 
+# Workshop 5: the wiki's map comes along (chatbot-export keeps wiki/index.md as wiki__index.md, and writes each link
+# between pages as the name of a file of the knowledge base). Open WebUI opens a file by its id, never by its name.
+CHATBOT_WIKI_ADDENDUM = """
+The wiki starts at wiki__index.md, its map. A link such as [Title](wiki__page.md) names another file of your
+knowledge base: find its file_id with search_knowledge_files (the file name as query), or with list_knowledge
+(the id of your knowledge base, and count 200: without it the list stops at 50 files), then open it with
+view_knowledge_file."""
+
+# --- From workshop 4: the live tool (MCP) -----------------------------------------------------------------
+# Rule (Sébastien, 2026-11): in Open WebUI, MCP read-only, public sources only, no personal data. The kit's
+# fire-danger server reads mcp/fire-danger.json (filled in from public sources) and nothing else. The time server
+# is not served: fire_danger gives today's date itself, and Open WebUI's image does not have mcp-server-time.
+# Open-Meteo (WORKSHOP_WEATHER) never: it reaches the internet. The server runs in a container of its own (the
+# Open WebUI image has the mcp package), as a plain user, read-only, on a Docker network with no way out shared
+# with Open WebUI only; a random token, kept only in the two containers' settings (like the key: docker inspect,
+# which the chatbot of the workshop cannot run), is required by the server (mcp_http.py).
+MCP_SERVER_ID = "fire-danger"
+MCP_TOOL_ID = f"server:mcp:{MCP_SERVER_ID}"
+# Full names: Open WebUI keeps a tool whose name ENDS with one of these (str.endswith, measured). recorded_example
+# (a past day) is left out, by this filter and by the server itself.
+MCP_TOOLS = ("fire_danger", "territories")
+MCP_CONTAINER = CONTAINER + "-mcp"
+MCP_NETWORK = CONTAINER + "-tools"
+MCP_PORT = 8000
+MCP_URL = f"http://{MCP_CONTAINER}:{MCP_PORT}/mcp"
+MCP_HELPER = Path(__file__).resolve().parent / "mcp_http.py"
+
 
 def fail(message, code=1):
     print(message, file=sys.stderr)
@@ -310,14 +339,106 @@ def offered_models(env):
         return None
 
 
+def container_env(name):
+    """The settings (-e) of a container, or None when there is no such container."""
+    result = docker("inspect", "--format", "{{json .Config.Env}}", name)
+    if result.returncode != 0:
+        return None
+    return dict(item.split("=", 1) for item in json.loads(result.stdout) if "=" in item)
+
+
+def mcp_wanted():
+    """True from workshop 4: the kit has the fire-danger server (mcp/) and declares it (.mcp.json). Never in class
+    mode (the Open WebUI guide has no live tool)."""
+    folder = KIT / "mcp"
+    if CLASS or folder.is_symlink() or not (folder / "fire_danger_server.py").is_file():
+        return False
+    try:
+        servers = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers")
+    except (OSError, ValueError, AttributeError):
+        return False
+    return isinstance(servers, dict) and MCP_SERVER_ID in servers
+
+
+def mcp_connection(token):
+    """TOOL_SERVER_CONNECTIONS of Open WebUI: the fire-danger server, its read-only tools only. In the environment,
+    not set through the API: with ENABLE_PERSISTENT_CONFIG false, a connection set through the API is lost at the next
+    restart, and the chatbot then answers without its tool, saying nothing (measured, 0.12.4)."""
+    return [{"type": "mcp", "url": MCP_URL, "path": "", "auth_type": "bearer", "key": token,
+             "config": {"enable": True, "function_name_filter_list": ",".join(MCP_TOOLS)},
+             "info": {"id": MCP_SERVER_ID, "name": "Fire danger (workshop kit)",
+                      "description": "Today's wildfire danger level, read from mcp/fire-danger.json. Read-only."}}]
+
+
+def mcp_token_of(env):
+    """The token of the fire-danger connection in a container's settings, or ""."""
+    try:
+        connections = json.loads((env or {}).get("TOOL_SERVER_CONNECTIONS") or "[]")
+        return next((c.get("key") or "" for c in connections
+                     if isinstance(c, dict) and (c.get("info") or {}).get("id") == MCP_SERVER_ID), "")
+    except (ValueError, TypeError, AttributeError):
+        return ""
+
+
+def mcp_network():
+    """A Docker network with no way out (--internal): only Open WebUI and the fire-danger server are on it."""
+    found = docker("network", "inspect", "--format", "{{.Internal}}", MCP_NETWORK)
+    if found.returncode == 0:
+        if found.stdout.strip() != "true":
+            fail(f"The Docker network {MCP_NETWORK} is not one of this command (it can reach the internet).\n"
+                 f"Type openwebui stop, then docker network rm {MCP_NETWORK}, then openwebui start.")
+        return
+    made = docker("network", "create", "--internal", "--label", "yal.kit=openwebui-tools", MCP_NETWORK)
+    if made.returncode != 0:
+        fail(f"Open WebUI could not start: {made.stderr.strip()}")
+
+
+def start_mcp_server(token):
+    """Starts the fire-danger server for Open WebUI, again each time (one or two seconds): an edited
+    fire_danger_server.py is taken, and a server that fails is said, even one that Docker restarts in a loop (a running
+    one was kept before, and said nothing then: measured). Returns True when it runs. Never stops Open WebUI: without
+    the server, the chatbot answers without its live tool."""
+    folder = (KIT / "mcp").resolve()
+    args = ["--name", MCP_CONTAINER, "--restart", "unless-stopped", "--network", MCP_NETWORK,
+            # A plain user (the one of this Codespace, who can read mcp/), nothing writable, no privileges.
+            "--user", f"{os.getuid()}:{os.getgid()}", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            # fire-danger.json is read at each call: the pair edits it in mcp/, the answer follows.
+            "-v", f"{folder}:/srv/kit-mcp:ro", "-v", f"{MCP_HELPER}:/srv/mcp_http.py:ro",
+            "--entrypoint", "python"]
+    command = [IMAGE, "-I", "-B", "/srv/mcp_http.py", "--server", "/srv/kit-mcp/fire_danger_server.py",
+               "--port", str(MCP_PORT), "--allowed-host", f"{MCP_CONTAINER}:{MCP_PORT}"]
+    command += [part for tool in MCP_TOOLS for part in ("--tool", tool)]
+    config = hashlib.sha256(json.dumps(args + command).encode()).hexdigest()[:16]
+    docker("rm", "-f", MCP_CONTAINER)
+    result = subprocess.run(["docker", "run", "-d", *args, "--label", f"yal.kit.config={config}", "-e", "MCP_TOKEN",
+                             *command], text=True, capture_output=True, env={**os.environ, "MCP_TOKEN": token})
+    start = time.monotonic()
+    while result.returncode == 0 and time.monotonic() - start < 30:
+        log = docker("logs", MCP_CONTAINER)
+        if "fire-danger: http://" in (log.stdout or ""):
+            print(f"  Live tool ready: fire-danger ({', '.join(MCP_TOOLS)}), read-only.", flush=True)
+            return True
+        # Stopped, or started again by Docker after a failure (--restart): it failed.
+        if docker("inspect", "--format", "{{.State.Running}} {{.RestartCount}}", MCP_CONTAINER).stdout.strip() \
+                != "true 0":
+            break
+        time.sleep(1)
+    why = (result.stderr or docker("logs", "--tail", "5", MCP_CONTAINER).stderr or "").strip()
+    # Not left restarting in a loop: openwebui start, or openwebui chatbot, starts it again.
+    docker("rm", "-f", MCP_CONTAINER)
+    print(f"! The live tool fire-danger could not start, so your chatbot answers without it.\n  {why[-600:]}\n"
+          "  Check that mcp/fire_danger_server.py is the kit's, then type openwebui start again.", flush=True)
+    return False
+
+
 def check_same_key(key, model):
     """Open WebUI keeps the key and the models it was started with: they must still be the saved ones.
     A chatbot saved on a model it does not offer fails at the first question ("Model not found").
     The keys are compared here, never printed."""
-    result = docker("inspect", "--format", "{{json .Config.Env}}", CONTAINER)
-    if result.returncode != 0:
+    env = container_env(CONTAINER)
+    if env is None:
         fail("Open WebUI is not running. Type: openwebui start")
-    env = dict(item.split("=", 1) for item in json.loads(result.stdout) if "=" in item)
     if env.get("OPENAI_API_KEY") != key:
         fail("Your key changed since Open WebUI started. Type openwebui start (it takes the new key),\n"
              "then this command again.")
@@ -329,6 +450,9 @@ def check_same_key(key, model):
              "(it takes the new rule),\nthen this command again.")
     if any(env.get(name) != value for name, value in HARDENED.items()):
         fail("Open WebUI was started by an older version of this command. Type openwebui start "
+             "(your chatbots and documents are kept),\nthen this command again.")
+    if mcp_wanted() and not mcp_token_of(env):
+        fail("Open WebUI was started without the live tool of this workshop (mcp/). Type openwebui start "
              "(your chatbots and documents are kept),\nthen this command again.")
 
 
@@ -463,12 +587,15 @@ def start_container():
             "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
             "DEFAULT_MODELS": RAG_ID,
         })
+    # From workshop 4: the live tool, through the environment (it survives a restart). Its token is a secret too.
+    tools = mcp_wanted()
     # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
-    config = hashlib.sha256(json.dumps([IMAGE, env, PORT], sort_keys=True).encode()).hexdigest()[:16]
+    settings = [IMAGE, env, PORT] + ([mcp_connection("")] if tools else [])
+    config = hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:16]
     state = docker("inspect", "--format",
                    '{{json .Config.Env}}|{{index .Config.Labels "yal.kit.config"}}|{{.State.Running}}'
                    '|{{.Config.Image}}', CONTAINER)
-    reuse = False
+    reuse, token = False, ""
     if state.returncode == 0:
         env_json, label, running, old_image = state.stdout.strip().rsplit("|", 3)
         # Its data was migrated by that image: an older one cannot read it (no way back).
@@ -478,16 +605,27 @@ def start_container():
         old_env = {k: v for k, v in (i.split("=", 1) for i in json.loads(env_json) if "=" in i)}
         # The keys are compared here, never printed.
         reuse = label == config and old_env.get("OPENAI_API_KEY") == key
+        if tools:
+            token = mcp_token_of(old_env)
+            networks = docker("inspect", "--format", "{{json .NetworkSettings.Networks}}", CONTAINER).stdout or "{}"
+            reuse = reuse and bool(token) and MCP_NETWORK in json.loads(networks or "{}")
         if reuse and running != "true":
             reuse = docker("start", CONTAINER).returncode == 0
+    if tools:
+        mcp_network()
     if reuse:
         print("Open WebUI is already set up with your key: checking that it answers…", flush=True)
     else:
         # A new container (your data stays in its volume): it takes the key saved today.
         docker("rm", "-f", CONTAINER)
+        if tools:
+            token = secrets.token_urlsafe(32)
+            hidden["TOOL_SERVER_CONNECTIONS"] = json.dumps(mcp_connection(token))
         # "unless-stopped": Docker may start it again by itself (not seen after a Codespace restart).
-        args = ["run", "-d", "--name", CONTAINER, "--restart", "unless-stopped",
-                "--label", f"yal.kit.config={config}",
+        # With the live tool: created, joined to the tools network, then started (a container joined before it
+        # starts finds the server by its name).
+        args = ["create" if tools else "run", *([] if tools else ["-d"]), "--name", CONTAINER,
+                "--restart", "unless-stopped", "--label", f"yal.kit.config={config}",
                 "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{VOLUME}:/app/backend/data"]
         for name, value in env.items():
             args += ["-e", f"{name}={value}"]
@@ -496,9 +634,19 @@ def start_container():
         args.append(IMAGE)
         result = subprocess.run(["docker", *args], text=True, capture_output=True,
                                 env={**os.environ, **hidden})
+        if result.returncode == 0 and tools:
+            result = docker("network", "connect", MCP_NETWORK, CONTAINER)
+            if result.returncode == 0:
+                result = docker("start", CONTAINER)
         if result.returncode != 0:
             fail(f"Open WebUI could not start: {result.stderr.strip()}")
         print("Open WebUI is starting (from 30 seconds to 3 minutes)…", flush=True)
+    if tools:
+        start_mcp_server(token)
+    else:
+        # A kit without mcp/ now (a save of workshop 3 restored, class mode): no server left from before.
+        docker("rm", "-f", MCP_CONTAINER)
+        docker("network", "rm", MCP_NETWORK)
     start, next_report, next_log = time.monotonic(), 30, 10
     while time.monotonic() - start < 360:
         try:
@@ -1170,17 +1318,23 @@ def knowledge_ref(knowledge):
              "type": "collection"}]
 
 
-def chatbot_forms(name, instructions, knowledge, skill_ids, service, model):
+def chatbot_forms(name, instructions, knowledge, skill_ids, service, model, wiki=False, tool_ids=()):
     """The two chatbots of openwebui chatbot, by id: the default one (the model searches its knowledge with tools,
     native) and the RAG one (--rag: Open WebUI gives it excerpts before each answer, legacy, as "Wildfire RAG").
-    Same instructions, knowledge and skills. Changes nothing in Open WebUI."""
+    Same instructions, knowledge and skills. wiki: the knowledge has the wiki's map (wiki__index.md). tool_ids: the
+    live tool (MCP_TOOL_ID), for the default one only. Changes nothing in Open WebUI."""
     native_id = "chatbot-" + slug(name)
-    params = routed({"system": instructions + CHATBOT_ADDENDUM, "function_calling": "native"}, service)
+    addendum = CHATBOT_ADDENDUM + (CHATBOT_WIKI_ADDENDUM if wiki else "")
+    params = routed({"system": instructions + addendum, "function_calling": "native"}, service)
     meta = {"description": f"The chatbot built by {name}: their instructions and knowledge.",
             "knowledge": knowledge_ref(knowledge),
             # Built-in tools on: the model searches and reads its knowledge itself (mode E). Those tools only.
             "capabilities": {**NO_TOOLS, "builtin_tools": True}, "builtinTools": dict(KNOWLEDGE_TOOLS_ONLY),
             "skillIds": list(skill_ids)}
+    if tool_ids:
+        # The browser sends the chatbot's toolIds with each message (Open WebUI does not read them itself);
+        # realign_models keeps them, like every other setting of meta.
+        meta["toolIds"] = list(tool_ids)
     rag = {"id": native_id + RAG_SUFFIX, "base_model_id": model, "name": f"{name} chatbot (RAG)", "is_active": True,
            "meta": {"description": f"The chatbot built by {name}: their instructions and knowledge, by vector search "
                                    "(RAG).",
@@ -1206,6 +1360,8 @@ def cmd_chatbot(args):
     check_same_key(key, model)
     refuse_public_port(then="type openwebui start, then this command again")
     api = OpenWebUI().login()
+    # From workshop 4: the live tool, started again if it stopped (check_same_key checked that Open WebUI has it).
+    tools = mcp_wanted() and start_mcp_server(mcp_token_of(container_env(CONTAINER)))
     # The same package as for a Claude Project or a Gemini Gem.
     if subprocess.run(["chatbot-export", "--name", name]).returncode != 0:
         fail("chatbot-export failed: nothing was added to Open WebUI.")
@@ -1236,7 +1392,10 @@ def cmd_chatbot(args):
     knowledge, failed = api.fill_collection(
         knowledge_name, f"Everything {name} built during the workshop.", sorted(files))
     shutil.rmtree(tmp, ignore_errors=True)
-    forms = chatbot_forms(name, instructions, knowledge, skill_ids, service, model)
+    wiki = "wiki__index.md" in {label for label, _ in files}
+    # The tool even if it could not start now (said above): openwebui start brings it back, and the chatbot keeps it.
+    forms = chatbot_forms(name, instructions, knowledge, skill_ids, service, model, wiki=wiki,
+                          tool_ids=[MCP_TOOL_ID] if mcp_wanted() else [])
     wanted = native_id + RAG_SUFFIX if rag else native_id
     other = native_id if rag else native_id + RAG_SUFFIX
     # The other one uses the knowledge base made again just now: it is rebuilt too, from the same files.
@@ -1262,6 +1421,12 @@ def cmd_chatbot(args):
     if skill_ids:
         print(f"Your skills came along: {', '.join(skill_names(api, skill_ids))}. Their whole text goes with every "
               "message, and the chatbot cannot change them.")
+    if wiki:
+        print("Your wiki came with its map (wiki__index.md): each link names the file of another page.")
+    if mcp_wanted():
+        print(f'"{forms[native_id]["name"]}" has the live tool of mcp/, as in mode D: fire_danger (today\'s level, read '
+              "from mcp/fire-danger.json) and territories. Read-only. Under the message box, the wrench icon shows it."
+              + ("" if tools else " It is not running now: type openwebui start."))
     if also:
         print(f'"{forms[other]["name"]}" was updated too: it uses the same knowledge.')
     if rag:
@@ -1680,7 +1845,7 @@ def cmd_import(path_text):
             groups = info.get("knowledge") or []
         else:  # a package of chatbot-export (workshop kit): one knowledge base, the kit's addendum
             name = f"{title or path.stem} chatbot"
-            system += CHATBOT_ADDENDUM
+            system += CHATBOT_ADDENDUM + (CHATBOT_WIKI_ADDENDUM if "wiki__index.md" in documents else "")
             groups = [{"name": f"{title or path.stem} knowledge", "description": "",
                        "files": sorted(documents)}] if documents else []
         refs, failed = [], []
@@ -1768,7 +1933,11 @@ def cmd_reset():
 
 def cmd_stop():
     check_docker()
-    if docker("rm", "-f", CONTAINER).returncode == 0:
+    stopped = docker("rm", "-f", CONTAINER).returncode == 0
+    # The live tool of workshop 4 and its network (none in class mode, nor before workshop 4: nothing happens then).
+    docker("rm", "-f", MCP_CONTAINER)
+    docker("network", "rm", MCP_NETWORK)
+    if stopped:
         print("Open WebUI is stopped. Your data is kept: openwebui start opens it again.")
 
 

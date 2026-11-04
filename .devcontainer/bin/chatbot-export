@@ -6,8 +6,8 @@
 
 The file holds what goes into the two boxes of every chatbot tool:
   - Instructions: your AGENTS.md (workshop 1), without the comments;
-  - Knowledge: your summaries (workshops 2 and 3), your wiki pages (workshop 5) and the readable
-    copies of the official documents (corpus/text/).
+  - Knowledge: your summaries (workshops 2 and 3), your wiki pages and their map (workshop 5) and the
+    readable copies of the official documents (corpus/text/).
 It also holds your own skills (workshop 3, .claude/skills/), but not the kit's skills, which write
 files in this Codespace.
 To download it: right-click on the file in the file list, then "Download...".
@@ -34,9 +34,13 @@ Exported from the Youth AI Lab workshop on {date}.
   **Instructions** box.
 - `knowledge/`: {count} files. This is the **Knowledge** box.
   - `summaries__…`: the short summaries, checked or not (their header says who verified them);
-  - `wiki__…`: the pages of your wiki, each fact with its footnote (workshop 5);
+  - `wiki__…`: the pages of your wiki, each fact with its footnote (workshop 5). `wiki__index.md` is
+    its map. Each link between pages names the file of the other page here (`wiki__…`);
   - `corpus-text__…`: the readable copies of the official documents.
 - {skills}
+
+Not in the file: the live tool of workshop 4 (`fire-danger`). It is a program that runs in your Codespace,
+not a document: a Claude Project or a Gemini Gem cannot run it.
 
 ## Rebuild it
 
@@ -82,6 +86,10 @@ def instructions(kit):
 
 
 NOT_KNOWLEDGE = {"index.md", "README.md", "log.md", "CLAUDE.md", "AGENTS.md", "graph.md"}
+# The wiki's index is its map (workshop 5): it comes along, as wiki__index.md.
+WIKI_MAP = "index.md"
+# A link of a wiki page to another page: [Title](page.md), or (page.md#part).
+WIKI_LINK = re.compile(r"\]\((?:\./)?([^()\s/#]+\.md)(#[^()\s]*)?\)")
 
 
 def knowledge(kit):
@@ -90,7 +98,8 @@ def knowledge(kit):
         for path in sorted((kit / folder).glob("*.md")):
             # Catalogues and instructions are not knowledge: the same files left out as in workshop B and
             # openwebui (indexes, READMEs, templates), plus the wiki's own files (schema, log, map).
-            if path.name in NOT_KNOWLEDGE or path.name.startswith("00-") or path.is_symlink():
+            is_map = folder == "wiki" and path.name == WIKI_MAP
+            if (path.name in NOT_KNOWLEDGE and not is_map) or path.name.startswith("00-") or path.is_symlink():
                 continue
             try:
                 path.name.encode("utf-8")
@@ -100,6 +109,28 @@ def knowledge(kit):
                 continue
             files.append((f"knowledge/{prefix}__{path.name}", path))
     return files
+
+
+def wiki_text(path, pages):
+    """The text of a wiki page as it goes into the package (never on disk): each link to another page of the wiki
+    names its file in the package, [Title](wiki__page.md), so that a chatbot tool can find it by its name. The map
+    loses its HTML comment (a hint for the ingest skill, with an example link to a file that does not exist).
+    Returns (text, links rewritten), or (None, 0) for a file that is not UTF-8 (then it goes as it is)."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None, 0
+    if path.name == WIKI_MAP:
+        text = re.sub(r"\n{3,}", "\n\n", re.sub(r"<!--.*?-->", "", text, flags=re.S))
+    count = 0
+
+    def rewrite(match):
+        nonlocal count
+        if match.group(1) not in pages:
+            return match.group(0)
+        count += 1
+        return f"](wiki__{match.group(1)}{match.group(2) or ''})"
+    return WIKI_LINK.sub(rewrite, text), count
 
 
 # The kit's own skills (curation, workshop 3; wiki, workshop 5): they write files in the Codespace, which a
@@ -172,6 +203,7 @@ def main():
                  f'Choose another name, for example: chatbot-export --name "{name} chatbot"')
     # Through a temporary file, like workshop-save: an error never leaves half an export.
     tmp = out.with_name(f".{out.name}.tmp")
+    links = 0
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
             listed = ", ".join(f"`{a.split('/')[1]}`" for a, _ in own_skills)
@@ -182,18 +214,29 @@ def main():
                        "No `skills/` folder: you have not written a skill of your own yet (workshop 3)."))
             archive.writestr("instructions.md", text)
             archive.writestr("chatbot-name.txt", name + "\n")
+            pages = {path.name for arcname, path in files if arcname.startswith("knowledge/wiki__")}
             for arcname, path in files + own_skills:
-                archive.write(path, arcname)
+                page, count = wiki_text(path, pages) if arcname.startswith("knowledge/wiki__") else (None, 0)
+                links += count
+                if page is None:
+                    archive.write(path, arcname)
+                else:
+                    archive.writestr(arcname, page)
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
 
     counts = {p: sum(1 for a, _ in files if a.startswith(f"knowledge/{p}__")) for p in ("summaries", "wiki", "corpus-text")}
+    has_map = f"knowledge/wiki__{WIKI_MAP}" in {a for a, _ in files}
     with_skills = (f" + {len(own_skills)} skill{'' if len(own_skills) == 1 else 's'} "
                    f"({', '.join(a.split('/')[1] for a, _ in own_skills)})") if own_skills else ""
+    wiki = f"{counts['wiki'] - has_map} wiki pages" + (" + their map" if has_map else "")
     print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
-          f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents)"
+          f"({counts['summaries']} summaries, {wiki}, {counts['corpus-text']} documents)"
           f"{with_skills}.")
+    if links:
+        print(f"In the file, the {links} links between wiki pages name their files (wiki__…): a chatbot tool "
+              "finds a page by that name. Your wiki/ folder is not changed.")
     if kit_skills:
         print(f"Not in the file: the kit's skills {', '.join(kit_skills)}. They write files in this Codespace, "
               "and a chatbot tool cannot.")

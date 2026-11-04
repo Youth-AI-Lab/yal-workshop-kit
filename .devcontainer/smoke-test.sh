@@ -95,7 +95,7 @@ etape "ripgrep à la version figée, et les bibliothèques des commandes (import
 attendu="$(cat "$KIT/.devcontainer/ripgrep-version")"
 rg --version | head -1
 [[ "$(rg --version | head -1)" == "ripgrep $attendu "* ]] || echec "ripgrep : version attendue $attendu"
-for f in workshop_modes.py workshop_provider.py; do
+for f in workshop_modes.py workshop_provider.py mcp_http.py; do
   [[ -r "$(dirname "$(realpath "$(command -v workshop-login)")")/$f" ]] || echec "$f absent à côté des commandes"
 done
 
@@ -177,11 +177,15 @@ cp "$copie/examples/AGENTS.feurisson.md" "$copie/AGENTS.md"
 # Une skill du binôme (atelier 3) part dans le paquet ; celles du kit (curation, wiki) non : elles écrivent des fichiers.
 mkdir -p "$copie/.claude/skills/rumour-check"
 printf -- '---\nname: rumour-check\ndescription: Checks a rumour.\n---\n\n# Checking a rumour\n' > "$copie/.claude/skills/rumour-check/SKILL.md"
+avant="$(cd "$copie/wiki" && sha256sum ./*.md)"
 WORKSHOP_HOME="$copie" chatbot-export --name "Smoke test" > /tmp/out || echec "chatbot-export"
 grep -q "1 skill (rumour-check)" /tmp/out && grep -q "Not in the file: the kit's skills" /tmp/out || { cat /tmp/out; echec "chatbot-export : skills"; }
+grep -q "wiki pages + their map" /tmp/out && grep -q "links between wiki pages name their files" /tmp/out \
+  || { cat /tmp/out; echec "chatbot-export : carte du wiki et liens réécrits annoncés"; }
+[[ "$(cd "$copie/wiki" && sha256sum ./*.md)" == "$avant" ]] || echec "chatbot-export : wiki/ modifié sur le disque"
 rm -rf "$copie/.claude/skills/rumour-check"
 /opt/workshop/venv/bin/python -c "
-import sys, zipfile
+import re, sys, zipfile
 z = zipfile.ZipFile(sys.argv[1]); n = z.namelist()
 assert 'instructions.md' in n and 'README.md' in n, n[:5]
 skills = sorted(x for x in n if x.startswith('skills/'))
@@ -189,11 +193,20 @@ assert skills == ['skills/rumour-check/SKILL.md'], skills
 assert '<!--' not in z.read('instructions.md').decode(), 'commentaires dans les instructions'
 for p in ('summaries__', 'wiki__', 'corpus-text__'):
     assert any(x.startswith('knowledge/' + p) for x in n), p
-# Ni catalogues ni fichiers du wiki qui ne sont pas des connaissances (comme workshop B et openwebui).
-bad = [x for x in n if x.startswith('knowledge/') and x.split('__', 1)[1] in
+# Ni catalogues ni fichiers du wiki qui ne sont pas des connaissances (comme workshop B et openwebui) ; seule la
+# carte du wiki vient, sous le nom wiki__index.md (atelier 5).
+bad = [x for x in n if x.startswith('knowledge/') and x != 'knowledge/wiki__index.md' and x.split('__', 1)[1] in
        ('index.md', 'README.md', 'log.md', 'CLAUDE.md', 'AGENTS.md', 'graph.md') or '__00-' in x]
 assert not bad, bad
-print(len(n), 'fichiers dans le paquet')
+carte = z.read('knowledge/wiki__index.md').decode()
+assert '<!--' not in carte and '](file.md)' not in carte, 'commentaire de la carte gardé'
+# Chaque lien entre pages du wiki porte le nom d'un fichier du paquet (Open WebUI ouvre un fichier par son nom trouvé).
+noms = {x.split('/', 1)[1] for x in n if x.startswith('knowledge/')}
+liens = [(x, c) for x in n if x.startswith('knowledge/wiki__')
+         for c in re.findall(r'\]\(([^)\s#]+\.md)(?:#[^)]*)?\)', z.read(x).decode())]
+assert liens and all(c in noms for _, c in liens), [l for l in liens if l[1] not in noms][:5]
+assert 'Not in the file: the live tool of workshop 4' in z.read('README.md').decode(), 'README : outil MCP'
+print(len(n), 'fichiers dans le paquet,', len(liens), 'liens du wiki, tous vers un fichier du paquet')
 " "$copie/smoke-test.zip" || echec "chatbot-export : paquet incomplet"
 
 etape "openwebui : Docker fonctionne dans le conteneur, la commande demande la clé d'abord"
@@ -223,6 +236,91 @@ code=0; openwebui share open > /tmp/err 2>&1 || code=$?
 OPENWEBUI_MODE=class openwebui help | grep -q "share open" || echec "openwebui help (mode classe)"
 OPENWEBUI_MODE=class openwebui help | grep -q "openwebui import FILE" || echec "openwebui help (mode classe) : export et import"
 command -v qrencode > /dev/null || echec "qrencode absent (QR code de share open)"
+
+etape "openwebui, atelier 4 : l'outil fire-danger (lecture seule, jeton) et la carte du wiki, sans Docker"
+# Le démarrage réel (conteneurs, réseau interne) est essayé à part : facilitator/openwebui-prototypes/next-image/.
+WORKSHOP_HOME="$copie" /opt/workshop/venv/bin/python -I - "$(command -v openwebui)" <<'PY' || echec "openwebui : outil MCP ou carte du wiki"
+import contextlib, importlib.machinery, importlib.util, io, json, os, pathlib, sys
+l = importlib.machinery.SourceFileLoader("owui", sys.argv[1]); m = importlib.util.module_from_spec(importlib.util.spec_from_loader("owui", l)); l.exec_module(m)
+assert m.mcp_wanted(), "le kit a mcp/ et .mcp.json : l'outil est attendu"
+c = m.mcp_connection("T" * 43)[0]
+assert c["type"] == "mcp" and c["auth_type"] == "bearer" and c["key"] == "T" * 43 and c["url"].startswith("http://"), c
+# Noms entiers (le filtre d'Open WebUI compare la fin du nom) ; jamais recorded_example, time ni Open-Meteo.
+assert c["config"]["function_name_filter_list"] == "fire_danger,territories", c["config"]
+assert m.mcp_token_of({"TOOL_SERVER_CONNECTIONS": json.dumps([c])}) == "T" * 43 and m.mcp_token_of({}) == ""
+assert m.MCP_HELPER.is_file(), m.MCP_HELPER
+m.CLASS = True; assert not m.mcp_wanted(), "jamais en mode classe"; m.CLASS = False
+# Le chatbot natif reçoit l'outil, pas le chatbot RAG ; la phrase de la carte du wiki seulement avec la carte.
+f = m.chatbot_forms("Smoke", "I", {"id": "k", "name": "K"}, [], m.PROVIDERS[0], "claude-sonnet-5-5", wiki=True,
+                    tool_ids=[m.MCP_TOOL_ID])
+natif, rag = f["chatbot-smoke"], f["chatbot-smoke--rag"]
+assert natif["meta"]["toolIds"] == ["server:mcp:fire-danger"] and "toolIds" not in rag["meta"], (natif["meta"], rag["meta"])
+assert "wiki__index.md, its map" in natif["params"]["system"] and "wiki__index.md" not in rag["params"]["system"]
+f = m.chatbot_forms("Smoke", "I", {"id": "k", "name": "K"}, [], m.PROVIDERS[0], "claude-sonnet-5-5")
+assert "toolIds" not in f["chatbot-smoke"]["meta"] and "wiki__index.md" not in f["chatbot-smoke"]["params"]["system"]
+# Open WebUI lancé avant l'atelier 4 (sans l'outil) : openwebui chatbot demande openwebui start d'abord.
+class Conteneur:
+    returncode = 0
+    stdout = json.dumps(["OPENAI_API_KEY=sk-ant-x", "OPENAI_API_CONFIGS=" + json.dumps({"0": {"model_ids": ["m"]}})]
+                        + [f"{k}={v}" for k, v in m.HARDENED.items()])
+m.docker = lambda *a, **k: Conteneur
+err = io.StringIO()
+try:
+    with contextlib.redirect_stderr(err):
+        m.check_same_key("sk-ant-x", "m")
+    raise AssertionError("sans l'outil, check_same_key doit s'arrêter")
+except SystemExit:
+    assert "without the live tool of this workshop" in err.getvalue(), err.getvalue()
+Conteneur.stdout = json.dumps(json.loads(Conteneur.stdout) + ["TOOL_SERVER_CONNECTIONS=" + json.dumps([c])])
+m.check_same_key("sk-ant-x", "m")
+print("openwebui : outil fire-danger (2 noms entiers, jeton), chatbot natif seulement, carte du wiki : OK")
+PY
+# Le serveur de l'outil (mcp_http.py, le même fire_danger_server.py) : jeton exigé, Host vérifié, deux outils seulement,
+# même avec FIRE_DANGER_RECORDED=1 (recorded_example retiré par le serveur lui-même).
+port=18199
+MCP_TOKEN="$(/opt/workshop/venv/bin/python -I -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export MCP_TOKEN
+FIRE_DANGER_RECORDED=1 /opt/workshop/venv/bin/python -I -B "$(dirname "$(command -v openwebui)")/mcp_http.py" \
+  --server "$copie/mcp/fire_danger_server.py" --host 127.0.0.1 --port $port --allowed-host "127.0.0.1:$port" \
+  --tool fire_danger --tool territories > /tmp/mcp-http.log 2>&1 &
+serveur=$!
+/opt/workshop/venv/bin/python -I - "$port" <<'PY' || { cat /tmp/mcp-http.log; echec "mcp_http.py : jeton, Host ou outils"; }
+import json, os, sys, time, urllib.error, urllib.request
+url, token = f"http://127.0.0.1:{sys.argv[1]}/mcp", os.environ["MCP_TOKEN"]
+def post(body, headers):
+    h = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **headers}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, json.dumps(body).encode(), h), timeout=5) as r:
+            return r.status, dict(r.headers), r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), ""
+init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18",
+        "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}}}
+for _ in range(40):
+    try:
+        status = post(init, {})[0]
+        break
+    except (urllib.error.URLError, ConnectionError):
+        time.sleep(0.5)
+assert status == 401, f"sans jeton : {status}"
+assert post(init, {"Authorization": "Bearer " + "x" * 43})[0] == 401, "mauvais jeton accepté"
+assert post(init, {"Authorization": "Bearer " + token, "Host": "evil.example"})[0] == 421, "Host forgé accepté"
+status, headers, _ = post(init, {"Authorization": "Bearer " + token})
+assert status == 200, status
+h = {"Authorization": "Bearer " + token, "mcp-session-id": headers.get("mcp-session-id", ""),
+     "mcp-protocol-version": "2025-06-18"}
+post({"jsonrpc": "2.0", "method": "notifications/initialized"}, h)
+_, _, body = post({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, h)
+tools = sorted(t["name"] for t in json.loads(body.split("data: ", 1)[1].splitlines()[0])["result"]["tools"])
+assert tools == ["fire_danger", "territories"], tools
+_, _, body = post({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                   "params": {"name": "fire_danger", "arguments": {"territory": "La Rochelle"}}}, h)
+assert "why_no_level" in body, body[:300]   # fire-danger.json du kit : pas daté du jour
+print("mcp_http.py : 401 sans jeton, 421 Host forgé, outils", tools, ", why_no_level rendu")
+PY
+kill "$serveur"; wait "$serveur" 2>/dev/null || true
+unset MCP_TOKEN
+grep -q "Rochelle" /tmp/mcp-http.log && echec "mcp_http.py : la question est dans le journal du serveur"
 
 etape "replay RAG sans Open WebUI : un message clair, aucun fichier de réponses"
 # answers/ peut ne pas exister encore : sous pipefail, l'échec de ls arrêterait le script.
