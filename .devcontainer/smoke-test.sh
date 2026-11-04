@@ -628,9 +628,24 @@ assert "turn on zero-data-retention models hosted in Europe: workshop-login --eu
 # --europe : la même règle partout, pas d'avertissement, un autre juge, et Open WebUI redémarre pour la prendre.
 class Conteneur:
     returncode = 0
-    stdout = json.dumps(["OPENAI_API_KEY=sk-or-x", "DEFAULT_MODEL_PARAMS=" + json.dumps(owui.routed({}, wp.OPENROUTER))])
+    stdout = json.dumps(["OPENAI_API_KEY=sk-or-x", "DEFAULT_MODEL_PARAMS=" + json.dumps(owui.routed({}, wp.OPENROUTER))]
+                        + [f"{nom}={valeur}" for nom, valeur in owui.HARDENED.items()])
 owui.docker = lambda *a, **k: Conteneur
 owui.check_same_key("sk-or-x", "a/b")
+# Un conteneur lancé par une version plus ancienne (sans gabarit RAG, notes encore là) : openwebui start d'abord.
+assert "RAG_TEMPLATE" in owui.HARDENED and owui.HARDENED["ENABLE_NOTES"] == "false"
+class Ancien:
+    returncode = 0
+    stdout = json.dumps(json.loads(Conteneur.stdout)[:2])
+owui.docker = lambda *a, **k: Ancien
+erreur = io.StringIO()
+try:
+    with contextlib.redirect_stderr(erreur):
+        owui.check_same_key("sk-or-x", "a/b")
+    raise AssertionError("un conteneur ancien doit arrêter check_same_key")
+except SystemExit:
+    assert "started by an older version" in erreur.getvalue(), erreur.getvalue()
+owui.docker = lambda *a, **k: Conteneur
 wp.SETTINGS_FILE.write_text(json.dumps({"provider": "openrouter", "model": "openrouter/a/b", "europe": True}))
 assert wp.routing() == {"data_collection": "deny", "zdr": True, "only": wp.EUROPE_ENDPOINTS, "allow_fallbacks": False}
 assert json.loads(owui.routed({}, wp.OPENROUTER)["custom_params"]["provider"]) == wp.routing()

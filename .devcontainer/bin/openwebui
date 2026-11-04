@@ -137,10 +137,22 @@ NO_TOOLS = {"file_context": True, "citations": True, "builtin_tools": False, "fi
 # read the files of its knowledge (they need no other category). The others write notes, skills, tasks,
 # automations, calendar events or memories, read other conversations, or reach outside (web, code,
 # images, webhooks). Without accounts everyone is an administrator: all were offered (27 tools measured).
-KNOWLEDGE_TOOLS_ONLY = {**dict.fromkeys(
-    ["automations", "calendar", "channels", "chats", "code_interpreter", "files", "image_generation", "memory",
-     "notes", "notifications", "skills", "subagents", "tasks", "time", "user_input", "web_search"], False),
-    "knowledge": True}
+BUILTIN_CATEGORIES = ["automations", "calendar", "channels", "chats", "code_interpreter", "files",
+                      "image_generation", "knowledge", "memory", "notes", "notifications", "skills", "subagents",
+                      "tasks", "time", "user_input", "web_search"]
+NO_BUILTIN_TOOLS = dict.fromkeys(BUILTIN_CATEGORIES, False)
+KNOWLEDGE_TOOLS_ONLY = {**NO_BUILTIN_TOOLS, "knowledge": True}
+# A chatbot of openwebui export (the Open WebUI guide), imported: its knowledge, plus what the guide describes
+# and what writes nothing for anyone else: Memory (the facilitator's switch under Capabilities), the clock and
+# a question back to the participant. Its export can switch more off, never on.
+IMPORTED_TOOLS = {**KNOWLEDGE_TOOLS_ONLY, "memory": True, "time": True, "user_input": True}
+# What a chatbot of Workspace -> Models also gets from Open WebUI (Builtin Tools, on by default), with the
+# names of their switches: the participant's other conversations, task lists, the instance's skills.
+WIDE_TOOLS = {"chats": "Chat History", "tasks": "Task Management", "skills": "Skills"}
+# Settings of the whole instance, in both modes. Notes, automations and the calendar are off: their tools
+# write for the model (a chat opened from a note gets them whatever the chatbot says, an automation runs
+# the model every day on your key), and nothing in the workshops or the guide uses them. A simpler menu too.
+HARDENED = {"ENABLE_NOTES": "false", "ENABLE_AUTOMATIONS": "false", "ENABLE_CALENDAR": "false"}
 # What openwebui chatbot and openwebui import write in the description of the chatbots they make.
 KIT_CHATBOT = re.compile(r"^(The chatbot built by .+: their instructions and knowledge|Imported from .+)\.$")
 # The text Open WebUI puts around the excerpts (classic RAG), or around the files a chatbot opened (native).
@@ -172,6 +184,9 @@ Provide a clear and direct response to the user's query, including inline citati
 {{CONTEXT}}
 </context>
 """
+# Read at each start (ENABLE_PERSISTENT_CONFIG is false): a container made by an older version has another
+# fingerprint (start_container), so openwebui start makes it again on the same data.
+HARDENED["RAG_TEMPLATE"] = RAG_TEMPLATE
 
 
 def fail(message, code=1):
@@ -290,7 +305,7 @@ def check_same_key(key, model):
     if provider_of(key) is OPENROUTER and env.get("DEFAULT_MODEL_PARAMS") != json.dumps(routed({}, OPENROUTER)):
         fail("Your data rule changed since Open WebUI started (workshop-login --europe). Type openwebui start "
              "(it takes the new rule),\nthen this command again.")
-    if env.get("RAG_TEMPLATE") != RAG_TEMPLATE:
+    if any(env.get(name) != value for name, value in HARDENED.items()):
         fail("Open WebUI was started by an older version of this command. Type openwebui start "
              "(your chatbots and documents are kept),\nthen this command again.")
 
@@ -357,9 +372,7 @@ def start_container():
         "RAG_TOP_K": "5",
         "ENABLE_RETRIEVAL_QUERY_GENERATION": "false",
         "ENABLE_SEARCH_QUERY_GENERATION": "false",
-        # Read at each start (ENABLE_PERSISTENT_CONFIG is false): a container made by an older version
-        # has another fingerprint (below), so openwebui start makes it again on the same data.
-        "RAG_TEMPLATE": RAG_TEMPLATE,
+        **HARDENED,
         # No hidden calls to the model (titles, tags, suggestions): cheaper and easier to follow.
         "ENABLE_TITLE_GENERATION": "false",
         "ENABLE_TAGS_GENERATION": "false",
@@ -414,9 +427,7 @@ def start_container():
             "USER_PERMISSIONS_CHAT_STT": "false",
             "USER_PERMISSIONS_CHAT_CALL": "false",
             "USER_PERMISSIONS_CHAT_SHARE": "false",
-            # A simpler menu, with no AI actions paid outside the chatbots.
-            "ENABLE_NOTES": "false",
-            "ENABLE_CALENDAR": "false",
+            # Notes and the calendar are off in both modes (HARDENED).
             "WEBUI_BANNERS": json.dumps([{
                 "id": "no-personal-data", "type": "info", "dismissible": False, "timestamp": 0,
                 "content": "Do not write personal information (yours or anyone else's) in your questions."}]),
@@ -728,13 +739,29 @@ def knowledge_files():
     return files
 
 
+def plain_model(model, service, hidden):
+    """The form of a plain model, without built-in tools: chosen by mistake (or by its id, also when it is
+    hidden from the list), it would search every knowledge base with tools (agentic search), not by RAG,
+    and get Open WebUI's other tools (memories, other conversations…). The chatbots built on it keep their
+    own settings."""
+    return {"id": model, "base_model_id": None, "name": model, "is_active": True,
+            "meta": {"hidden": hidden, "capabilities": {**NO_TOOLS, "file_context": False, "citations": False},
+                     "builtinTools": dict(NO_BUILTIN_TOOLS)},
+            "params": routed({"function_calling": "legacy"}, service)}
+
+
+def wide_tools_on(bot):
+    """The switches of WIDE_TOOLS still on for this chatbot (empty when it gets no built-in tools at all)."""
+    meta, params = bot.get("meta") or {}, bot.get("params") or {}
+    if params.get("function_calling") == "legacy" or (meta.get("capabilities") or {}).get("builtin_tools") is False:
+        return []
+    switches = meta.get("builtinTools") if isinstance(meta.get("builtinTools"), dict) else {}
+    return [label for category, label in WIDE_TOOLS.items() if switches.get(category, True) is not False]
+
+
 def hide_base_model(api, model, service):
-    """Hides the plain model from the list, without built-in tools: chosen by mistake, it would
-    search every knowledge base with tools (agentic search), not by RAG."""
-    api.save_model({"id": model, "base_model_id": None, "name": model, "is_active": True,
-                    "meta": {"hidden": True, "capabilities": {**NO_TOOLS, "file_context": False,
-                                                              "citations": False}},
-                    "params": routed({"function_calling": "legacy"}, service)})
+    """Hides the plain model from the list, without built-in tools (plain_model)."""
+    api.save_model(plain_model(model, service, hidden=True))
 
 
 @functools.lru_cache(maxsize=None)
@@ -1215,9 +1242,9 @@ def cmd_share_open():
     for base in base_models(key, model):
         api.request("POST", "/models/model/access/update",
                     body={"id": base, "name": base, "access_grants": EVERYONE})
-        # The plain model stays out of the participants' list: they use your chatbots.
-        api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
-                        "meta": {"hidden": True}, "params": routed({}, service)})
+        # The plain model stays out of the participants' list: they use your chatbots. A participant can
+        # still reach it by its id: without tools (plain_model).
+        api.save_model(plain_model(base, service, hidden=True))
     for bot in chatbots:
         api.request("POST", "/models/model/access/update",
                     body={"id": bot["id"], "name": bot["name"], "access_grants": EVERYONE})
@@ -1229,11 +1256,18 @@ def cmd_share_open():
                 except ApiError as e:
                     if e.status != 404:  # a single file, not a knowledge base
                         raise
+    reload_models(api)
     print("\nSign-ups are OPEN. The participants can use these chatbots:")
     for bot in chatbots:
         print(f"  - {bot['name']}")
     if not chatbots:
         print("  (none yet: create one in Workspace -> Models, then type openwebui share open again)")
+    for bot in chatbots:
+        left_on = wide_tools_on(bot)
+        if left_on:
+            print(f'\nWarning: "{bot["name"]}" can also search the participant\'s other conversations, keep '
+                  "task lists or read skills.\n  To turn this off: Workspace -> Models -> this chatbot -> "
+                  f"Builtin Tools: turn off {', '.join(left_on)}, then Save & Update.")
     warn_young_people(service)
     set_port(public=True)
     show_link()
@@ -1250,8 +1284,8 @@ def cmd_share_close():
     realign_models(api, key, service, model)  # a new container takes the model saved today
     for base in base_models(key, model):  # back in your list, to build new chatbots on it
         if api.model_exists(base):
-            api.save_model({"id": base, "base_model_id": None, "name": base, "is_active": True,
-                            "meta": {"hidden": False}, "params": routed({}, service)})
+            api.save_model(plain_model(base, service, hidden=False))
+    reload_models(api)
     print("\nSign-ups are closed: nobody new can create an account.")
     set_port(public=False)
     print("Your chatbots and the participants' accounts and conversations are kept.")
@@ -1446,10 +1480,19 @@ def cmd_import(path_text):
     if not info:
         meta = {"description": f"Imported from {path.name}.",
                 "capabilities": {**NO_TOOLS, "builtin_tools": True}}
-    # The knowledge tools only (KNOWLEDGE_TOOLS_ONLY), unless the export says which ones the chatbot had:
-    # Open WebUI writes builtinTools when someone switched a category off in Workspace -> Models.
-    if not isinstance(meta.get("builtinTools"), dict):
-        meta["builtinTools"] = dict(KNOWLEDGE_TOOLS_ONLY)
+    # Built-in tools: a package of chatbot-export gets the knowledge tools only; an export of the guide gets
+    # IMPORTED_TOOLS. The package can switch more off (Open WebUI writes builtinTools when someone switched
+    # a category off in Workspace -> Models), never on: a .zip can come from anywhere.
+    tools = dict(IMPORTED_TOOLS if info else KNOWLEDGE_TOOLS_ONLY)
+    asked = meta.get("builtinTools") if isinstance(meta.get("builtinTools"), dict) else {}
+    tools.update({category: False for category, on in asked.items() if category in tools and on is False})
+    meta["builtinTools"] = tools
+    # Workspace tools, filters, actions and skills of the old Open WebUI: not in the file, and a new one could
+    # have others with the same id.
+    others = [kind for kind in ("toolIds", "filterIds", "actionIds", "skillIds") if meta.pop(kind, None)]
+    if others:
+        print("Its workspace tools, filters, actions or skills are not imported: add the ones you trust again "
+              "in Workspace -> Models.")
     left_out = drop_file_refs(meta)  # an export made by an older version of this command may name them
     if left_out:
         print(f"Its {' and '.join(left_out)} {'stay' if len(left_out) > 1 else 'stays'} in the old Open WebUI: "
@@ -1467,6 +1510,10 @@ def cmd_import(path_text):
         fail("Some documents could not be added (see above). Type the same command again.")
     print(f'\n{"Replaced" if replaced else "Imported"}: "{name}", with {sum(len(g.get("files", [])) for g in groups)} '
           "documents. Check it in Workspace -> Models, then test it (guide, part 3).")
+    kept = [label for category, label in (("knowledge", "Knowledge Base"), ("memory", "Memory"),
+                                          ("time", "Time & Calculation"), ("user_input", "Ask User"))
+            if tools[category]]
+    print(f"Its Builtin Tools: {', '.join(kept) or 'none'} (the others are off).")
     print("In a session, type openwebui share open so that the participants see it.")
 
 
