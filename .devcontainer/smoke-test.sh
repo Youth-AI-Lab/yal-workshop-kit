@@ -174,11 +174,18 @@ echo "wiki-explore : OK"
 
 etape "chatbot-export : le paquet du chatbot (instructions + connaissances)"
 cp "$copie/examples/AGENTS.feurisson.md" "$copie/AGENTS.md"
-WORKSHOP_HOME="$copie" chatbot-export --name "Smoke test" > /dev/null || echec "chatbot-export"
+# Une skill du binôme (atelier 3) part dans le paquet ; celles du kit (curation, wiki) non : elles écrivent des fichiers.
+mkdir -p "$copie/.claude/skills/rumour-check"
+printf -- '---\nname: rumour-check\ndescription: Checks a rumour.\n---\n\n# Checking a rumour\n' > "$copie/.claude/skills/rumour-check/SKILL.md"
+WORKSHOP_HOME="$copie" chatbot-export --name "Smoke test" > /tmp/out || echec "chatbot-export"
+grep -q "1 skill (rumour-check)" /tmp/out && grep -q "Not in the file: the kit's skills" /tmp/out || { cat /tmp/out; echec "chatbot-export : skills"; }
+rm -rf "$copie/.claude/skills/rumour-check"
 /opt/workshop/venv/bin/python -c "
 import sys, zipfile
 z = zipfile.ZipFile(sys.argv[1]); n = z.namelist()
 assert 'instructions.md' in n and 'README.md' in n, n[:5]
+skills = sorted(x for x in n if x.startswith('skills/'))
+assert skills == ['skills/rumour-check/SKILL.md'], skills
 assert '<!--' not in z.read('instructions.md').decode(), 'commentaires dans les instructions'
 for p in ('summaries__', 'wiki__', 'corpus-text__'):
     assert any(x.startswith('knowledge/' + p) for x in n), p
@@ -204,6 +211,12 @@ code=0; openwebui query --size 700 "x" > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "The sizes are 1000, 2000" /tmp/err || { cat /tmp/err; echec "openwebui query --size inconnue : refus attendu"; }
 code=0; openwebui top-k abc > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "Usage: openwebui top-k N" /tmp/err || { cat /tmp/err; echec "openwebui top-k invalide : refus attendu"; }
+# Le chatbot du binôme, en RAG (atelier 2) : --rag dans l'aide et dans le message d'usage ; sans clé, workshop-login.
+openwebui help | grep -q -- "--rag" || echec "openwebui help : chatbot --rag"
+code=0; openwebui chatbot --name > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "\[--rag\]" /tmp/err || { cat /tmp/err; echec "openwebui chatbot --name sans nom : usage attendu"; }
+code=0; openwebui chatbot --name "Smoke test" --rag > /tmp/err 2>&1 || code=$?
+[[ $code -ne 0 ]] && grep -q "workshop-login" /tmp/err || { cat /tmp/err; echec "openwebui chatbot --rag sans clé : message attendu workshop-login"; }
 # Le partage demande des comptes : refusé dans l'instance de l'atelier (sans comptes).
 code=0; openwebui share open > /tmp/err 2>&1 || code=$?
 [[ $code -ne 0 ]] && grep -q "Never make its port public" /tmp/err || { cat /tmp/err; echec "openwebui share hors mode classe : refus attendu"; }

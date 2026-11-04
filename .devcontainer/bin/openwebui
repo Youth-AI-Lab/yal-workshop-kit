@@ -9,10 +9,14 @@
     openwebui query --size 2000 --top-k 3 "<question>"
                                      the same, in the base of one size (1000 or 2000), with
                                      another number of excerpts (top-k); nothing to restart
-    openwebui top-k N                the number of excerpts the "Wildfire RAG" models get in the chat,
-                                     from the next question (default 5; openwebui start puts it back)
+    openwebui top-k N                the number of excerpts the RAG models get in the chat, from the
+                                     next question (default 5; openwebui start puts it back)
     openwebui chatbot --name "<name>"
-                                     packs your chatbot (chatbot-export) and adds it to Open WebUI
+                                     packs your chatbot (chatbot-export) and adds it to Open WebUI,
+                                     with your skills
+    openwebui chatbot --name "<name>" --rag
+                                     the same chatbot as a RAG: Open WebUI gives it the 5 excerpts
+                                     closest to each question, like "Wildfire RAG"
     openwebui stop                   stops Open WebUI (your data is kept)
 
 To ask the test questions to "Wildfire RAG" and score it like the other modes: replay RAG, then score RAG.
@@ -25,7 +29,10 @@ In it, choose a model in the message box (the name at the bottom right):
     the 5 excerpts closest to the question and gives only those to the model.
   - "Wildfire RAG 1000" and "Wildfire RAG 2000" (after openwebui sizes): the same, with excerpts
     of 1000 or 2000 characters (1000 is the same base as "Wildfire RAG (workshop kit)").
-  - "<name> chatbot": your AGENTS.md and your knowledge; the model searches it itself, as in mode E.
+  - "<name> chatbot": your AGENTS.md, your knowledge and your skills; the model searches the knowledge
+    itself, as in mode E.
+  - "<name> chatbot (RAG)" (after openwebui chatbot --rag): the same instructions, knowledge and skills,
+    but Open WebUI picks the excerpts before each answer, as for "Wildfire RAG". You can have both.
 
 (With OPENWEBUI_MODE=class, as in the Open WebUI guide, the commands are those of the group mode.)
 """
@@ -125,6 +132,21 @@ CHATBOT_ADDENDUM = """
 Your knowledge base holds short summaries (summaries__…), the pages of a wiki (wiki__…) and the
 readable copies of the official documents (corpus-text__…). Search it before you answer a
 question about the topic, and say which file you used."""
+
+# openwebui chatbot --rag: the same chatbot, but Open WebUI searches before each answer (legacy, as "Wildfire
+# RAG"), and the model cannot search for more. Its id ends with "--rag": a slug never has two dashes in a row.
+RAG_SUFFIX = "--rag"
+CHATBOT_RAG_ADDENDUM = """
+
+## Your knowledge
+Before each question, you are given the excerpts of your knowledge base that are closest to it
+(short summaries, pages of a wiki, readable copies of the official documents). You cannot search
+for other excerpts."""
+CHATBOT_USAGE = 'Usage: openwebui chatbot --name "<the name of your chatbot>" [--rag]'
+
+# The skills of a package (chatbot-export: the pair's own skills of .claude/skills/; openwebui export: the skills
+# attached to the chatbot). Only SKILL.md, under a plain folder name.
+SKILL_MEMBER = re.compile(r"^skills/([A-Za-z0-9_-][A-Za-z0-9._-]*)/SKILL\.md$")
 
 # Files keep their folder in their name: summaries/11-x.md and corpus/text/11-y.md can have the
 # same file name, and Open WebUI only shows the file name in its citations.
@@ -857,6 +879,133 @@ def name_second_model_chatbots(api, key, model):
               "-> Save & Update.", flush=True)
 
 
+# --- Skills -------------------------------------------------------------------------------------
+# A chatbot of these commands has no Skills tools (KNOWLEDGE_TOOLS_ONLY): the model can neither list, read nor
+# write skills. Its skills are attached instead (meta.skillIds), and Open WebUI 0.12.4 then puts the whole text of
+# each one in the system prompt, at every message (utils/middleware.py). A package brings its skills as
+# skills/<folder>/SKILL.md; the chatbot gets those, never a skill already in Open WebUI that it did not bring.
+
+def package_skills(archive):
+    """[(folder, text of SKILL.md)] of a package, in the order of their folders."""
+    found = []
+    for member in sorted(archive.namelist()):
+        match = SKILL_MEMBER.match(member)
+        if match:
+            found.append((match.group(1), archive.read(member).decode("utf-8", errors="replace")))
+    return found
+
+
+def skill_header(text, folder):
+    """(id, name) of a skill, as Open WebUI's import reads them: the name of its header, else the folder."""
+    name = ""
+    head = re.match(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(\r?\n|\Z)", text, re.S)
+    if head:
+        line = re.search(r"^name:[ \t]*(.+?)[ \t]*$", head.group(1), re.M)
+        value = line.group(1) if line else ""
+        # YAML: a comment starts with " #", outside quotes.
+        name = value.strip("'\"").strip() if value[:1] in "'\"" else re.sub(r"\s+#.*$", "", value).strip()
+    name = name or folder
+    return re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-") or "my-skill", name
+
+
+def multipart(fields, files):
+    """fields: {name: text}; files: [(field, filename, bytes, type)]."""
+    boundary = uuid.uuid4().hex
+    body = b""
+    for name, value in fields.items():
+        body += f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+    for field, filename, data, kind in files:
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+                 f"Content-Type: {kind}\r\n\r\n").encode() + data + b"\r\n"
+    return body + f"--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
+
+
+def get_skill(api, skill_id):
+    try:
+        return api.request("GET", f"/skills/id/{urllib.parse.quote(skill_id)}")
+    except ApiError as e:
+        if e.status == 404:
+            return None
+        raise
+
+
+def skill_users(api):
+    """skill id -> the ids of the models it is attached to."""
+    users = {}
+    for record in api.request("GET", "/models/all"):
+        for skill_id in (record.get("meta") or {}).get("skillIds") or []:
+            users.setdefault(skill_id, set()).add(record["id"])
+    return users
+
+
+def save_skills(api, skills, own, users):
+    """Puts the skills of a package in Open WebUI, by its own import (it reads the description in the header),
+    and returns their ids, to attach to the chatbots `own` (model ids). users: skill_users() before. A skill with
+    the same id is kept when its text is the same, replaced when no other chatbot uses it (in class mode: when it
+    is already one of these chatbots' own), else saved under another id: it never changes another chatbot's skill."""
+    ids = []
+    for folder, text in skills:
+        base_id, base_name = skill_header(text, folder)
+        # An export of openwebui export names each folder by its skill id: the same text under that id is the same
+        # skill (two skills with the same name in their header would otherwise swap ids and texts at each import).
+        same = get_skill(api, folder) if folder != base_id and re.fullmatch(r"[a-z0-9_-]+", folder) else None
+        if same and folder not in ids and same.get("content") == text and same.get("is_active", True):
+            ids.append(folder)
+            continue
+        error = ""
+        for n in range(1, 21):
+            skill_id, name = (base_id, base_name) if n == 1 else (f"{base_id}-{n}", f"{base_name} ({n})")
+            if skill_id in ids:
+                continue  # two folders with the same name in their header
+            old = get_skill(api, skill_id)
+            if old and old.get("content") == text and old.get("is_active", True):
+                error = ""
+                break
+            others = users.get(skill_id, set())
+            if old and not (others <= own and (others or not CLASS)):
+                continue
+            decision = {"action": "create", "id": skill_id, "name": name}
+            if old:
+                decision.update(action="replace", expected_version_id=old.get("version_id"))
+            body, kind = multipart({"decisions": json.dumps([decision])},
+                                   [("files", "SKILL.md", text.encode(), "text/markdown")])
+            try:
+                result = (api.request("POST", "/skills/import", raw=body, content_type=kind) or [{}])[0]
+            except ApiError as e:  # the whole file refused (over 10 MiB, for example)
+                result = {"error": str(e).split(": ", 2)[-1]}
+            if result.get("status") == "saved":
+                if old and not old.get("is_active", True):
+                    api.request("POST", f"/skills/id/{urllib.parse.quote(skill_id)}/toggle")
+                error = ""
+                break
+            error = str(result.get("error") or result)
+            if "name already exists" not in error:
+                break
+        else:
+            error = error or "no free id"
+        if error:  # left out, not a stop: the chatbots are still saved, with their other skills
+            print(f"! Left out: the skill {folder}. Open WebUI refused it ({error}). Check its header "
+                  "(name, description) and its size.", flush=True)
+            continue
+        ids.append(skill_id)
+    return ids
+
+
+def drop_old_skills(api, own, keep, users):
+    """Deletes the skills that only these chatbots used and no longer use (a skill renamed or removed)."""
+    for skill_id, models in users.items():
+        if skill_id not in keep and models & own and models <= own:
+            try:
+                api.request("DELETE", f"/skills/id/{urllib.parse.quote(skill_id)}/delete")
+            except ApiError as e:
+                if e.status != 404:
+                    raise
+
+
+def skill_names(api, ids):
+    return [(get_skill(api, skill_id) or {}).get("name") or skill_id for skill_id in ids]
+
+
 # --- Commands -----------------------------------------------------------------------------------
 
 def hold_lock():
@@ -956,8 +1105,8 @@ def cmd_top_k(value):
         fail("Usage: openwebui top-k N   (N from 1 to 50; the default is 5)")
     api = OpenWebUI().login()
     set_top_k(api, top_k)
-    print(f"From the next question, each \"Wildfire RAG\" model gets {top_k} excerpts. "
-          f"Back to {TOP_K}: openwebui top-k {TOP_K} (openwebui start does it too).")
+    print(f"From the next question, each RAG model (\"Wildfire RAG\", and your chatbot made with openwebui chatbot --rag) "
+          f"gets {top_k} excerpts.\nBack to {TOP_K}: openwebui top-k {TOP_K} (openwebui start does it too).")
 
 
 def parse_query(args):
@@ -1016,12 +1165,41 @@ def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "my-chatbot"
 
 
+def knowledge_ref(knowledge):
+    return [{"id": knowledge["id"], "name": knowledge["name"], "description": knowledge.get("description", ""),
+             "type": "collection"}]
+
+
+def chatbot_forms(name, instructions, knowledge, skill_ids, service, model):
+    """The two chatbots of openwebui chatbot, by id: the default one (the model searches its knowledge with tools,
+    native) and the RAG one (--rag: Open WebUI gives it excerpts before each answer, legacy, as "Wildfire RAG").
+    Same instructions, knowledge and skills. Changes nothing in Open WebUI."""
+    native_id = "chatbot-" + slug(name)
+    params = routed({"system": instructions + CHATBOT_ADDENDUM, "function_calling": "native"}, service)
+    meta = {"description": f"The chatbot built by {name}: their instructions and knowledge.",
+            "knowledge": knowledge_ref(knowledge),
+            # Built-in tools on: the model searches and reads its knowledge itself (mode E). Those tools only.
+            "capabilities": {**NO_TOOLS, "builtin_tools": True}, "builtinTools": dict(KNOWLEDGE_TOOLS_ONLY),
+            "skillIds": list(skill_ids)}
+    rag = {"id": native_id + RAG_SUFFIX, "base_model_id": model, "name": f"{name} chatbot (RAG)", "is_active": True,
+           "meta": {"description": f"The chatbot built by {name}: their instructions and knowledge, by vector search "
+                                   "(RAG).",
+                    "knowledge": knowledge_ref(knowledge),
+                    # No tools: classic RAG, the top-k of this Open WebUI (openwebui top-k), excerpts of 1000 characters.
+                    "capabilities": NO_TOOLS, "builtinTools": dict(NO_BUILTIN_TOOLS), "skillIds": list(skill_ids)},
+           "params": routed({"system": instructions + CHATBOT_RAG_ADDENDUM, "function_calling": "legacy"}, service)}
+    return {native_id: {"id": native_id, "base_model_id": model, "name": f"{name} chatbot", "is_active": True,
+                        "meta": meta, "params": params},
+            rag["id"]: rag}
+
+
 def cmd_chatbot(args):
-    name = "my-chatbot"
-    if args[:1] == ["--name"] and len(args) == 2 and args[1].strip():
+    name, rag = "my-chatbot", args.count("--rag") == 1
+    args = [a for a in args if a != "--rag"] if rag else args
+    if args[:1] == ["--name"] and len(args) == 2 and args[1].strip() and not args[1].startswith("--"):
         name = args[1].strip()
     elif args:
-        fail('Usage: openwebui chatbot --name "<the name of your chatbot>"')
+        fail(CHATBOT_USAGE)
     hold_lock()
     key, service, model = provider()
     check_docker()
@@ -1031,10 +1209,10 @@ def cmd_chatbot(args):
     # The same package as for a Claude Project or a Gemini Gem.
     if subprocess.run(["chatbot-export", "--name", name]).returncode != 0:
         fail("chatbot-export failed: nothing was added to Open WebUI.")
-    package = KIT / f"{slug(name)}.zip"
+    package = KIT / f"{slug(name)[:60].strip('-')}.zip"  # chatbot-export cuts the name of its file at 60
     with zipfile.ZipFile(package) as archive:
         instructions = archive.read("instructions.md").decode().strip()
-        system = instructions + CHATBOT_ADDENDUM
+        skills = package_skills(archive)
         tmp = KIT / ".workshop" / "openwebui-chatbot"
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(parents=True)
@@ -1044,6 +1222,11 @@ def cmd_chatbot(args):
                 target = tmp / Path(member).name
                 target.write_bytes(archive.read(member))
                 files.append((target.name, target))
+    # The skills first: the old knowledge base is deleted below, and the chatbots point to it until they are saved.
+    native_id = "chatbot-" + slug(name)
+    own = {native_id, native_id + RAG_SUFFIX}
+    users = skill_users(api)
+    skill_ids = save_skills(api, skills, own, users)
     knowledge_name = f"{name} knowledge"
     for old in api.collections(knowledge_name):  # a new export replaces the previous one
         api.delete_collection(old)
@@ -1053,15 +1236,17 @@ def cmd_chatbot(args):
     knowledge, failed = api.fill_collection(
         knowledge_name, f"Everything {name} built during the workshop.", sorted(files))
     shutil.rmtree(tmp, ignore_errors=True)
-    params = routed({"system": system, "function_calling": "native"}, service)
-    meta = {"description": f"The chatbot built by {name}: their instructions and knowledge.",
-            "knowledge": [{"id": knowledge["id"], "name": knowledge["name"],
-                           "description": knowledge.get("description", ""), "type": "collection"}],
-            # Built-in tools on: the model searches and reads its knowledge itself (mode E). Those tools only.
-            "capabilities": {**NO_TOOLS, "builtin_tools": True}, "builtinTools": dict(KNOWLEDGE_TOOLS_ONLY)}
-    excerpts_without_tools(f"{name} chatbot", params, meta, service, model)
-    api.save_model({"id": "chatbot-" + slug(name), "base_model_id": model, "name": f"{name} chatbot",
-                    "is_active": True, "meta": meta, "params": params})
+    forms = chatbot_forms(name, instructions, knowledge, skill_ids, service, model)
+    wanted = native_id + RAG_SUFFIX if rag else native_id
+    other = native_id if rag else native_id + RAG_SUFFIX
+    # The other one uses the knowledge base made again just now: it is rebuilt too, from the same files.
+    also = api.model_exists(other)
+    for model_id in (wanted, other) if also else (wanted,):
+        form = forms[model_id]
+        if model_id == native_id:
+            excerpts_without_tools(form["name"], form["params"], form["meta"], service, model)
+        api.save_model(form)
+    drop_old_skills(api, own, set(skill_ids), users)
     reload_models(api)
     if failed:
         fail("Some files could not be added (see above). Type the same command again.")
@@ -1074,7 +1259,19 @@ def cmd_chatbot(args):
     else:
         print("\nWarning: your AGENTS.md is still empty, so this chatbot has no instructions.\n"
               "Fill it in (workshop 1), then type the same command again.")
-    print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{name} chatbot" in the message box (bottom right).')
+    if skill_ids:
+        print(f"Your skills came along: {', '.join(skill_names(api, skill_ids))}. Their whole text goes with every "
+              "message, and the chatbot cannot change them.")
+    if also:
+        print(f'"{forms[other]["name"]}" was updated too: it uses the same knowledge.')
+    if rag:
+        top_k = (api.request("GET", "/retrieval/config") or {}).get("TOP_K", TOP_K)
+        print(f'Before each answer, Open WebUI gives "{name} chatbot (RAG)" the {top_k} excerpts closest to the '
+              f'question, as for "{RAG_NAME}" (openwebui top-k changes the number).')
+        if not also:
+            print(f'To also have the chatbot that searches by itself: openwebui chatbot --name "{name}"')
+    print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{forms[wanted]["name"]}" in the message box '
+          "(bottom right).")
     print("To check the instructions, ask it: Who are you?")
     print("Ask it your test questions again, and compare with scores.md.")
 
@@ -1256,6 +1453,14 @@ def cmd_share_open():
                 except ApiError as e:
                     if e.status != 404:  # a single file, not a knowledge base
                         raise
+        # Its attached skills too: Open WebUI leaves out of a participant's message a skill they cannot read.
+        for skill_id in (bot.get("meta") or {}).get("skillIds") or []:
+            try:
+                api.request("POST", f"/skills/id/{urllib.parse.quote(skill_id)}/access/update",
+                            body={"access_grants": EVERYONE})
+            except ApiError as e:
+                if e.status != 404:  # a skill deleted in Workspace -> Skills
+                    raise
     reload_models(api)
     print("\nSign-ups are OPEN. The participants can use these chatbots:")
     for bot in chatbots:
@@ -1327,6 +1532,7 @@ https://github.com/Youth-AI-Lab/yal-openwebui-guide).
 
 - `instructions.md`: the System Prompt of the chatbot. This is the **Instructions** box.
 - `knowledge/`: {count} documents, as you uploaded them. This is the **Knowledge** box.
+- `skills/`: {skills} skills attached to the chatbot, one `SKILL.md` each (Workspace -> Skills).
 - `openwebui.json`: the rest of its settings in Open WebUI (name, description, base model,
   starter questions, capabilities such as Memory, image).
 
@@ -1335,13 +1541,18 @@ The participants' accounts and conversations are not in this file.
 ## Rebuild it
 
 - **Open WebUI, with the guide** (in a new Codespace, for example): drag this file into the file
-  list, then type `openwebui import {file}`.
+  list, then type `openwebui import {file}`. It brings back the skills too.
 - **Claude Project** (claude.ai): create a project, paste `instructions.md` into the project
   instructions, and add the files in `knowledge/` to the project knowledge.
 - **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
   instructions, and upload the files in `knowledge/` as its knowledge.
 - **Another Open WebUI**: create a knowledge base with the files in `knowledge/`, then a model with
-  `instructions.md` as its System Prompt and this knowledge base attached.
+  `instructions.md` as its System Prompt and this knowledge base attached. Add each `SKILL.md` in
+  Workspace -> Skills, then attach them to the model.
+
+A Claude Project and a Gemini Gem have two boxes only, Instructions and Knowledge: no box for a
+skill. To keep one, paste its steps at the end of the instructions, with the sentence that says
+when to use them.
 
 ## Before you trust it
 
@@ -1403,6 +1614,12 @@ def cmd_export():
             entry = bases.setdefault(key, {"name": base["name"] if base else f"{bot['name']} documents",
                                            "description": (base or {}).get("description", ""), "files": []})
             entry["files"].append(name)
+        skills = []  # [(id, text)]: the skills attached to it, as Open WebUI keeps them
+        for skill_id in meta.get("skillIds") or []:
+            skill = get_skill(api, skill_id) if isinstance(skill_id, str) and SKILL_MEMBER.match(
+                f"skills/{skill_id}/SKILL.md") else None
+            if skill:
+                skills.append((skill_id, skill.get("content") or ""))
         target = folder / f"{slug(bot['name'])}.zip"
         info = {"format": "yal-openwebui-chatbot/1", "id": bot["id"], "name": bot["name"],
                 "base_model_id": bot["base_model_id"], "is_active": bot.get("is_active", True),
@@ -1410,13 +1627,16 @@ def cmd_export():
                 "knowledge": list(bases.values())}
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("README.md", EXPORT_HOW_TO.format(
-                name=bot["name"], date=time.strftime("%Y-%m-%d"), count=len(files),
+                name=bot["name"], date=time.strftime("%Y-%m-%d"), count=len(files), skills=len(skills),
                 file=f"exports/{target.name}"))
             archive.writestr("instructions.md", (params.get("system") or "").strip() + "\n")
             archive.writestr("openwebui.json", json.dumps(info, indent=2, ensure_ascii=False) + "\n")
             for name, data in files:
                 archive.writestr(f"knowledge/{name}", data)
-        print(f"  {bot['name']}: {folder.name}/{target.name} ({len(files)} documents)")
+            for skill_id, text in skills:
+                archive.writestr(f"skills/{skill_id}/SKILL.md", text)
+        with_skills = f", {len(skills)} skill{'' if len(skills) == 1 else 's'}" if skills else ""
+        print(f"  {bot['name']}: {folder.name}/{target.name} ({len(files)} documents{with_skills})")
         if left_out:
             print(f"    Not in the file: its {' and '.join(left_out)} (after an import, add "
                   f"{'them' if len(left_out) > 1 else 'it'} again in Workspace -> Models).")
@@ -1442,6 +1662,7 @@ def cmd_import(path_text):
             fail("This .zip is not a chatbot made by openwebui export or chatbot-export.")
         info = json.loads(archive.read("openwebui.json")) if "openwebui.json" in names else {}
         system = archive.read("instructions.md").decode().strip()
+        skills = package_skills(archive)
         title = ""
         if "README.md" in names:
             first = archive.read("README.md").decode().splitlines()[:1]
@@ -1487,12 +1708,21 @@ def cmd_import(path_text):
     asked = meta.get("builtinTools") if isinstance(meta.get("builtinTools"), dict) else {}
     tools.update({category: False for category, on in asked.items() if category in tools and on is False})
     meta["builtinTools"] = tools
-    # Workspace tools, filters, actions and skills of the old Open WebUI: not in the file, and a new one could
-    # have others with the same id.
-    others = [kind for kind in ("toolIds", "filterIds", "actionIds", "skillIds") if meta.pop(kind, None)]
+    # Workspace tools, filters and actions of the old Open WebUI: not in the file, and a new one could have others
+    # with the same id. Its skills: only those the file brings (skills/), never one already here with the same id.
+    others = [kind for kind in ("toolIds", "filterIds", "actionIds") if meta.pop(kind, None)]
     if others:
-        print("Its workspace tools, filters, actions or skills are not imported: add the ones you trust again "
+        print("Its workspace tools, filters or actions are not imported: add the ones you trust again "
               "in Workspace -> Models.")
+    asked = meta.pop("skillIds", None)
+    model_id = info.get("id") or "chatbot-" + slug(name)
+    skill_ids = save_skills(api, skills, {model_id}, skill_users(api))
+    if skill_ids:
+        meta["skillIds"] = skill_ids
+    missing = [s for s in (asked if isinstance(asked, list) else []) if s not in {f for f, _ in skills}]
+    if missing:
+        print(f"Its skills {', '.join(map(str, missing))} are not in the file: add the ones you trust again in "
+              "Workspace -> Models.")
     left_out = drop_file_refs(meta)  # an export made by an older version of this command may name them
     if left_out:
         print(f"Its {' and '.join(left_out)} {'stay' if len(left_out) > 1 else 'stays'} in the old Open WebUI: "
@@ -1501,7 +1731,6 @@ def cmd_import(path_text):
     params = routed(info.get("params") or {"function_calling": "native"}, service)
     params["system"] = system
     excerpts_without_tools(name, params, meta, service, base_model)
-    model_id = info.get("id") or "chatbot-" + slug(name)
     replaced = api.model_exists(model_id)
     api.save_model({"id": model_id, "base_model_id": base_model, "name": name,
                     "is_active": info.get("is_active", True), "meta": meta, "params": params})
@@ -1514,6 +1743,8 @@ def cmd_import(path_text):
                                           ("time", "Time & Calculation"), ("user_input", "Ask User"))
             if tools[category]]
     print(f"Its Builtin Tools: {', '.join(kept) or 'none'} (the others are off).")
+    if skill_ids:
+        print(f"Its skills: {', '.join(skill_names(api, skill_ids))}. Their whole text goes with every message.")
     print("In a session, type openwebui share open so that the participants see it.")
 
 

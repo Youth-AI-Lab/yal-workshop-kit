@@ -8,6 +8,8 @@ The file holds what goes into the two boxes of every chatbot tool:
   - Instructions: your AGENTS.md (workshop 1), without the comments;
   - Knowledge: your summaries (workshops 2 and 3), your wiki pages (workshop 5) and the readable
     copies of the official documents (corpus/text/).
+It also holds your own skills (workshop 3, .claude/skills/), but not the kit's skills, which write
+files in this Codespace.
 To download it: right-click on the file in the file list, then "Download...".
 """
 
@@ -34,6 +36,7 @@ Exported from the Youth AI Lab workshop on {date}.
   - `summaries__…`: the short summaries, checked or not (their header says who verified them);
   - `wiki__…`: the pages of your wiki, each fact with its footnote (workshop 5);
   - `corpus-text__…`: the readable copies of the official documents.
+- {skills}
 
 ## Rebuild it
 
@@ -42,10 +45,15 @@ Exported from the Youth AI Lab workshop on {date}.
 - **Gemini Gem** (gemini.google.com): create a Gem, paste `instructions.md` into its
   instructions, and upload the files in `knowledge/` as its knowledge. On personal accounts, Google
   makes Gems read-only on 2026-11-17 and removes them on 2026-12-17.
-- **Open WebUI** (your own server): `openwebui import` takes this file as it is, see
-  https://github.com/Youth-AI-Lab/yal-openwebui-guide#step-2---import-a-chatbot. By hand: create a
+- **Open WebUI** (your own server): `openwebui import` takes this file as it is, skills included,
+  see https://github.com/Youth-AI-Lab/yal-openwebui-guide#step-2---import-a-chatbot. By hand: create a
   knowledge base with the files in `knowledge/`, then a model with `instructions.md` as its system
-  prompt and this knowledge attached.
+  prompt and this knowledge attached. Add each `SKILL.md` in Workspace -> Skills, then attach them
+  to the model.
+
+A Claude Project and a Gemini Gem have two boxes only, Instructions and Knowledge: no box for a
+skill. To keep one, paste its steps at the end of the instructions, with the sentence that says
+when to use them.
 
 ## Before young people use it
 
@@ -94,6 +102,46 @@ def knowledge(kit):
     return files
 
 
+# The kit's own skills (curation, workshop 3; wiki, workshop 5): they write files in the Codespace, which a
+# chatbot tool cannot do. Left out by their folder or by the name in their header.
+KIT_SKILLS = ("summarize", "validate-summary", "source-note", "ingest", "lint")
+
+
+def skill_name(text):
+    head = re.match(r"\A---[ \t]*\r?\n(.*?)\r?\n---", text, re.S)
+    line = re.search(r"^name:[ \t]*(.+?)[ \t]*$", head.group(1), re.M) if head else None
+    value = line.group(1) if line else ""
+    # YAML: a comment starts with " #", outside quotes.
+    return value.strip("'\"").strip() if value[:1] in "'\"" else re.sub(r"\s+#.*$", "", value).strip()
+
+
+def skills(kit):
+    """The pair's own skills: [(arcname, path)] of .claude/skills/<folder>/SKILL.md; and the kit's ones left out."""
+    found, left_out = [], []
+    folder = kit / ".claude" / "skills"
+    for path in sorted(folder.glob("*/SKILL.md")) if folder.is_dir() else []:
+        name = path.parent.name
+        if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+            continue
+        header = skill_name(path.read_text(encoding="utf-8", errors="replace"))
+        if name in KIT_SKILLS:
+            left_out.append(name)
+            continue
+        if header in KIT_SKILLS:
+            print(f"! Left out: the skill folder {name}. Its header says name: {header}, the name of a kit skill. "
+                  "Give it a name of its own.")
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name):
+            print(f"! Left out: the skill folder {name.encode('utf-8', 'replace').decode()}. "
+                  "Use only letters, digits and dashes in its name.")
+            continue
+        others = [p.name for p in path.parent.iterdir() if p.name != "SKILL.md"]
+        if others:
+            print(f"Note: only the SKILL.md of {name} is in the file, not {', '.join(sorted(others))}.")
+        found.append((f"skills/{name}/SKILL.md", path))
+    return found, left_out
+
+
 def is_save(path):
     """True if this zip is a save of workshop-save (it has a MANIFEST.md)."""
     try:
@@ -116,6 +164,7 @@ def main():
 
     text, filled = instructions(KIT)
     files = knowledge(KIT)
+    own_skills, kit_skills = skills(KIT)
     name = args.name.strip() or "my-chatbot"
     out = KIT / f"{slug(name)}.zip"
     if is_save(out):
@@ -125,19 +174,29 @@ def main():
     tmp = out.with_name(f".{out.name}.tmp")
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("README.md", HOW_TO.format(name=name, date=datetime.date.today().isoformat(),
-                                                        count=len(files)))
+            listed = ", ".join(f"`{a.split('/')[1]}`" for a, _ in own_skills)
+            archive.writestr("README.md", HOW_TO.format(
+                name=name, date=datetime.date.today().isoformat(), count=len(files),
+                skills=f"`skills/`: your own skills ({listed}). Each folder holds one `SKILL.md`: when to use it, "
+                       "and its steps." if own_skills else
+                       "No `skills/` folder: you have not written a skill of your own yet (workshop 3)."))
             archive.writestr("instructions.md", text)
             archive.writestr("chatbot-name.txt", name + "\n")
-            for arcname, path in files:
+            for arcname, path in files + own_skills:
                 archive.write(path, arcname)
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
 
     counts = {p: sum(1 for a, _ in files if a.startswith(f"knowledge/{p}__")) for p in ("summaries", "wiki", "corpus-text")}
+    with_skills = (f" + {len(own_skills)} skill{'' if len(own_skills) == 1 else 's'} "
+                   f"({', '.join(a.split('/')[1] for a, _ in own_skills)})") if own_skills else ""
     print(f"Wrote {out.name}: instructions + {len(files)} knowledge files "
-          f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents).")
+          f"({counts['summaries']} summaries, {counts['wiki']} wiki pages, {counts['corpus-text']} documents)"
+          f"{with_skills}.")
+    if kit_skills:
+        print(f"Not in the file: the kit's skills {', '.join(kit_skills)}. They write files in this Codespace, "
+              "and a chatbot tool cannot.")
     if not filled:
         print("Warning: AGENTS.md has no text under its headings yet (workshop 1): the instructions are empty.")
     if not counts["wiki"]:
