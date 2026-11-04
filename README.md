@@ -12,8 +12,9 @@
   - CSC Vent des Îles (La Rochelle, France)
 
 > 🎯 **Six workshops of 2 hours, in pairs.** The goal is to **see what happens behind a
-> chatbot**: what it reads before it answers, and who decides what it reads. Each workshop adds
-> one piece to the chatbot of your pair. You can use what you learn if you run the
+> chatbot**: what it reads before it answers, and who decides what it reads. Workshops 1 to 5 each
+> add one piece to the chatbot of your pair; workshop 6 goes further, with a small model that sorts
+> the messages before the chatbot. You can use what you learn if you run the
 > **WikiYouthBot** activity with young people.
 
 > 🎓 **Each workshop has its own repository**, with its own Codespace link: see
@@ -45,12 +46,12 @@ and any document it was given. The model knows nothing else about your situation
 
 | # | Workshop | Question of the day | What your pair leaves with |
 |---|---|---|---|
-| 1 | [Instructions and knowledge](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your question 12, columns Bare and A |
+| 1 | [Instructions, and how to test a chatbot](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your question 12, columns Bare and A |
 | 2 | [Everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
 | 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
 | 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
-| 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you keep knowledge clean when it grows? | your document in the wiki; column E; the chatbot of your territory, packed |
-| 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | When is it worth teaching a small model, instead of asking a big one? | your examples and your test; a small fine-tuned model; its comparison with a general chat model |
+| 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you organise knowledge so that a person and a model can explore it? | your document in the wiki; column E; the chatbot of your territory, packed |
+| 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | How can a small model that you teach help a big one? | your examples and your test; a small fine-tuned model; its comparison with a general chat model |
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
