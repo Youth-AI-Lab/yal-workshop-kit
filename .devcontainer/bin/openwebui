@@ -81,7 +81,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from workshop_provider import OPENROUTER, PROVIDERS, chat_model, europe, provider_of, read_key, routing  # noqa: E402
 
 KIT = Path(os.environ.get("WORKSHOP_HOME", Path.home() / "workshop"))
-IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.12.4")
+IMAGE = os.environ.get("WORKSHOP_OPENWEBUI_IMAGE", "ghcr.io/open-webui/open-webui:v0.12.5")
 # "workshop": no accounts, private to the pair (the kit). "class": accounts, to open to a group.
 CLASS = os.environ.get("OPENWEBUI_MODE", "workshop") == "class"
 # Not the names of the facilitator's demo (facilitator/openwebui/compose.yaml): never touch it.
@@ -157,8 +157,9 @@ SKIPPED = {"index.md", "README.md"}
 NO_TOOLS = {"file_context": True, "citations": True, "builtin_tools": False, "file_upload": False,
             "web_search": False, "image_generation": False, "code_interpreter": False}
 # The built-in tools of a chatbot, by category (meta.builtinTools; a category left out is on): Open WebUI
-# 0.12.4, utils/tools.py, get_builtin_tools. A chatbot keeps the knowledge tools only: list, search and
-# read the files of its knowledge (they need no other category). The others write notes, skills, tasks,
+# 0.12.4, utils/tools.py, get_builtin_tools (same categories in 0.12.5). A chatbot keeps the knowledge tools
+# only: list, search and read the files of its knowledge, and since 0.12.5 display_file, which shows one of
+# them to the person (they need no other category). The others write notes, skills, tasks,
 # automations, calendar events or memories, read other conversations, or reach outside (web, code,
 # images, webhooks). Without accounts everyone is an administrator: all were offered (27 tools measured).
 BUILTIN_CATEGORIES = ["automations", "calendar", "channels", "chats", "code_interpreter", "files",
@@ -180,7 +181,7 @@ HARDENED = {"ENABLE_NOTES": "false", "ENABLE_AUTOMATIONS": "false", "ENABLE_CALE
 # What openwebui chatbot and openwebui import write in the description of the chatbots they make.
 KIT_CHATBOT = re.compile(r"^(The chatbot built by .+: their instructions and knowledge|Imported from .+)\.$")
 # The text Open WebUI puts around the excerpts (classic RAG), or around the files a chatbot opened (native).
-# Open WebUI 0.12.4's DEFAULT_RAG_TEMPLATE (config.py), with one line changed: it said "If the answer isn't
+# Open WebUI 0.12.4's DEFAULT_RAG_TEMPLATE (config.py, same in 0.12.5), with one line changed: it said "If the answer isn't
 # present in the context but you possess the knowledge, explain this to the user and provide the answer
 # using your own understanding", the opposite of the "I don't know" of the kit's instructions.
 RAG_TEMPLATE = """### Task:
@@ -501,7 +502,7 @@ def fail_newer_data(newer_image="", running=False):
 def start_container():
     key, service, model = provider()
     if docker("image", "inspect", IMAGE).returncode != 0:
-        # v0.12.4: 1.64 GB to download on amd64, 1.48 GB on arm64 (registry, 2026-10-31).
+        # v0.12.4 and v0.12.5: 1.64 GB to download on amd64, 1.48 GB on arm64 (registry, 2026-10-31 and 2026-11-05).
         print(f"First time: downloading Open WebUI ({IMAGE}, about 1.6 GB, a few minutes)…", flush=True)
         if docker("pull", IMAGE, capture=False).returncode != 0:
             fail("The download failed. Check the network, then type: openwebui start")

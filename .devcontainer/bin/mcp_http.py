@@ -4,7 +4,7 @@
         --allowed-host <name>:8000 --tool fire_danger --tool territories
 
 The same server as in Claude Code and OpenCode (mcp/fire_danger_server.py, loaded as it is: its mcp.run()
-only runs as a script), over Streamable HTTP, the only transport of Open WebUI 0.12.4's MCP client, instead
+only runs as a script), over Streamable HTTP, the only transport of Open WebUI's MCP client (read in 0.12.4), instead
 of stdio. It still reads mcp/fire-danger.json at each call.
 
 openwebui runs it in a container of its own (the Open WebUI image, which has the mcp package), on a Docker
