@@ -740,7 +740,8 @@ assert "turn on zero-data-retention models hosted in Europe: workshop-login --eu
 class Conteneur:
     returncode = 0
     stdout = json.dumps(["OPENAI_API_KEY=sk-or-x", "DEFAULT_MODEL_PARAMS=" + json.dumps(owui.routed({}, wp.OPENROUTER))]
-                        + [f"{nom}={valeur}" for nom, valeur in owui.HARDENED.items()])
+                        + [f"{nom}={valeur}" for nom, valeur in owui.HARDENED.items()]
+                        + ["TOOL_SERVER_CONNECTIONS=" + json.dumps(owui.mcp_connection("x"))])
 owui.docker = lambda *a, **k: Conteneur
 owui.check_same_key("sk-or-x", "a/b")
 # Un conteneur lancé par une version plus ancienne (sans gabarit RAG, notes encore là) : openwebui start d'abord.
