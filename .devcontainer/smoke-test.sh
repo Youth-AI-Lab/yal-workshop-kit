@@ -141,6 +141,10 @@ WORKSHOP_HOME="$copie" corpus-add "$copie/inbox/benevento-campagna-aib-2026.pdf"
 [[ -f "$copie/corpus/80-test-page.html" && -s "$copie/corpus/text/80-test-page.md" && -s "$copie/corpus/text/81-test-pdf.md" ]] \
   || echec "corpus-add : original ou copie lisible manquant"
 grep -q "80-test-page" "$copie/corpus/index.md" || echec "corpus-add : corpus/index.md non mis à jour"
+# pypdf 6 sans fontTools : 19 avertissements sur ce PDF, que le participant verrait (texte identique sans eux).
+WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/41-bouches-du-rhone-old-dossier-presse.pdf" --name test-pdf-fonts > /dev/null 2> /tmp/err \
+  || echec "corpus-add : le PDF 41 n'a pas été importé"
+if grep -q fontTools /tmp/err; then echec "corpus-add : avertissements de pypdf (fontTools) affichés au participant"; fi
 code=0; WORKSHOP_HOME="$copie" corpus-add "$copie/corpus/30-charente-maritime-arrete-26EB142.pdf" --name scanne > /dev/null 2>&1 || code=$?
 [[ "$code" == 3 ]] || echec "corpus-add : un PDF scanné aurait dû être refusé (code 3), obtenu $code"
 echo "corpus-add : OK"
@@ -1075,6 +1079,9 @@ for m in "bare A B C D E F".split():
     servers = set((c.get("mcp") or {}).get("servers") or {})
     assert d["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1", m
     assert "sk-" not in json.dumps(c), f"{m}: key in the config"
+    # OpenCode 2.2.5 : opencode.browser ajoute « skill browser deny » après nos règles (skill envoyé en bare/A/B),
+    # opencode.tools propose opencode_worktree_remove. Le « - » les éteint ; aucun autre greffon.
+    assert c.get("plugins") == ["-opencode.browser", "-opencode.tools"], f"{m}: plugins {c.get('plugins')}"
     if m in ("bare", "A", "B"):
         assert perms == [{"action": "*", "resource": "*", "effect": "deny"}], f"{m}: tools"
     else:
@@ -1095,7 +1102,7 @@ for m in "bare A B C D E F".split():
     if m in "DEF":
         assert {"action": "time_*", "resource": "*", "effect": "allow"} in perms, f"{m}: time tools"
     assert ("graphify" in servers) == (m == "F"), f"{m}: MCP graphify"
-print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP (fire-danger, time), F graphify ; aucune clé dans la configuration")
+print("OpenCode : bare/A/B sans outils, C+ recherche, D+ MCP (fire-danger, time), F graphify ; greffons browser et tools éteints ; aucune clé dans la configuration")
 PY
 # Un lien vers l'extérieur du dossier : OpenCode ne démarre pas en C (read y lirait /proc/self/environ).
 ln -s /proc/self/environ "$copie/inbox/lien-dehors.md"

@@ -407,7 +407,10 @@ class OpenCode:
             error = f"opencode exited with code {client.returncode}"
         if error is None and not answer:
             error = EMPTY_ANSWER
-        # OpenCode ignores the cost that the provider reports: without a price, it always says 0.
+        # A cost of 0 with a context means nobody gave a price, unless the config declares one. OpenCode 2.1.4
+        # ignores the cost that OpenRouter reports (usage.cost) and computes it from the price it knows: 0
+        # without one. 2.2.5 shows usage.cost when the answer has one (even 0, even over a declared price),
+        # else computes it like 2.1.4 (measured with a fake OpenRouter: facilitator/opencode-audit/forced_kit.py).
         self.price_unknown = self.price_unknown or (cost == 0 and context > 0 and not self.priced)
         if error is None and steps >= self.steps:
             # The last step allowed: OpenCode takes the tools away and makes the model answer

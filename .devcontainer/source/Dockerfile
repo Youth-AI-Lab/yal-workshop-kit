@@ -12,12 +12,12 @@ LABEL org.opencontainers.image.source="https://github.com/Youth-AI-Lab/yal-works
 
 # Claude Code, version figée (même fichier que le script du VPS). L'installateur officiel
 # installe sous /root ; on ne garde que le binaire, dans /usr/local/bin, vérifié par sa somme SHA-256
-# écrite ici (celle de .../claude-code-releases/2.1.303/manifest.json, à reprendre si claude-version change).
+# écrite ici (celle de .../claude-code-releases/2.1.311/manifest.json, canal stable, à reprendre si claude-version change).
 COPY .devcontainer/claude-version /tmp/claude-version
 RUN set -eu; \
     case "$(dpkg --print-architecture)" in \
-      amd64) sum=375988f457756524234695cf2d8f64ace99c5f68682e47ea24862a843c191450 ;; \
-      arm64) sum=f384f49826336d4ac0484ac6ac9d8d16f64d244d186ce227cbd7cc088c03315d ;; \
+      amd64) sum=86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada ;; \
+      arm64) sum=2e2496c9a8065df93acb0fca2d341f59a6b8777649b2e025ab8c9bcd5eef61f3 ;; \
       *) exit 1 ;; esac; \
     curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/claude-version)"; \
     install -m 755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude; \
@@ -26,14 +26,14 @@ RUN set -eu; \
 
 # OpenCode, second moteur de l'atelier (workshop-login --engine opencode), version figée elle aussi
 # (opencode-version, lu aussi par le script du VPS). Paquet npm @opencode/cli-<plateforme> pris
-# directement sur le registre et vérifié par sa somme SHA-256 écrite ici (2.1.4, à reprendre si
+# directement sur le registre et vérifié par sa somme SHA-256 écrite ici (2.2.5, à reprendre si
 # opencode-version change) ; on ne garde que le binaire (≈ 230 Mo), sans Node ni les quatre variantes
 # qu'installerait npm.
 COPY .devcontainer/opencode-version /tmp/opencode-version
 RUN set -eu; v="$(cat /tmp/opencode-version)"; \
     case "$(dpkg --print-architecture)" in \
-      amd64) p=linux-x64; sum=ce05abe2dce1041391c8ec8cdb8da066f640fd471e72ac846dcb089c441e11e1 ;; \
-      arm64) p=linux-arm64; sum=e9acb4e23a9ac432139693aa166455a6add8946533394cbe083459a48e788861 ;; \
+      amd64) p=linux-x64; sum=92690eee07a680d3cb760ca02ba43878de9eab1b4e5d5dfae8795518c53628f4 ;; \
+      arm64) p=linux-arm64; sum=f8c5a82075fede9b5b044ed6c8a6d13ad807a7e62caea1cd0a878adef49eb053 ;; \
       *) exit 1 ;; esac; \
     curl -fsSL "https://registry.npmjs.org/@opencode/cli-$p/-/cli-$p-$v.tgz" -o /tmp/opencode.tgz; \
     echo "$sum  /tmp/opencode.tgz" | sha256sum -c -; \
@@ -71,9 +71,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Environnement Python du serveur MCP et de graphify : toutes les dépendances sont figées et vérifiées
-# par leur empreinte (mcp-kit.txt, produit comme mcp-time.txt à partir de mcp[cli], beautifulsoup4==4.12.3,
-# markdownify==0.13.1, pypdf==5.4.0 et graphifyy==0.9.92, avec les versions de l'image 2026.10.40 en
-# contraintes). Mod token-weather (jauge de contexte) : commit vérifié, le même contenu que dans cette image.
+# par leur empreinte (mcp-kit.txt, produit comme mcp-time.txt à partir de mcp[cli], beautifulsoup4,
+# markdownify, pypdf et graphifyy, le 2026-11-05, sans rien de publié après le 2026-11-01 : mcp 2.3.0,
+# beautifulsoup4 4.15.0, markdownify 1.2.3, pypdf 6.21.4, graphifyy 0.9.100). Mod token-weather (jauge de contexte) : commit vérifié, le même contenu que dans cette image.
 COPY .devcontainer/source/mcp-kit.txt /tmp/mcp-kit.txt
 RUN set -eu; python3 -m venv /opt/workshop/venv; \
     /opt/workshop/venv/bin/pip install --no-cache-dir -q --no-deps --require-hashes -r /tmp/mcp-kit.txt; \
@@ -91,7 +91,8 @@ RUN set -eu; python3 -m venv /opt/workshop/venv; \
 # Serveur MCP Time (atelier 4) : serveur de référence officiel (modelcontextprotocol/servers), sans
 # réseau, dans son propre environnement pour ne pas déplacer la version de mcp du serveur du kit.
 # Toutes les dépendances sont figées et vérifiées par leur empreinte (mcp-time.txt, produit par
-# `uv pip compile --universal --generate-hashes` à partir de mcp-server-time==2026.10.28).
+# `uv pip compile --universal --generate-hashes --exclude-newer 2026-11-01` à partir de mcp-server-time,
+# qui reste 2026.10.28 : la 2026.11.4 est sortie le 2026-11-04).
 COPY .devcontainer/source/mcp-time.txt /tmp/mcp-time.txt
 RUN python3 -m venv /opt/workshop/mcp-time \
     && /opt/workshop/mcp-time/bin/pip install --no-cache-dir -q --no-deps --require-hashes -r /tmp/mcp-time.txt \
@@ -100,7 +101,7 @@ RUN python3 -m venv /opt/workshop/mcp-time \
     && chmod -R a+rX /opt/workshop/mcp-time
 
 # Serveur MCP Open-Meteo (atelier 4, extension : WORKSHOP_WEATHER=1 workshop D) : serveur
-# communautaire (github.com/cmer81/open-meteo-mcp, MIT), construit depuis son tag v2.5.5 (commit
+# communautaire (github.com/cmer81/open-meteo-mcp, MIT), construit depuis son tag v2.5.6 (commit
 # vérifié) avec son package-lock.json (npm ci : chaque paquet vérifié par son empreinte), sans les
 # scripts d'installation des dépendances. Node 24 LTS, archive officielle vérifiée par sa somme
 # SHA-256 écrite ici ; on ne garde que le binaire node (npm, corepack et les en-têtes ne servent
@@ -114,15 +115,15 @@ RUN set -eu; NODE=v24.22.2; \
     echo "$sum  /tmp/node.tar.xz" | sha256sum -c -; \
     mkdir /tmp/node && tar -xJf /tmp/node.tar.xz -C /tmp/node --strip-components=1; \
     install -D -m 755 /tmp/node/bin/node /opt/workshop/node/bin/node; \
-    git clone -q --branch v2.5.5 --depth 1 https://github.com/cmer81/open-meteo-mcp /opt/workshop/open-meteo-mcp; \
+    git clone -q --branch v2.5.6 --depth 1 https://github.com/cmer81/open-meteo-mcp /opt/workshop/open-meteo-mcp; \
     cd /opt/workshop/open-meteo-mcp; \
-    [ "$(git rev-parse HEAD)" = 7e8a8217f29e5180763f93a253123c9e59e4ad8b ]; \
+    [ "$(git rev-parse HEAD)" = f6db0b3eef5bcbbeb4b5874fed1505059339505a ]; \
     PATH="/tmp/node/bin:$PATH"; export npm_config_cache=/tmp/npm-cache; \
     npm ci --ignore-scripts --no-audit --no-fund --loglevel=error; \
     ./node_modules/.bin/tsc; \
     npm prune --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error; \
     rm -rf .git src tests evals scripts /tmp/node /tmp/node.tar.xz /tmp/npm-cache /root/.npm; \
-    [ "$(/opt/workshop/node/bin/node -p 'require("./package.json").version')" = 2.5.5 ]; \
+    [ "$(/opt/workshop/node/bin/node -p 'require("./package.json").version')" = 2.5.6 ]; \
     chmod -R a+rX /opt/workshop/node /opt/workshop/open-meteo-mcp
 
 # graphify (bloc F) ne doit jamais installer ni rafraîchir sa skill dans ~/.claude : elle

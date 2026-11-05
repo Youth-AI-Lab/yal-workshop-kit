@@ -20,6 +20,7 @@ import argparse
 import datetime
 import io
 import json
+import logging
 import os
 import pathlib
 import re
@@ -128,6 +129,7 @@ def html_text(data, charset):
 
 def pdf_text(data, _charset):
     from pypdf import PdfReader
+    logging.getLogger("pypdf").setLevel(logging.ERROR)   # its warnings (fontTools missing...) do not change the text
     reader = PdfReader(io.BytesIO(data))
     title = clean((reader.metadata or {}).get("/Title"))
     if re.match(r"(microsoft word|untitled|document\d*)\b", title, re.I):

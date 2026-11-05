@@ -412,6 +412,11 @@ def build_config(mode, instructions, perms, mcp, steps):
         "instructions": instructions,
         # Explicit: OPENCODE_DISABLE_PROJECT_CONFIG=1 also hides the kit's .claude/skills.
         "skills": [str(KIT / ".claude" / "skills")] if mode.search else [],
+        # Two parts of OpenCode 2.2.5 switched off ("-": nothing is installed). opencode.browser adds a rule
+        # "skill browser deny" after ours, so "skill" was no longer always denied and reached the model in
+        # bare, A and B; opencode.tools offers opencode_worktree_remove (guarded by "edit", which asks in C-F).
+        # Measured with 2.2.5 and 2.1.4: facilitator/workshops/measures/2026-11-05-image-deps/opencode-fix/.
+        "plugins": ["-opencode.browser", "-opencode.tools"],
         "agents": {
             "build": {"disabled": True}, "plan": {"disabled": True},
             "general": {"disabled": True}, "explore": {"disabled": True},
