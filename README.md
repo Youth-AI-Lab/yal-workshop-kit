@@ -46,12 +46,15 @@ and any document it was given. The model knows nothing else about your situation
 
 | # | Workshop | Question of the day | What your pair leaves with |
 |---|---|---|---|
-| 1 | [Instructions, and how to test a chatbot](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your question 12, columns Bare and A |
-| 2 | [Everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | columns B and RAG |
-| 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; column C |
-| 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; column D |
+| 1 | [Instructions, and how to test a chatbot](https://github.com/Youth-AI-Lab/yal-workshop-preprompt) | What does the chatbot read before it answers? | your system prompt (`AGENTS.md`), your chatbot in Open WebUI, columns Bare and A |
+| 2 | [Everything in the context, then RAG](https://github.com/Youth-AI-Lab/yal-workshop-rag) | Who picks the pieces? | your question 12, your chatbot with its knowledge, as a RAG, in Open WebUI, columns B and RAG |
+| 3 | [Let it search, give it know-how](https://github.com/Youth-AI-Lab/yal-workshop-search) | What if the model searched by itself? | a document of your territory, checked by you; your own skill; your chatbot in Open WebUI; column C |
+| 4 | [Plug in tools](https://github.com/Youth-AI-Lab/yal-workshop-tools) | What happens when the chatbot acts outside? | your territory in the live-data tool, with its source; your chatbot in Open WebUI, with its tool; column D |
 | 5 | [Organise what it knows](https://github.com/Youth-AI-Lab/yal-workshop-wiki) | How do you organise knowledge so that a person and a model can explore it? | your document in the wiki; column E; the chatbot of your territory, packed |
 | 6 | [Teach a small model to sort messages](https://github.com/Youth-AI-Lab/yal-workshop-finetune) | How can a small model that you teach help a big one? | your examples and your test; a small fine-tuned model; its comparison with a general chat model |
+
+After workshops 1 and 2, you already have a chatbot that you can use: workshop 1 gives it its
+instructions, workshop 2 its knowledge. Workshops 3 to 5 improve it.
 
 Each workshop **stands on its own**, in its own repository, with only what it needs: if you
 missed one, `workshop-start` puts in place what the earlier ones made (see
@@ -159,7 +162,7 @@ So "I don't know" gets **2** when the answer exists nowhere (question 7), and **
 exists somewhere the chatbot cannot reach yet (in a document or through a tool).
 
 There are 12 questions: 11 ready to use, and **question 12, which you write** about your
-territory in workshop 1. The total of a column is out of **24** (22 while question 12 is empty).
+territory in workshop 2. The total of a column is out of **24** (22 while question 12 is empty).
 
 Compare two totals only when both columns have all their questions scored. From workshop 3 on,
 you score only some questions: compare these rows, not the totals. `replay` still asks all the

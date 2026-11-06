@@ -17,7 +17,7 @@ WikiYouthBot.
 The questions cover several **categories** on purpose: precise facts (one is only in the full
 documents), explanations, something nobody knows (7), today's level (8), traps (9 and 10), and
 a document you add yourselves in workshop 3 (11), and one question about **your own territory**
-that you write yourselves (12).
+that you write yourselves in workshop 2 (12).
 
 ## Replacing a question (optional)
 
@@ -75,7 +75,7 @@ Question 11 is about a document that is not in the corpus yet (`inbox/`): you ad
 ## Question 12: your territory
 
 Question 12 is **yours**. It is about the place where you work with young people, and it is empty
-until you write it. `replay` skips it while its question cell is empty.
+until you write it, in workshop 2. `replay` skips it while its question cell is empty.
 
 1. **Find one official page** about forest fires on your territory (a prefecture, a region, a
    civil protection service, a park). Keep its address: it is the **source** of your answer.
@@ -87,7 +87,8 @@ until you write it. `replay` skips it while its question cell is empty.
    in the normal editor: you cannot type in the preview.
 4. **Write the expected answer and its source** in the fourth cell, for example:
    `From 1 June to 30 September (https://… , page "…", read on 12 November)`.
-5. **Fill in the score for Bare**: type `replay bare 12`, then score this answer like the others.
+5. **Fill in the scores for Bare and A**: type `replay bare 12` and `replay A 12`, then score these
+   answers like the others.
 
 > 💡 **Tip.** Today, no mode of your chatbot has your page: "I don't know" is the honest answer (1).
 > In workshop 3, you add the page to the documents of your chatbot, and question 12 should then get a 2.

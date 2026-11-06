@@ -68,7 +68,7 @@ EMPTY_ANSWER = Explained("the model gave an empty answer and no reason. Try this
 
 def read_rows():
     """Rows of the table in test-questions.md: | no. | category | question | expected answer |
-    (the question may be empty: question 12 before workshop 1). A "|" inside a cell is written "\\|";
+    (the question may be empty: question 12 before workshop 2). A "|" inside a cell is written "\\|";
     a plain one would cut the question without a word, so the file is refused."""
     rows = []
     for line in (KIT / "test-questions.md").read_text(encoding="utf-8").splitlines():
