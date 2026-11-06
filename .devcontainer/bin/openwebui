@@ -27,7 +27,8 @@ It has no accounts, so its port must stay private: if it is public, openwebui st
 and replay RAG help you make it private, or stop Open WebUI.
 In it, choose a model in the message box (the name at the bottom right):
   - "Wildfire RAG (workshop kit)": the vector RAG of the demo. Before each answer, Open WebUI picks
-    the 5 excerpts closest to the question and gives only those to the model.
+    the 5 excerpts closest to the question and gives only those to the model. Not in workshop 1:
+    it has no documents (summaries/, corpus/text/), so no such model, and no query, sizes or top-k.
   - "Wildfire RAG 1000" and "Wildfire RAG 2000" (after openwebui sizes): the same, with excerpts
     of 1000 or 2000 characters (1000 is the same base as "Wildfire RAG (workshop kit)").
   - "<name> chatbot": your AGENTS.md, your knowledge and your skills; the model searches the knowledge
@@ -101,6 +102,7 @@ URL = f"http://127.0.0.1:{PORT}"
 # Class mode also offers a cheaper model, for simple chatbots (base_models).
 CHEAP_MODELS = {p.small for p in PROVIDERS if p.small != p.chat}
 OPENROUTER_GUIDE = "https://github.com/Youth-AI-Lab/yal-openrouter-guide"
+WORKSHOP_2 = "https://github.com/Youth-AI-Lab/yal-workshop-rag"
 ADMIN_EMAIL = os.environ.get("OPENWEBUI_ADMIN_EMAIL", "facilitator@group.local")
 
 KNOWLEDGE_NAME = "Wildfire prevention (workshop kit)"
@@ -910,6 +912,24 @@ def knowledge_files():
     return files
 
 
+def need_knowledge(command):
+    """Workshop 1 has no summaries/ and no corpus/text/: no knowledge base, no "Wildfire RAG" model."""
+    if not knowledge_files():
+        fail(f"{command} needs the documents of the workshop (summaries/ and corpus/text/), and this "
+             f"repository has none.\nIt starts with workshop 2: {WORKSHOP_2}")
+
+
+def drop_rag_models(api):
+    """Without knowledge files, openwebui start makes no "Wildfire RAG" model and no knowledge base for it.
+    Removes the ones an older openwebui start made (the knowledge base was empty)."""
+    for model_id in [RAG_ID] + [f"{RAG_ID}-{size}" for size in SIZES]:
+        if api.model_exists(model_id):
+            api.request("POST", "/models/model/delete", body={"id": model_id})  # DELETE: 405 (0.12.5)
+    for size in SIZES:
+        for old in api.collections(size_knowledge_name(size)):
+            api.delete_collection(old)
+
+
 def plain_model(model, service, hidden):
     """The form of a plain model, without built-in tools: chosen by mistake (or by its id, also when it is
     hidden from the list), it would search every knowledge base with tools (agentic search), not by RAG,
@@ -1186,28 +1206,34 @@ def cmd_start():
     # RAG demo and replay RAG are always measured the same way.
     set_chunks(api, *DEFAULT_CHUNK)
     set_top_k(api, TOP_K)
-    knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
-    if failed:
-        fail("Some files could not be loaded (see above). Type openwebui start again.")
-    if files:   # workshop 1 has no knowledge yet: an empty base finds nothing, and that is normal
+    if files:
+        knowledge, failed = api.fill_collection(KNOWLEDGE_NAME, KNOWLEDGE_DESCRIPTION, files)
+        if failed:
+            fail("Some files could not be loaded (see above). Type openwebui start again.")
         api = check_search(api, [knowledge])
         print(f"  Knowledge up to date ({time.monotonic() - start:.0f} s).", flush=True)
-    api.save_model(rag_model(model, None, knowledge, service))
+        api.save_model(rag_model(model, None, knowledge, service))
+    else:
+        drop_rag_models(api)
     hide_base_model(api, model, service)
     realign_models(api, key, service, model)  # the other models of this instance, after a change of key
     # No "What's new" window at the first visit: it would hide the chat.
     version = api.request("GET", "/api/config").get("version")
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
-    print(f'\nOpen WebUI is ready, with the model "{RAG_NAME}".')
+    print(f'\nOpen WebUI is ready, with the model "{RAG_NAME}".' if files else "\nOpen WebUI is ready.")
     print(f"Open it: {address()}")
     print(f"(or: Ports tab of the bottom panel -> {PORT} -> Open in Browser)")
-    print("To see what the RAG finds for a question: openwebui query \"<question>\"")
-    print("To ask it the test questions and score it: replay RAG, then score RAG")
+    if files:
+        print("To see what the RAG finds for a question: openwebui query \"<question>\"")
+        print("To ask it the test questions and score it: replay RAG, then score RAG")
+    else:
+        print('To add your own chatbot: openwebui chatbot --name "<name>"')
 
 
 def cmd_sizes():
     """Workshop 2: the knowledge base of openwebui start (excerpts of 1000 characters), plus one
     more of 2000, and one "Wildfire RAG" model per size."""
+    need_knowledge("openwebui sizes")
     hold_lock()
     check_docker()
     key, service, model = provider()
@@ -1252,6 +1278,7 @@ def cmd_top_k(value):
         top_k = 0
     if not 1 <= top_k <= 50:
         fail("Usage: openwebui top-k N   (N from 1 to 50; the default is 5)")
+    need_knowledge("openwebui top-k")
     api = OpenWebUI().login()
     set_top_k(api, top_k)
     print(f"From the next question, each RAG model (\"Wildfire RAG\", and your chatbot made with openwebui chatbot --rag) "
@@ -1287,6 +1314,7 @@ def parse_query(args):
 
 
 def cmd_query(text, size=DEFAULT_CHUNK[0], top_k=TOP_K):
+    need_knowledge("openwebui query")
     api = OpenWebUI().login()
     found = api.collections(size_knowledge_name(size))
     if not found:
@@ -1433,7 +1461,8 @@ def cmd_chatbot(args):
     if rag:
         top_k = (api.request("GET", "/retrieval/config") or {}).get("TOP_K", TOP_K)
         print(f'Before each answer, Open WebUI gives "{name} chatbot (RAG)" the {top_k} excerpts closest to the '
-              f'question, as for "{RAG_NAME}" (openwebui top-k changes the number).')
+              + (f'question, as for "{RAG_NAME}" (openwebui top-k changes the number).' if knowledge_files()
+                 else "question."))
         if not also:
             print(f'To also have the chatbot that searches by itself: openwebui chatbot --name "{name}"')
     print(f'Ready. In Open WebUI ({address()}): New Chat, then choose "{forms[wanted]["name"]}" in the message box '

@@ -337,6 +337,16 @@ grep -q "openwebui start" /tmp/out || echec "replay RAG sans Open WebUI : il doi
 code=0; replay RAG --agents examples/AGENTS.liar.md 2 >/tmp/out 2>&1 || code=$?
 [[ "$code" == 1 ]] && grep -q "own instructions" /tmp/out || echec "replay RAG --agents doit être refusé"
 
+etape "Atelier 1 (ni summaries/ ni corpus/) : pas de « Wildfire RAG », un message clair pour la recherche"
+# openwebui start lui-même (aucun modèle « Wildfire RAG » créé) est essayé à part, avec Open WebUI.
+un=$(mktemp -d); cp "$KIT/test-questions.md" "$KIT/AGENTS.md" "$un/"
+for c in "openwebui query x" "openwebui sizes" "openwebui top-k 5" "replay RAG 2"; do
+  code=0; WORKSHOP_HOME="$un" WORKSHOP_OPENWEBUI_PORT=3999 $c >/tmp/out 2>&1 || code=$?
+  [[ "$code" == 1 ]] && grep -q "It starts with workshop 2" /tmp/out || { cat /tmp/out; echec "atelier 1 : $c doit renvoyer à l'atelier 2"; }
+done
+[[ ! -e "$un/answers" ]] || echec "atelier 1 : replay RAG a créé answers/"
+rm -rf "$un"
+
 etape "replay avec OpenCode : le serveur privé se prépare (sans appel)"
 /opt/workshop/venv/bin/python -I -c "
 import importlib.machinery as m, shutil, os
