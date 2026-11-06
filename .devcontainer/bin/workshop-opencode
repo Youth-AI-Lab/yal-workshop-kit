@@ -482,8 +482,8 @@ def main():
         "OPENCODE_DISABLE_FREE_MODELS": "1",
         "XDG_DATA_HOME": str(data),
         "PWD": str(cwd),  # OpenCode takes its folder from $PWD, not from the process's folder
-        # OpenCode keeps temporary files in $TMPDIR/opencode: one folder per account, so that two
-        # accounts of the old plan-B server never share (or block) it.
+        # OpenCode keeps temporary files in $TMPDIR/opencode: its own folder under ~/.workshop-run,
+        # never the shared /tmp.
         "TMPDIR": str(RUN_DIR / "tmp"),
     })
     (RUN_DIR / "tmp").mkdir(parents=True, exist_ok=True)

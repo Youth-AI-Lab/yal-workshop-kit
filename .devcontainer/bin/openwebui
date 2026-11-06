@@ -588,8 +588,9 @@ def start_container():
             "WEBUI_AUTH": "False",
             "WEBUI_NAME": "YAL workshop",
             "OPENAI_API_CONFIGS": json.dumps({"0": {"enable": True, "model_ids": [model]}}),
-            "DEFAULT_MODELS": RAG_ID,
         })
+        if knowledge_files():  # no "Wildfire RAG" model without documents (workshop 1)
+            env["DEFAULT_MODELS"] = RAG_ID
     # From workshop 4: the live tool, through the environment (it survives a restart). Its token is a secret too.
     tools = mcp_wanted()
     # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
@@ -921,7 +922,7 @@ def need_knowledge(command):
 
 def drop_rag_models(api):
     """Without knowledge files, openwebui start makes no "Wildfire RAG" model and no knowledge base for it.
-    Removes the ones an older openwebui start made (the knowledge base was empty)."""
+    Removes the ones an older openwebui start made: in a Codespace of workshop 1, their knowledge base was empty."""
     for model_id in [RAG_ID] + [f"{RAG_ID}-{size}" for size in SIZES]:
         if api.model_exists(model_id):
             api.request("POST", "/models/model/delete", body={"id": model_id})  # DELETE: 405 (0.12.5)

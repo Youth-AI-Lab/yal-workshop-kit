@@ -584,7 +584,7 @@ class OpenWebUIRag:
             raise SystemExit("replay RAG needs the documents of the workshop (summaries/ and corpus/text/), and this "
                              "repository has none.\nIt starts with workshop 2: "
                              "https://github.com/Youth-AI-Lab/yal-workshop-rag")
-        not_running ="Open WebUI is not running, or not ready yet. Type: openwebui start"
+        not_running = "Open WebUI is not running, or not ready yet. Type: openwebui start"
         try:
             # Without accounts (openwebui start of the kit), an empty sign-in gives the token.
             self.token = self.request("POST", "/api/v1/auths/signin", {"email": "", "password": ""})["token"]
