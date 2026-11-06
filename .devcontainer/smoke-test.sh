@@ -253,7 +253,8 @@ assert c["type"] == "mcp" and c["auth_type"] == "bearer" and c["key"] == "T" * 4
 assert c["config"]["function_name_filter_list"] == "fire_danger,territories", c["config"]
 assert m.mcp_token_of({"TOOL_SERVER_CONNECTIONS": json.dumps([c])}) == "T" * 43 and m.mcp_token_of({}) == ""
 assert m.MCP_HELPER.is_file(), m.MCP_HELPER
-m.CLASS = True; assert not m.mcp_wanted(), "jamais en mode classe"; m.CLASS = False
+# Mode classe : l'outil vient de l'image (/opt/workshop/fire-danger), jamais du mcp/ du dépôt ouvert (étape suivante).
+m.CLASS = True; assert m.mcp_wanted(), f"mode classe : serveur absent de {m.CLASS_MCP_CODE}"; m.CLASS = False
 # Le chatbot natif reçoit l'outil, pas le chatbot RAG ; la phrase de la carte du wiki seulement avec la carte.
 f = m.chatbot_forms("Smoke", "I", {"id": "k", "name": "K"}, [], m.PROVIDERS[0], "claude-sonnet-5-5", wiki=True,
                     tool_ids=[m.MCP_TOOL_ID])
@@ -325,6 +326,213 @@ PY
 kill "$serveur"; wait "$serveur" 2>/dev/null || true
 unset MCP_TOKEN
 grep -q "Rochelle" /tmp/mcp-http.log && echec "mcp_http.py : la question est dans le journal du serveur"
+
+etape "openwebui, mode classe (guide Open WebUI) : outil en direct, code de l'image, données du dépôt, sans Docker"
+# Décision du 2026-11-06 : le code du serveur vient de l'image seulement ; le fichier du jour est mcp/fire-danger.json
+# du dépôt, fait depuis le gabarit de l'image s'il manque, jamais écrasé, jamais suivi s'il est un lien ; accès des
+# participants par config.access_grants, en mode classe seulement. WORKSHOP_FIRE_DANGER_DIR (banc hors image) est
+# hérité s'il est posé ; sinon /opt/workshop/fire-danger.
+fd_dir="${WORKSHOP_FIRE_DANGER_DIR:-/opt/workshop/fire-danger}"
+[[ -f "$fd_dir/fire_danger_server.py" && -f "$fd_dir/fire-danger.json" ]] || echec "image : $fd_dir incomplet"
+cmp -s "$fd_dir/fire_danger_server.py" "$KIT/mcp/fire_danger_server.py" || echec "image : $fd_dir/fire_danger_server.py diffère du kit"
+cmp -s "$fd_dir/fire-danger.json" "$KIT/mcp/fire-danger.json" || echec "image : le gabarit diffère de mcp/fire-danger.json du kit"
+classe="$(mktemp -d)"
+OPENWEBUI_MODE=class WORKSHOP_HOME="$classe" WORKSHOP_FIRE_DANGER_DIR="$fd_dir" \
+  /opt/workshop/venv/bin/python -I - "$(command -v openwebui)" <<'PY' || echec "openwebui, mode classe : outil en direct"
+import contextlib, importlib.machinery, importlib.util, io, json, os, pathlib, stat, sys, tempfile
+l = importlib.machinery.SourceFileLoader("owui", sys.argv[1]); m = importlib.util.module_from_spec(importlib.util.spec_from_loader("owui", l)); l.exec_module(m)
+assert m.CLASS and m.KIT == pathlib.Path(os.environ["WORKSHOP_HOME"])
+def arret(f, *a):
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            f(*a)
+    except SystemExit:
+        return err.getvalue()
+    raise AssertionError(f"{f.__name__} aurait dû s'arrêter")
+# Le serveur de l'image suffit, sans mcp/ dans le dépôt ; un mcp/fire_danger_server.py du dépôt n'est jamais regardé.
+assert not (m.KIT / "mcp").exists() and m.mcp_wanted(), "mode classe : outil attendu avec le serveur de l'image"
+vide = pathlib.Path(tempfile.mkdtemp())
+m.CLASS_MCP_CODE, gardé = vide, m.CLASS_MCP_CODE
+m.CLASS_MCP_TEMPLATE = vide / "fire-danger.json"
+(m.KIT / "mcp").mkdir(); (m.KIT / "mcp" / "fire_danger_server.py").write_text("raise SystemExit")
+assert not m.mcp_wanted(), "mode classe sans serveur dans l'image : pas d'outil, même avec mcp/*.py dans le dépôt"
+(vide / "fire_danger_server.py").symlink_to(gardé / "fire_danger_server.py")
+(vide / "fire-danger.json").write_text("{}")
+assert not m.mcp_wanted(), "serveur de l'image en lien : refusé"
+m.CLASS_MCP_CODE, m.CLASS_MCP_TEMPLATE = gardé, gardé / "fire-danger.json"
+(m.KIT / "mcp" / "fire_danger_server.py").unlink(); (m.KIT / "mcp").rmdir()
+# Le fichier du jour : fait depuis le gabarit (0644), jamais écrasé.
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    m.class_tool_data()
+f = m.class_tool_file()
+assert f.read_bytes() == m.CLASS_MCP_TEMPLATE.read_bytes() and stat.S_IMODE(f.stat().st_mode) == 0o644
+assert "made from the template" in dit.getvalue(), dit.getvalue()
+f.write_text('{"date": "2026-01-01", "territories": {}}')
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    m.class_tool_data()
+assert f.read_text() == '{"date": "2026-01-01", "territories": {}}' and not dit.getvalue(), "fichier écrasé"
+# Un lien (même pendant) ou autre chose qu'un fichier : refusé sans arrêter la commande (share open / close doivent
+# aller au bout), rien écrit ni lu à travers.
+f.unlink(); cible = m.KIT / "cible-ecrite"
+f.symlink_to("../cible-ecrite")
+assert "is a link or not a plain file" in m.class_tool_data() and not cible.exists(), "lien pendant suivi"
+cible.write_text('{"date": "2026-11-06", "territories": {"SECRET-LIEN": {"status": "live", "level": "x"}}}')
+assert m.read_tool_data(f) == (None, "it is a link or cannot be read: this command does not follow it"), m.read_tool_data(f)
+cible.unlink()
+f.unlink(); os.mkfifo(f)
+assert "is a link or not a plain file" in m.class_tool_data()
+assert m.read_tool_data(f)[1] == "it is not a plain file", m.read_tool_data(f)
+f.unlink(); (m.KIT / "mcp").rmdir(); (m.KIT / "mcp").symlink_to(vide)
+assert "is a link or not a folder" in m.class_tool_data() and (vide / "fire-danger.json").read_text() == "{}"
+(m.KIT / "mcp").unlink()
+assert m.class_tool_data() == "" and m.class_tool_file().is_file(), "fichier non refait après le lien"
+m.class_tool_file().unlink(); (m.KIT / "mcp").rmdir()
+# WORKSHOP_FIRE_DANGER_DIR (bancs) : ignorée dans le dépôt ou si elle peut être écrite (un fork lancerait son Python).
+(m.KIT / "faux-code").mkdir()
+os.environ["WORKSHOP_FIRE_DANGER_DIR"] = str(m.KIT / "faux-code")
+with contextlib.redirect_stderr(io.StringIO()) as dit:
+    assert m.class_mcp_code() == pathlib.Path("/opt/workshop/fire-danger"), "dossier du dépôt accepté"
+assert "ignored" in dit.getvalue()
+os.environ["WORKSHOP_FIRE_DANGER_DIR"] = str(gardé)
+(m.KIT / "faux-code").rmdir()
+# La forme du fichier : le gabarit n'est « pas rempli », jamais « mal formé » ; jamais d'autre texte que noms et statuts.
+gabarit = json.loads(m.CLASS_MCP_TEMPLATE.read_text(encoding="utf-8"))
+mal, date, statuts, notes = m.check_tool_data(gabarit)
+assert not mal and date == "" and len(statuts["not filled in"]) == len(gabarit["territories"]) and not notes, (mal, statuts)
+for donnees, attendu in (([], "not a JSON object"), ({"date": "06/11/2026"}, "YYYY-MM-DD"),
+                         ({"date": "2026-13-01"}, "not a real day"), ({"date": "2026-11-06", "territories": []}, "territories"),
+                         ({"date": "2026-11-06", "territories": {"X": "live"}}, 'territory "X"')):
+    assert attendu in m.check_tool_data(donnees)[0], (donnees, m.check_tool_data(donnees))
+mal, date, statuts, notes = m.check_tool_data({"date": "2026-11-06", "territories": {
+    "A": {"status": "live", "level": "rouge"}, "B": {"status": "Live"}, "C": {"status": "live", "level": "TO BE COMPLETED"},
+    "D": {"status": "season-over"}, "E\x1b[2J": {"status": "no-level-shown"}}})
+assert not mal and date == "2026-11-06" and statuts == {"live": ["A", "C"], "unknown status": ["B"], "season-over": ["D"],
+                                                         "no-level-shown": ["E?[2J"]} and notes == ["C"], (statuts, notes)
+# La connexion : accès de tous et nom pour les participants en mode classe seulement ; le mode atelier ne change pas.
+c = m.mcp_connection("T" * 43)[0]
+assert c["config"]["access_grants"] == m.EVERYONE == [{"principal_type": "user", "principal_id": "*", "permission": "read"}]
+assert c["info"]["name"] == "Fire danger today" and "filled in by your facilitator" in c["info"]["description"], c["info"]
+env = {"TOOL_SERVER_CONNECTIONS": json.dumps([c])}
+assert m.mcp_granted(env) and m.mcp_token_of(env) == "T" * 43
+m.CLASS = False
+atelier = m.mcp_connection("T" * 43)[0]
+assert atelier == {"type": "mcp", "url": m.MCP_URL, "path": "", "auth_type": "bearer", "key": "T" * 43,
+                   "config": {"enable": True, "function_name_filter_list": "fire_danger,territories"},
+                   "info": {"id": "fire-danger", "name": "Fire danger (workshop kit)",
+                            "description": "Today's wildfire danger level, read from mcp/fire-danger.json. Read-only."}}, atelier
+assert not m.mcp_granted({"TOOL_SERVER_CONNECTIONS": json.dumps([atelier])})
+# Le serveur lancé (docker simulé) : code de l'image et données du dépôt en lecture seule, --data ; en atelier, rien de tout ça.
+(m.KIT / "mcp").mkdir()
+lancés = []
+class R:
+    returncode, stdout, stderr = 0, "fire-danger: http://0.0.0.0:8000/mcp", ""
+m.docker, vrai_run = (lambda *a, **k: R), m.subprocess.run
+m.subprocess.run = lambda cmd, **k: lancés.append(cmd) or R
+for classe in (True, False):
+    m.CLASS = classe
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert m.start_mcp_server("T" * 43)
+m.subprocess.run = vrai_run
+atelier, classe = lancés.pop(), lancés.pop()
+code = f"{m.CLASS_MCP_CODE.resolve()}:/srv/kit-mcp:ro"; donnees = f"{(m.KIT / 'mcp').resolve()}:/srv/data:ro"
+assert code in classe and donnees in classe and classe[classe.index("--data") + 1] == "/srv/data/fire-danger.json", classe
+assert f"{(m.KIT / 'mcp').resolve()}:/srv/kit-mcp:ro" in atelier and "--data" not in atelier and donnees not in atelier, atelier
+# check_same_key en mode classe : un Open WebUI lancé sans l'accès des participants doit être relancé.
+m.CLASS = True
+sans_acces = m.mcp_connection("T" * 43)[0] | {"config": {"enable": True}}
+class Conteneur:
+    returncode = 0
+    stdout = json.dumps(["OPENAI_API_KEY=sk-ant-x"] + [f"{k}={v}" for k, v in m.HARDENED.items()]
+                        + ["TOOL_SERVER_CONNECTIONS=" + json.dumps([sans_acces])])
+m.docker = lambda *a, **k: Conteneur
+assert "started before the live tool was added" in arret(m.check_same_key, "sk-ant-x", "m")
+Conteneur.stdout = json.dumps(json.loads(Conteneur.stdout)[:-1] + ["TOOL_SERVER_CONNECTIONS=" + json.dumps(m.mcp_connection("T" * 43))])
+m.check_same_key("sk-ant-x", "m")
+# Le contrôle de share open / share status : cadre si le fichier n'est pas du jour ; jamais le texte du fichier.
+class Api:
+    def __init__(self, noms): self.noms = noms
+    def request(self, methode, chemin, **k):
+        assert methode == "GET" and chemin == "/tools/id/server:mcp:fire-danger/specs", chemin
+        return {"specs": [{"name": n, "description": ""} for n in self.noms]}
+jour = m.paris_today()
+f = m.class_tool_file()
+f.write_text(json.dumps({"date": jour, "territories": {"La Rochelle": {"status": "live", "level": "rouge",
+                         "source_says": "SECRET-SENTENCE", "advice": ["SECRET-ADVICE"]}}}))
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    assert m.class_tool_check(Api(["territories", "fire_danger"]))
+premier = dit.getvalue()
+assert f"dated {jour} (today)" in dit.getvalue() and "live: La Rochelle" in dit.getvalue() and "WARNING" not in dit.getvalue(), dit.getvalue()
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    assert m.class_tool_check(Api(["territories", "fire_danger"]), quiet=True)
+assert not dit.getvalue(), dit.getvalue()
+f.write_text(json.dumps({"date": "2026-01-01", "territories": {"La Rochelle": {"status": "Live", "source_says": "SECRET-SENTENCE"}}}))
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    assert not m.class_tool_check(Api(["fire_danger"]), quiet=True)
+sortie = dit.getvalue()
+for attendu in ("WARNING", "- The live tool does not answer", "dated 2026-01-01, not today", "Unknown status", "La Rochelle"):
+    assert attendu in sortie, (attendu, sortie)
+f.write_text('{"date": "2026-11-06", SECRET-SENTENCE')
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    assert not m.class_tool_check(Api(["territories", "fire_danger"]))
+assert "not valid JSON" in dit.getvalue(), dit.getvalue()
+assert "SECRET" not in premier + sortie + dit.getvalue(), "le contrôle a affiché le texte du fichier"
+Conteneur.stdout = json.dumps(json.loads(Conteneur.stdout)[:-1] + ["TOOL_SERVER_CONNECTIONS=" + json.dumps([sans_acces])])
+f.write_text(json.dumps({"date": jour, "territories": {"A": {"status": "season-over"}}}))
+with contextlib.redirect_stdout(io.StringIO()) as dit:
+    assert not m.class_tool_check(Api(["territories", "fire_danger"]))
+assert "Participants cannot use the live tool" in dit.getvalue(), dit.getvalue()
+# Un fichier suivi par git (un fork qui apporte ses propres données) : signalé.
+import subprocess
+assert m.tool_file_tracked() is False, "hors dépôt git : non suivi"
+subprocess.run(["git", "-C", str(m.KIT), "init", "-q"], check=True)
+assert m.tool_file_tracked() is False, "dépôt git, fichier non suivi"
+subprocess.run(["git", "-C", str(m.KIT), "add", "-f", "mcp/fire-danger.json"], check=True)
+assert m.tool_file_tracked(), "fichier suivi par git non vu"
+print("openwebui, mode classe : serveur de l'image seulement, fichier du jour (gabarit, jamais écrasé, liens refusés), "
+      "forme vérifiée, accès des participants en mode classe seulement, contrôles de share open : OK")
+PY
+rm -rf "$classe"
+# mcp_http.py --data : le serveur de l'image lit le fichier donné ; sans --data (étape précédente), celui d'à côté.
+donnees="$(mktemp -d)"
+/opt/workshop/venv/bin/python -I - "$donnees/fire-danger.json" <<'PY' || echec "mcp_http.py --data : fichier de test"
+import datetime, json, sys, zoneinfo
+jour = datetime.datetime.now(zoneinfo.ZoneInfo("Europe/Paris")).date().isoformat()
+json.dump({"date": jour, "territories": {"La Rochelle - Charente-Maritime, France": {"status": "live", "level": "SMOKE-LEVEL"}}},
+          open(sys.argv[1], "w", encoding="utf-8"))
+PY
+MCP_TOKEN="$(/opt/workshop/venv/bin/python -I -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export MCP_TOKEN
+/opt/workshop/venv/bin/python -I -B "$(dirname "$(command -v openwebui)")/mcp_http.py" \
+  --server "$fd_dir/fire_danger_server.py" --data "$donnees/fire-danger.json" --host 127.0.0.1 --port $port \
+  --allowed-host "127.0.0.1:$port" --tool fire_danger --tool territories > /tmp/mcp-http-data.log 2>&1 &
+serveur=$!
+/opt/workshop/venv/bin/python -I - "$port" <<'PY' || { cat /tmp/mcp-http-data.log; echec "mcp_http.py --data : niveau du fichier donné"; }
+import json, os, sys, time, urllib.error, urllib.request
+url, token = f"http://127.0.0.1:{sys.argv[1]}/mcp", os.environ["MCP_TOKEN"]
+def post(body, headers):
+    h = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **headers}
+    with urllib.request.urlopen(urllib.request.Request(url, json.dumps(body).encode(), h), timeout=5) as r:
+        return dict(r.headers), r.read().decode()
+init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18",
+        "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}}}
+for _ in range(40):
+    try:
+        headers, _ = post(init, {"Authorization": "Bearer " + token})
+        break
+    except (urllib.error.URLError, ConnectionError):
+        time.sleep(0.5)
+h = {"Authorization": "Bearer " + token, "mcp-session-id": headers.get("mcp-session-id", ""),
+     "mcp-protocol-version": "2025-06-18"}
+post({"jsonrpc": "2.0", "method": "notifications/initialized"}, h)
+_, body = post({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": {"name": "fire_danger", "arguments": {"territory": "La Rochelle"}}}, h)
+assert "SMOKE-LEVEL" in body and "why_no_level" not in body, body[:300]
+print("mcp_http.py --data : le niveau vient du fichier donné")
+PY
+kill "$serveur"; wait "$serveur" 2>/dev/null || true
+unset MCP_TOKEN
+rm -rf "$donnees"
 
 etape "replay RAG sans Open WebUI : un message clair, aucun fichier de réponses"
 # answers/ peut ne pas exister encore : sous pipefail, l'échec de ls arrêterait le script.

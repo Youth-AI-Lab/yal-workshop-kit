@@ -7,6 +7,10 @@ The same server as in Claude Code and OpenCode (mcp/fire_danger_server.py, loade
 only runs as a script), over Streamable HTTP, the only transport of Open WebUI's MCP client (read in 0.12.4), instead
 of stdio. It still reads mcp/fire-danger.json at each call.
 
+--data PATH (class mode of openwebui, the Open WebUI guide): the server's code comes from the image, and its data
+from the facilitator's mcp/fire-danger.json, mounted elsewhere; the server then reads PATH at each call instead of
+the fire-danger.json next to it. Without --data (the workshop kit), nothing changes.
+
 openwebui runs it in a container of its own (the Open WebUI image, which has the mcp package), on a Docker
 network with no way out (--internal) shared with Open WebUI only, as a plain user, read-only.
 Three locks on top of that:
@@ -20,6 +24,7 @@ import importlib.util
 import logging
 import os
 import sys
+from pathlib import Path
 
 
 def bearer_only(app, token):
@@ -38,10 +43,15 @@ def bearer_only(app, token):
     return guarded
 
 
-def load_server(path):
+def load_server(path, data=None):
     spec = importlib.util.spec_from_file_location("fire_danger_server", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)   # runs nothing: mcp.run() is under `if __name__ == "__main__"`
+    if data:
+        # fire_danger() and territories() read DATA at each call (load(DATA)): replacing it is enough.
+        if not hasattr(module, "DATA"):
+            sys.exit(f"mcp_http: {path} has no DATA to replace with --data")
+        module.DATA = Path(data)
     return module.mcp
 
 
@@ -49,7 +59,7 @@ async def serve(args, token):
     import uvicorn
     from mcp.server.transport_security import TransportSecuritySettings
 
-    server = load_server(args.server)
+    server = load_server(args.server, args.data)
     # The SDK logs each session at INFO; warnings (a refused Host header) stay. No question is logged.
     logging.disable(logging.INFO)
     served = []
@@ -78,6 +88,7 @@ def main():
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--allowed-host", action="append", required=True)
     parser.add_argument("--tool", action="append", required=True)
+    parser.add_argument("--data", help="the data file to read instead of the fire-danger.json next to --server")
     args = parser.parse_args()
     # The token leaves the environment before the kit's code is loaded.
     token = os.environ.pop("MCP_TOKEN", "")

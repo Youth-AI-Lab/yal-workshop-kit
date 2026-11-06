@@ -46,15 +46,17 @@ CLASS_HELP = """Open WebUI for your groups: you build chatbots, then open them t
     openwebui password       shows your e-mail and password (never on the projector)
     openwebui share open     in a session: participants can sign up and use your chatbots; link and QR code
     openwebui share close    after the session: no more sign-ups; helps you make the link private again
-    openwebui share status   sign-ups open or closed, link public or private, number of accounts
+    openwebui share status   sign-ups open or closed, link public or private, number of accounts;
+                             the live tool and the date of its file mcp/fire-danger.json
     openwebui export         keeps a copy of each chatbot: one .zip per chatbot in exports/
     openwebui import FILE    rebuilds a chatbot from such a .zip (or from chatbot-export of the workshop kit)
     openwebui stop           stops Open WebUI (your data is kept)
-    openwebui reset          deletes everything in Open WebUI (asks you to confirm)
+    openwebui reset          deletes everything in Open WebUI (asks you to confirm); keeps mcp/fire-danger.json
     openwebui help           this list
 
 The guide: https://github.com/Youth-AI-Lab/yal-openwebui-guide"""
 
+import datetime
 import fcntl
 import functools
 import hashlib
@@ -65,6 +67,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -231,6 +234,12 @@ view_knowledge_file."""
 # Open WebUI image has the mcp package), as a plain user, read-only, on a Docker network with no way out shared
 # with Open WebUI only; a random token, kept only in the two containers' settings (like the key: docker inspect,
 # which the chatbot of the workshop cannot run), is required by the server (mcp_http.py).
+# Class mode (the Open WebUI guide, decision of 2026-11-06): the code of the server comes from the image only
+# (CLASS_MCP_CODE), never from the opened repository, which can be anyone's fork; the day's data comes from the
+# facilitator's mcp/fire-danger.json at the root of the repository (made from the image's template by the first
+# openwebui start, never overwritten, ignored by git), mounted read-only and only parsed as JSON. The tool is
+# always served in class mode; until the file is dated today, the server says there is no level today.
+# Participants get it through the grant of the connection (config.access_grants, class mode only).
 MCP_SERVER_ID = "fire-danger"
 MCP_TOOL_ID = f"server:mcp:{MCP_SERVER_ID}"
 # Full names: Open WebUI keeps a tool whose name ENDS with one of these (str.endswith, measured). recorded_example
@@ -241,6 +250,33 @@ MCP_NETWORK = CONTAINER + "-tools"
 MCP_PORT = 8000
 MCP_URL = f"http://{MCP_CONTAINER}:{MCP_PORT}/mcp"
 MCP_HELPER = Path(__file__).resolve().parent / "mcp_http.py"
+MCP_DATA_NAME = "fire-danger.json"
+
+
+def class_mcp_code():
+    """Class mode: the folder of the server and of the template of the data file, copied into the image by the
+    Dockerfile. WORKSHOP_FIRE_DANGER_DIR is for the benches only, which run this script before an image holds the
+    folder; it is ignored when it points inside the repository or to anything this user can write: a fork could
+    set it (remoteEnv) and have its own Python run as the server."""
+    default = Path("/opt/workshop/fire-danger")
+    wanted = os.environ.get("WORKSHOP_FIRE_DANGER_DIR")
+    if not wanted:
+        return default
+    folder, kit = Path(wanted).resolve(), KIT.resolve()
+    writable = any(os.access(p, os.W_OK) for p in (folder, folder / "fire_danger_server.py", folder / MCP_DATA_NAME))
+    if folder == kit or kit in folder.parents or writable:
+        print("! WORKSHOP_FIRE_DANGER_DIR ignored: it is inside the repository or can be written. "
+              "The live tool comes from the image.", file=sys.stderr)
+        return default
+    return folder
+
+
+CLASS_MCP_CODE = class_mcp_code()
+CLASS_MCP_TEMPLATE = CLASS_MCP_CODE / MCP_DATA_NAME
+# The statuses the server knows (kit/mcp/fire_danger_server.py, STATUSES).
+MCP_STATUSES = ("live", "season-over", "no-level-shown")
+# Read access for every account: the models and documents opened by share open, and the live tool in class mode.
+EVERYONE = [{"principal_type": "user", "principal_id": "*", "permission": "read"}]
 
 
 def fail(message, code=1):
@@ -351,10 +387,14 @@ def container_env(name):
 
 
 def mcp_wanted():
-    """True from workshop 4: the kit has the fire-danger server (mcp/) and declares it (.mcp.json). Never in class
-    mode (the Open WebUI guide has no live tool)."""
+    """Workshop mode: True from workshop 4, when the kit has the fire-danger server (mcp/) and declares it
+    (.mcp.json). Class mode: True when the image has the server (CLASS_MCP_CODE); the repository's mcp/*.py is never
+    looked at, only its data file (class_tool_data)."""
+    if CLASS:
+        server = CLASS_MCP_CODE / "fire_danger_server.py"
+        return not server.is_symlink() and server.is_file() and CLASS_MCP_TEMPLATE.is_file()
     folder = KIT / "mcp"
-    if CLASS or folder.is_symlink() or not (folder / "fire_danger_server.py").is_file():
+    if folder.is_symlink() or not (folder / "fire_danger_server.py").is_file():
         return False
     try:
         servers = json.loads((KIT / ".mcp.json").read_text(encoding="utf-8")).get("mcpServers")
@@ -366,21 +406,252 @@ def mcp_wanted():
 def mcp_connection(token):
     """TOOL_SERVER_CONNECTIONS of Open WebUI: the fire-danger server, its read-only tools only. In the environment,
     not set through the API: with ENABLE_PERSISTENT_CONFIG false, a connection set through the API is lost at the next
-    restart, and the chatbot then answers without its tool, saying nothing (measured, 0.12.4)."""
+    restart, and the chatbot then answers without its tool, saying nothing (measured, 0.12.4).
+    Class mode only: read access for every account (config.access_grants; without it, Open WebUI 0.12.5 keeps a
+    connection for the administrators, and a participant's chat leaves the tool out, saying nothing: read in its
+    code, utils/access_control has_connection_access), and a name and a description written for the participants,
+    who see them under the message box."""
+    config = {"enable": True, "function_name_filter_list": ",".join(MCP_TOOLS)}
+    info = {"id": MCP_SERVER_ID, "name": "Fire danger (workshop kit)",
+            "description": "Today's wildfire danger level, read from mcp/fire-danger.json. Read-only."}
+    if CLASS:
+        config["access_grants"] = EVERYONE
+        info.update({"name": "Fire danger today",
+                     "description": "Today's official wildfire danger level, filled in by your facilitator from "
+                                    "public sources. Read-only."})
     return [{"type": "mcp", "url": MCP_URL, "path": "", "auth_type": "bearer", "key": token,
-             "config": {"enable": True, "function_name_filter_list": ",".join(MCP_TOOLS)},
-             "info": {"id": MCP_SERVER_ID, "name": "Fire danger (workshop kit)",
-                      "description": "Today's wildfire danger level, read from mcp/fire-danger.json. Read-only."}}]
+             "config": config, "info": info}]
+
+
+def mcp_entry_of(env):
+    """The fire-danger connection in a container's settings (a dict), or None."""
+    try:
+        connections = json.loads((env or {}).get("TOOL_SERVER_CONNECTIONS") or "[]")
+        return next((c for c in connections
+                     if isinstance(c, dict) and isinstance(c.get("info"), dict)
+                     and c["info"].get("id") == MCP_SERVER_ID), None)
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def mcp_token_of(env):
     """The token of the fire-danger connection in a container's settings, or ""."""
+    entry = mcp_entry_of(env)
+    token = entry.get("key") if entry else ""
+    return token if isinstance(token, str) else ""
+
+
+def mcp_granted(env):
+    """Class mode: True when the running container's fire-danger connection gives read access to every account,
+    exactly as mcp_connection() writes it. The checks of share open, share status and start look here: they sign in
+    as the administrator, whom Open WebUI always lets through, so they could not see a missing grant otherwise."""
+    entry = mcp_entry_of(env)
+    config = entry.get("config") if entry else None
+    return isinstance(config, dict) and config.get("access_grants") == EVERYONE
+
+
+# --- Class mode: the day's data of the live tool (mcp/fire-danger.json of the repository) ---------------
+
+def class_tool_file():
+    return KIT / "mcp" / MCP_DATA_NAME
+
+
+def class_tool_data():
+    """Class mode, at each openwebui start: makes mcp/fire-danger.json from the image's template when it is missing,
+    and never overwrites it. Refuses a link or anything but a plain file, for the folder and for the file: a
+    repository can come from anyone's fork, and a link would be followed both by this command and by the server.
+    Returns "" when the file can be served, else the problem: never stops the command, so that share open and
+    share close still apply the sign-up state (start_container then serves no live tool)."""
+    folder, path = KIT / "mcp", class_tool_file()
+    if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+        return (f"{folder} is a link or not a folder: this command does not follow it. Delete it, then type "
+                "openwebui start again: it makes mcp/fire-danger.json from the template.")
+    folder.mkdir(mode=0o755, exist_ok=True)
     try:
-        connections = json.loads((env or {}).get("TOOL_SERVER_CONNECTIONS") or "[]")
-        return next((c.get("key") or "" for c in connections
-                     if isinstance(c, dict) and (c.get("info") or {}).get("id") == MCP_SERVER_ID), "")
-    except (ValueError, TypeError, AttributeError):
-        return ""
+        found = path.lstat()
+    except FileNotFoundError:
+        found = None
+    if found is None:
+        try:
+            # O_EXCL: fails on anything already there, a dangling link included; O_NOFOLLOW: never through a link.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        except FileExistsError:
+            found = path.lstat()
+        else:
+            with os.fdopen(fd, "wb") as out:
+                # A default ACL (seen on /workspaces in a Codespace) can make the umask ignored: set the mode itself.
+                os.fchmod(out.fileno(), 0o644)
+                out.write(CLASS_MCP_TEMPLATE.read_bytes())
+            print("Live tool: mcp/fire-danger.json was made from the template. On the day of a session, fill it in\n"
+                  "  from your territory's public source, with date set to that day (see the guide).", flush=True)
+            return ""
+    if stat.S_ISLNK(found.st_mode) or not stat.S_ISREG(found.st_mode):
+        return (f"{path} is a link or not a plain file: this command does not follow it. Delete it, then type "
+                "openwebui start again: it makes a new one from the template.")
+    return ""
+
+
+def read_tool_data(path):
+    """(data, problem): the facilitator's file, read without following a link. problem is a short sentence, or ""
+    when the file reads as JSON. Never returns or prints a piece of the file in the problem."""
+    try:
+        # O_NONBLOCK: a named pipe put in its place does not hang the command.
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None, "it is missing (openwebui start makes it again from the template)"
+    except OSError:
+        return None, "it is a link or cannot be read: this command does not follow it"
+    with os.fdopen(fd, "rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            return None, "it is not a plain file"
+        raw = handle.read(2_000_001)
+    if len(raw) > 2_000_000:
+        return None, "it is too big (more than 2 MB)"
+    try:
+        return json.loads(raw.decode("utf-8")), ""
+    except UnicodeDecodeError:
+        return None, "it is not UTF-8 text"
+    except json.JSONDecodeError as e:
+        return None, f"it is not valid JSON (line {e.lineno}, column {e.colno}: {e.msg})"
+
+
+def to_be_completed(value):
+    """A field still marked TO BE COMPLETED, as the server reads it (fire_danger_server.filled_in_later)."""
+    return isinstance(value, str) and value.upper().startswith("TO BE COMPLETED")
+
+
+def shown_name(text):
+    """A territory name of the file, safe to print: printable characters only, 60 at most."""
+    clean = "".join(ch if ch.isprintable() else "?" for ch in str(text))
+    return clean if len(clean) <= 60 else clean[:57] + "..."
+
+
+def check_tool_data(data):
+    """The shape of mcp/fire-danger.json, as the server needs it (it fails on a wrong shape, and takes any unknown
+    status for "not filled in"). Returns (malformed, date, statuses, notes): malformed is a sentence or ""; date is
+    the file's date when it is one (else ""); statuses maps each known status, "not filled in" and "unknown status"
+    to territory names; notes names each live territory without a level. Only names, statuses and the date: never
+    any other text of the file."""
+    statuses, notes = {}, []
+    if not isinstance(data, dict):
+        return "the file is not a JSON object ({ ... })", "", statuses, notes
+    date = data.get("date")
+    if date == "YYYY-MM-DD":  # the template, not filled in yet
+        date = ""
+    elif not (isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)):
+        return 'its "date" is not a date written YYYY-MM-DD', "", statuses, notes
+    else:
+        try:
+            datetime.date.fromisoformat(date)
+        except ValueError:
+            return f'its "date" ({date}) is not a real day', "", statuses, notes
+    territories = data.get("territories")
+    if not isinstance(territories, dict) or not territories:
+        return 'its "territories" is not a list of territories ({ "name": { ... } })', date, statuses, notes
+    for name, entry in territories.items():
+        if not isinstance(entry, dict):
+            return f'the territory "{shown_name(name)}" is not written {{ ... }}', date, statuses, notes
+        status = entry.get("status")
+        if status in MCP_STATUSES:
+            kind = status
+        elif status is None or to_be_completed(status):
+            kind = "not filled in"
+        else:
+            kind = "unknown status"
+        statuses.setdefault(kind, []).append(shown_name(name))
+        level = entry.get("level")
+        if status == "live" and (not isinstance(level, str) or not level.strip() or to_be_completed(level)):
+            notes.append(shown_name(name))
+    return "", date, statuses, notes
+
+
+def paris_today():
+    """Today in Europe/Paris, as the server counts it (fire_danger_server.today)."""
+    from zoneinfo import ZoneInfo
+    return datetime.datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
+
+
+def tool_file_tracked():
+    """True when git tracks mcp/fire-danger.json in the repository (then a fork can give its own data), False when
+    it does not, None when git cannot tell (no git while the repository has .git, "dubious ownership", a broken
+    index): never taken for "not tracked"."""
+    if not shutil.which("git"):
+        return None if (KIT / ".git").exists() else False
+    result = subprocess.run(["git", "-C", str(KIT), "ls-files", "--error-unmatch", "--", f"mcp/{MCP_DATA_NAME}"],
+                            capture_output=True, text=True, check=False, env={**os.environ, "LC_ALL": "C"})
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:  # --error-unmatch: the path is not tracked
+        return False
+    # Not a repository at all (no .git here): nothing to track. Any other failure: cannot tell.
+    if not (KIT / ".git").exists() and "not a git repository" in (result.stderr or ""):
+        return False
+    return None
+
+
+def class_tool_check(api, quiet=False):
+    """Class mode: the live tool as share open, share status and start see it. Prints what it found (only the date
+    and the statuses of mcp/fire-danger.json, never its text), and a frame when something is wrong. Never stops: the
+    session can go on without the tool. quiet: nothing printed when all is well. Returns True when all is well."""
+    if not mcp_wanted():
+        return True
+    problems = []
+    env = container_env(CONTAINER)
+    if not mcp_token_of(env):
+        problems.append("Open WebUI was started without the live tool. Type openwebui start.")
+    elif not mcp_granted(env):
+        problems.append("Participants cannot use the live tool (it is open to you only). Type openwebui start.")
+    # Through Open WebUI, as you (administrator): network, token and the two tools. It cannot prove that the
+    # participants get it (Open WebUI always lets an administrator through): the grant above says that.
+    answers = False
+    try:
+        specs = api.request("GET", f"/tools/id/{urllib.parse.quote(MCP_TOOL_ID, safe=':')}/specs")
+        names = sorted(s.get("name") for s in (specs or {}).get("specs") or [] if isinstance(s, dict))
+        answers = names == sorted(MCP_TOOLS)
+    except ApiError:
+        pass
+    if not answers:
+        problems.append("The live tool does not answer: the chatbots answer without it. Type openwebui start.")
+    path, day = class_tool_file(), paris_today()
+    data, unreadable = read_tool_data(path)
+    malformed, date, statuses, notes = ("", "", {}, []) if unreadable else check_tool_data(data)
+    if unreadable or malformed:
+        # The server says so to the model for invalid JSON or a missing file; a wrong shape gives no level.
+        then = ("The tool says so to the model." if unreadable.startswith(("it is not valid JSON", "it is missing"))
+                else "The tool cannot give a level until this is fixed.")
+        problems.append(f"mcp/{MCP_DATA_NAME}: {unreadable or malformed}. {then}")
+    elif date != day:
+        when = f"is dated {date}" if date else "has no date yet"
+        problems.append(f"mcp/{MCP_DATA_NAME} {when}, not today ({day}): the tool says there is no level today.")
+    if statuses.get("unknown status"):
+        problems.append(f"Unknown status (use live, season-over or no-level-shown): "
+                        f"{', '.join(statuses['unknown status'])}.")
+    if notes:
+        problems.append(f"Status live but no level: {', '.join(notes)}.")
+    tracked = tool_file_tracked()
+    if tracked:
+        problems.append(f"git tracks mcp/{MCP_DATA_NAME}: this repository brings its own data. Check every line "
+                        "against the public source.")
+    elif tracked is None:
+        problems.append(f"Could not ask git whether it tracks mcp/{MCP_DATA_NAME}: check every line against the "
+                        "public source yourself.")
+    if problems or not quiet:
+        state = "answers" if answers else "does not answer"
+        if unreadable or malformed:
+            dated = "cannot be used."
+        else:
+            dated = f"dated {date}{' (today)' if date == day else ''}." if date else "no date yet."
+        print(f'\nLive tool "Fire danger today": {state}. Its file mcp/{MCP_DATA_NAME}: {dated}')
+        for kind in (*MCP_STATUSES, "not filled in"):
+            if statuses.get(kind):
+                print(f"  {kind}: {', '.join(statuses[kind])}")
+    if problems:
+        rule = "=" * 72
+        print(f"\n{rule}\n WARNING: the live tool (today's fire danger)\n")
+        for problem in problems:
+            print(f"   - {problem}")
+        print(f"{rule}")
+    return not problems
 
 
 def mcp_network():
@@ -400,17 +671,23 @@ def start_mcp_server(token):
     """Starts the fire-danger server for Open WebUI, again each time (one or two seconds): an edited
     fire_danger_server.py is taken, and a server that fails is said, even one that Docker restarts in a loop (a running
     one was kept before, and said nothing then: measured). Returns True when it runs. Never stops Open WebUI: without
-    the server, the chatbot answers without its live tool."""
+    the server, the chatbot answers without its live tool.
+    Class mode: the code from the image (CLASS_MCP_CODE), the data from the repository's mcp/ folder, both read-only;
+    the folder is mounted, not the file: an editor that saves by renaming would leave a mounted file on the old one."""
     folder = (KIT / "mcp").resolve()
+    code = ["-v", f"{CLASS_MCP_CODE.resolve()}:/srv/kit-mcp:ro", "-v", f"{folder}:/srv/data:ro"] if CLASS \
+        else ["-v", f"{folder}:/srv/kit-mcp:ro"]
     args = ["--name", MCP_CONTAINER, "--restart", "unless-stopped", "--network", MCP_NETWORK,
             # A plain user (the one of this Codespace, who can read mcp/), nothing writable, no privileges.
             "--user", f"{os.getuid()}:{os.getgid()}", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            # fire-danger.json is read at each call: the pair edits it in mcp/, the answer follows.
-            "-v", f"{folder}:/srv/kit-mcp:ro", "-v", f"{MCP_HELPER}:/srv/mcp_http.py:ro",
+            # fire-danger.json is read at each call: the pair (or the facilitator) edits it in mcp/, the answer follows.
+            *code, "-v", f"{MCP_HELPER}:/srv/mcp_http.py:ro",
             "--entrypoint", "python"]
     command = [IMAGE, "-I", "-B", "/srv/mcp_http.py", "--server", "/srv/kit-mcp/fire_danger_server.py",
                "--port", str(MCP_PORT), "--allowed-host", f"{MCP_CONTAINER}:{MCP_PORT}"]
+    if CLASS:
+        command += ["--data", f"/srv/data/{MCP_DATA_NAME}"]
     command += [part for tool in MCP_TOOLS for part in ("--tool", tool)]
     config = hashlib.sha256(json.dumps(args + command).encode()).hexdigest()[:16]
     docker("rm", "-f", MCP_CONTAINER)
@@ -430,8 +707,14 @@ def start_mcp_server(token):
     why = (result.stderr or docker("logs", "--tail", "5", MCP_CONTAINER).stderr or "").strip()
     # Not left restarting in a loop: openwebui start, or openwebui chatbot, starts it again.
     docker("rm", "-f", MCP_CONTAINER)
-    print(f"! The live tool fire-danger could not start, so your chatbot answers without it.\n  {why[-600:]}\n"
-          "  Check that mcp/fire_danger_server.py is the kit's, then type openwebui start again.", flush=True)
+    if CLASS:
+        # The server reads mcp/fire-danger.json at each call: a wrong file cannot stop it from starting.
+        print(f"! The live tool fire-danger could not start, so your chatbots answer without it.\n  {why[-600:]}\n"
+              "  Type openwebui start again. If it comes back, this Codespace's image may be older than 2026.11.8\n"
+              "  or damaged: export your chatbots, then create a new Codespace.", flush=True)
+    else:
+        print(f"! The live tool fire-danger could not start, so your chatbot answers without it.\n  {why[-600:]}\n"
+              "  Check that mcp/fire_danger_server.py is the kit's, then type openwebui start again.", flush=True)
     return False
 
 
@@ -454,6 +737,9 @@ def check_same_key(key, model):
     if any(env.get(name) != value for name, value in HARDENED.items()):
         fail("Open WebUI was started by an older version of this command. Type openwebui start "
              "(your chatbots and documents are kept),\nthen this command again.")
+    if CLASS and mcp_wanted() and not (mcp_token_of(env) and mcp_granted(env)):
+        fail("Open WebUI was started before the live tool was added. Type openwebui start "
+             "(your chatbots and accounts are kept),\nthen this command again.")
     if mcp_wanted() and not mcp_token_of(env):
         fail("Open WebUI was started without the live tool of this workshop (mcp/). Type openwebui start "
              "(your chatbots and documents are kept),\nthen this command again.")
@@ -576,6 +862,14 @@ def start_container():
             "USER_PERMISSIONS_CHAT_STT": "false",
             "USER_PERMISSIONS_CHAT_CALL": "false",
             "USER_PERMISSIONS_CHAT_SHARE": "false",
+            # The live tool (class_tool_data): no account name or e-mail sent to the tool server, and no tool server
+            # or workspace tool of a participant's own. All four are the defaults of 0.12.5 (env.py, config.py; the
+            # backend also refuses direct tool servers without the permission): written here so that a later
+            # release changing a default changes nothing.
+            "ENABLE_FORWARD_USER_INFO_HEADERS": "false",
+            "ENABLE_DIRECT_INTEGRATIONS": "false",
+            "USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS": "false",
+            "USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS": "false",
             # Notes and the calendar are off in both modes (HARDENED).
             "WEBUI_BANNERS": json.dumps([{
                 "id": "no-personal-data", "type": "info", "dismissible": False, "timestamp": 0,
@@ -591,8 +885,17 @@ def start_container():
         })
         if knowledge_files():  # no "Wildfire RAG" model without documents (workshop 1)
             env["DEFAULT_MODELS"] = RAG_ID
-    # From workshop 4: the live tool, through the environment (it survives a restart). Its token is a secret too.
+    # From workshop 4, and always in class mode: the live tool, through the environment (it survives a restart). Its
+    # token is a secret too.
     tools = mcp_wanted()
+    if CLASS and tools:
+        # The facilitator's mcp/fire-danger.json, made from the template when missing. A link: no live tool this time.
+        problem = class_tool_data()
+        if problem:
+            rule = "=" * 72
+            print(f"\n{rule}\n WARNING: the live tool (today's fire danger) is off\n\n   - {problem}\n{rule}",
+                  flush=True)
+            tools = False
     # The settings of this container, as a fingerprint: same image and settings -> no need to recreate.
     settings = [IMAGE, env, PORT] + ([mcp_connection("")] if tools else [])
     config = hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:16]
@@ -648,7 +951,8 @@ def start_container():
     if tools:
         start_mcp_server(token)
     else:
-        # A kit without mcp/ now (a save of workshop 3 restored, class mode): no server left from before.
+        # A kit without mcp/ now (a save of workshop 3 restored), or an image without the class-mode server: no
+        # server left from before.
         docker("rm", "-f", MCP_CONTAINER)
         docker("network", "rm", MCP_NETWORK)
     start, next_report, next_log = time.monotonic(), 30, 10
@@ -1474,9 +1778,6 @@ def cmd_chatbot(args):
 
 # --- Class mode commands ------------------------------------------------------------------------
 
-EVERYONE = [{"principal_type": "user", "principal_id": "*", "permission": "read"}]
-
-
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -1595,6 +1896,7 @@ def cmd_class_start():
     api.request("POST", "/users/user/settings/update", body={"ui": {"version": version}})
     realign_models(api, key, service, model)
     name_second_model_chatbots(api, key, model)
+    class_tool_check(api, quiet=True)  # said only when something is wrong; share open and share status say it all
     admin, _ = class_secrets()
     print("\nSign-ups are " + ("OPEN: participants can join. Not in a session? Type: openwebui share close"
                                if signup_is_open() else "closed. In a session: openwebui share open"))
@@ -1669,6 +1971,8 @@ def cmd_share_open():
             print(f'\nWarning: "{bot["name"]}" can also search the participant\'s other conversations, keep '
                   "task lists or read skills.\n  To turn this off: Workspace -> Models -> this chatbot -> "
                   f"Builtin Tools: turn off {', '.join(left_on)}, then Save & Update.")
+    # The live tool needs no access update here: its grant is in the container's environment (mcp_connection).
+    class_tool_check(api)
     warn_young_people(service)
     set_port(public=True)
     show_link()
@@ -1717,6 +2021,7 @@ def cmd_share_status():
             elif not (row.get("meta") or {}).get("hidden"):
                 print(f"Warning: {base}: participants see this plain model next to your chatbots.\n"
                       "  Type openwebui share open again.")
+    class_tool_check(api)
 
 
 EXPORT_HOW_TO = """# {name}: your chatbot, ready to keep and rebuild
@@ -1906,7 +2211,13 @@ def cmd_import(path_text):
     meta["builtinTools"] = tools
     # Workspace tools, filters and actions of the old Open WebUI: not in the file, and a new one could have others
     # with the same id. Its skills: only those the file brings (skills/), never one already here with the same id.
+    # The live tool is never switched on by a .zip either (decision of 2026-11-06): one line says how to tick it.
+    asked_tools = meta.get("toolIds")
+    asked_tools = [t for t in asked_tools if isinstance(t, str)] if isinstance(asked_tools, list) else []
+    used_live_tool = mcp_wanted() and MCP_TOOL_ID in asked_tools
     others = [kind for kind in ("toolIds", "filterIds", "actionIds") if meta.pop(kind, None)]
+    if used_live_tool and set(asked_tools) == {MCP_TOOL_ID}:
+        others.remove("toolIds")
     if others:
         print("Its workspace tools, filters or actions are not imported: add the ones you trust again "
               "in Workspace -> Models.")
@@ -1941,6 +2252,8 @@ def cmd_import(path_text):
     print(f"Its Builtin Tools: {', '.join(kept) or 'none'} (the others are off).")
     if skill_ids:
         print(f"Its skills: {', '.join(skill_names(api, skill_ids))}. Their whole text goes with every message.")
+    if used_live_tool:
+        print(f"This chatbot used the live tool: tick Fire danger today in Workspace -> Models -> {name} -> Tools")
     print("In a session, type openwebui share open so that the participants see it.")
 
 
@@ -1956,16 +2269,21 @@ def cmd_reset():
     if input('Type "delete" to go on: ').strip() != "delete":
         fail("Nothing was deleted.")
     docker("rm", "-f", CONTAINER)
+    # The live tool's server (its token goes with the old Open WebUI) and its network.
+    docker("rm", "-f", MCP_CONTAINER)
+    docker("network", "rm", MCP_NETWORK)
     docker("volume", "rm", VOLUME)
     for name in ("admin.json", "signup", "password-shown"):
         (state_dir() / name).unlink(missing_ok=True)
     print("Deleted. Type openwebui start to begin again.")
+    if class_tool_file().is_file():
+        print(f"Your mcp/{MCP_DATA_NAME} is kept: it is in your repository, not in Open WebUI.")
 
 
 def cmd_stop():
     check_docker()
     stopped = docker("rm", "-f", CONTAINER).returncode == 0
-    # The live tool of workshop 4 and its network (none in class mode, nor before workshop 4: nothing happens then).
+    # The live tool and its network (from workshop 4, and in class mode; before workshop 4 nothing happens then).
     docker("rm", "-f", MCP_CONTAINER)
     docker("network", "rm", MCP_NETWORK)
     if stopped:

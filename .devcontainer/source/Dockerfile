@@ -138,6 +138,13 @@ RUN chmod 755 /usr/local/bin/workshop /usr/local/bin/workshop-claude /usr/local/
     /usr/local/bin/chatbot-export /usr/local/bin/openwebui \
     /usr/local/bin/score /usr/local/bin/workshop-save /usr/local/bin/workshop-start /usr/local/bin/workshop-key
 
+# Outil en direct du mode classe (guide Open WebUI, décision du 2026-11-06) : le code du serveur fire-danger vient
+# de l'image seulement, jamais du dépôt ouvert ; fire-danger.json est le gabarit (TO BE COMPLETED) que le premier
+# `openwebui start` copie dans mcp/ du dépôt s'il manque. Contexte de construction : kit/ (devcontainer.json source,
+# "context": "../..").
+COPY mcp/fire_danger_server.py mcp/fire-danger.json /opt/workshop/fire-danger/
+RUN chmod 755 /opt/workshop/fire-danger && chmod 644 /opt/workshop/fire-danger/*
+
 # Message d'accueil de chaque nouveau terminal. Un dépôt peut le remplacer par la variable
 # WORKSHOP_WELCOME (remoteEnv de son devcontainer.json ; vide : aucun message) : le guide OpenCode,
 # qui n'utilise pas workshop-login, le fait. Sinon, rappel neutre (sans « binôme ») tant que la clé
