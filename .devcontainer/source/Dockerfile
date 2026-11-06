@@ -10,7 +10,7 @@ FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm@sha256:5ff1ba19e3b9273
 LABEL org.opencontainers.image.source="https://github.com/Youth-AI-Lab/yal-workshop-kit" \
       org.opencontainers.image.description="Youth AI Lab workshop: Claude Code, OpenCode, MCP server and workshop commands"
 
-# Claude Code, version figée (même fichier que le script du VPS). L'installateur officiel
+# Claude Code, version figée (claude-version). L'installateur officiel
 # installe sous /root ; on ne garde que le binaire, dans /usr/local/bin, vérifié par sa somme SHA-256
 # écrite ici (celle de .../claude-code-releases/2.1.311/manifest.json, canal stable, à reprendre si claude-version change).
 COPY .devcontainer/claude-version /tmp/claude-version
@@ -25,7 +25,7 @@ RUN set -eu; \
     rm -rf /root/.local/share/claude /root/.local/bin/claude /root/.cache /tmp/claude-version
 
 # OpenCode, second moteur de l'atelier (workshop-login --engine opencode), version figée elle aussi
-# (opencode-version, lu aussi par le script du VPS). Paquet npm @opencode/cli-<plateforme> pris
+# (opencode-version). Paquet npm @opencode/cli-<plateforme> pris
 # directement sur le registre et vérifié par sa somme SHA-256 écrite ici (2.2.5, à reprendre si
 # opencode-version change) ; on ne garde que le binaire (≈ 230 Mo), sans Node ni les quatre variantes
 # qu'installerait npm.

@@ -37,7 +37,7 @@ import zlib
 
 KIT = pathlib.Path(os.environ.get("WORKSHOP_HOME", pathlib.Path.home() / "workshop"))
 PACK = ".workshop/wiki-pack.tar.gz"
-# Skills of the kit itself. Used only when git cannot tell what is new (plan B server).
+# Skills of the kit itself. Used only when git cannot tell what is new (a copy of the kit without git).
 KIT_SKILLS = {"source-note", "summarize", "validate-summary"}
 # Personalities of the kit (examples/). Used only without git: there, a file of examples/ with
 # another name is the pair's; a kit example that the pair edited cannot be told apart, and is
