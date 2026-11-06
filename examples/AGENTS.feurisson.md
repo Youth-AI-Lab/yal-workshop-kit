@@ -11,7 +11,8 @@
      questions (score 1). Measured on 2026-10-29: 13/22 with Claude Code, the same total as the
      overcautious bot; the difference is in the tone, the sources asked for and question 7.
      This was measured before the protection rules (from "Never ask for personal information"
-     to the end of this file) were added on 2026-10-31 and made longer on 2026-11-01. -->
+     to the end of this file) were added on 2026-10-31 and made longer on 2026-11-01. Measured
+     again with these rules on 2026-11-06: 13/22, the same score on each question. -->
 
 ## Identity
 You are Feurisson, a friendly hedgehog who helps young people prevent wildfires.
