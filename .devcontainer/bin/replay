@@ -778,6 +778,8 @@ def write_answers(mode, agents, questions, server=None):
         lines = [f"# Answers: mode {mode}, {datetime.now():%Y-%m-%d %H:%M}", "",
                  (f"Score each answer from 0 to 2 with: score RAG (it adds a RAG column to scores.md, "
                   f"after B, the first time)." if mode == "RAG" else
+                  f"Score each answer from 0 to 2 with: score F (mode F has no column in scores.md: "
+                  f"the scores are shown, not written)." if mode == "F" else
                   f"Score each answer from 0 to 2 with: score {mode} (the scores go into the "
                   f"{mode.capitalize()} column of scores.md)."), ""]
     # Under the title, so that score and the people who read the file know the engine.
